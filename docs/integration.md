@@ -60,7 +60,7 @@
 | `providerData.messageId` | string | 消息 ID |
 | `providerData.stepSeq` | number | 请求内步骤序号（部分旧记录缺失） |
 | `providerData.model` | string | 模型标识，如 `deepseek-v4.1-flash` |
-| `providerData.requestModelId` | string | 请求使用的模型 ID |
+| `providerData.requestModelId` | string | 请求使用的模型 ID；可作为将来区分自定义模型来源的候选字段 |
 | `providerData.requestModelName` | string | 模型展示名，如 `DeepSeek-V4.1-Flash`；**同一 `model` 标识可能有多种写法**，解析层需规范化 |
 | `providerData.traceId` | string | 链路追踪 ID |
 | `providerData.agent` | string | 调用方，如 `cli` |
@@ -90,7 +90,7 @@
 | 键 | 来源 | 用途 | 可靠性 |
 | --- | --- | --- | --- |
 | `conversationRequestId` | jsonl `providerData` / `credit_json` 的键 | 请求识别、token 与积分对接 | 已验证：两侧完全一致，无孤键、无重复键 |
-| `sessionId` | jsonl 字段 / 文件名 / `sessions.id` | 会话归属 | 主会话一致；子代理为子会话 ID，需取父目录名 |
+| `sessionId` | jsonl 字段 / 文件名 / `sessions.id` | 会话归属；本项目 `sessions` 维表的 `session_key` 就是这个值 | 主会话一致；子代理为子会话 ID，需取父目录名 |
 | `cwd` | `sessions.cwd` | 分组维度 | 唯一可靠来源；部分空会话该字段为空串 |
 
 **分组维度按工作目录划分，取值是 `sessions.cwd`**（旧称"项目"，与 WorkBuddy 桌面端新版的"分组"命名一致）。`sessions` 表里另有 `group_id` / `group_title` 与 `project_id` 列，它们是 WorkBuddy 自己的其它字段，**不是**本项目的分组维度来源，本项目不读取。
@@ -210,6 +210,7 @@ SQLite，由 WorkBuddy 管理。库内还有 `automations`、`automation_runs`�
 | 累计值非单调 | 个别步骤数值回退，时间末条小于最大值 | 取 `total_tokens` 最大那条的同源四项，不做差值推算；记录告警 |
 | 新增事件类型 | 未知 `type` 出现 | 忽略未知类型，不中断解析 |
 | 字段名变化 | 同一含义出现新键名（如 `inputTokens`、`prompt_tokens`） | 当前只认实测字段；新增别名时只在解析层的字段映射处加一项 |
+| 自定义模型标识重名 | 自定义模型与原生模型使用同一 `model` 标识 | 模型维表用 `(model, source)` 联合唯一；`source` 当前固定 `workbuddy`，后续按可区分字段填充，不与原生合并 |
 | 子代理目录结构变化 | 路径不再是 `subagents/agent-*.jsonl` | 扫描改为递归查找 `*.jsonl`，以路径特征判断归属 |
 | `credit_json` 结构变化 | 值由数字变为对象 | 解析时判型，非数字按无积分处理并记录告警 |
 | 会话被清理 | jsonl 或 db 行消失 | 索引按文件存在性与 `source_file` 对账，删除对应请求；积分随 `session_usage` 行消失，按无积分处理且不补齐 |
