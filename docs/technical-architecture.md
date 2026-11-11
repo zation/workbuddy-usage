@@ -4,82 +4,92 @@
 
 ## 系统边界
 
-- **输入**：`~/.workbuddy/projects/**/*.jsonl`（会话事件流）与 `~/.workbuddy/workbuddy.db`（会话元信息与积分）。全部只读。
-- **输出**：本地浏览器面板；项目内的派生索引 `.data/index.db`（可删除重建，不入库）。
-- **不跨越的边界**：不向网络发送任何数据，不写 `~/.workbuddy` 下任何文件，不修改 WorkBuddy 配置。
+- **输入**：`~/.workbuddy/projects/**/*.jsonl`（会话事件流）与 `~/.workbuddy/workbuddy.db`（会话元信息与积分）。全部只读。字段与表结构见 [integration.md](./integration.md)。
+- **输出**：本地浏览器面板；仓库内的派生索引 `.data/index.db`（可删除重建，不入库）。
+- **不跨越的边界**：不向网络发送任何数据，不写 `~/.workbuddy` 下任何文件，不修改 WorkBuddy 配置。不读取云端官方用量接口，也不追溯补齐本地已不可读的数据。
 
 ## 模块划分
 
 | 模块 | 位置 | 职责 |
 | --- | --- | --- |
-| 解析层 | `src/etl/` | 扫描 jsonl 与外部库，按请求归并步骤、挂接积分与会话，产出请求级记录 |
+| 解析层 | `src/etl/` | 扫描 jsonl、按请求归并步骤、挂接会话与模型，产出请求级记录 |
+| 积分挂接 | `src/etl/` | 每次刷新无条件重读 `session_usage`，只更新当前映射中存在的请求，与文件增量解耦 |
 | 索引层 | `.data/index.db` | 派生 sqlite，按文件 mtime/大小增量更新，可整体重建 |
 | 服务层 | `server/` | 读索引做聚合查询，提供 HTTP API，生产模式下兼作静态资源服务器 |
-| 面板层 | `src/web/` | React + ECharts，负责筛选、下钻与呈现，不承担统计口径 |
+| 面板层 | `src/web/` | React + ECharts，Token 与积分分两个模块、共用四个筛选器，不承担统计口径 |
 
-分层原则：**口径只存在于解析层与服务层**。面板层只渲染 API 返回值，不自行求和或换算，避免同一指标出现两套算法。
+分层原则：**口径只存在于解析层与服务层**。面板层只渲染 API 返回值，不自行求和或换算，避免同一指标出现两套算法。两个模块是前端信息架构，后端端点共用，不为此拆分 API。
 
 ## 关键依赖
 
 | 依赖 | 用途 | 说明 |
 | --- | --- | --- |
-| Node.js ≥ 24 | 运行时 | `node:sqlite` 在本机 24.19.0 实测可用，免 flag、免 native 编译 |
-| TypeScript | 全仓类型 | 解析结果类型即 API 契约，贯穿到面板 props |
+| Node.js ≥ 24 | 运行时 | `node:sqlite` 零依赖、免 native 编译；本机 24.19.0 实测可用且无实验性警告，选择理由见技术约束 |
+| TypeScript + `@types/node` | 全仓类型 | 解析结果类型即 API 契约，贯穿到面板 props；`node:sqlite` 类型由 `@types/node` 提供 |
 | Vite + React | 面板 | 开发期热更新 |
-| ECharts | 图表 | 趋势线、占比、堆叠柱 |
-| Hono | 服务层 | 端点会随下钻增加，路由与中间件比手写 http 清晰 |
+| ECharts | 图表 | 按天趋势与按模型着色的堆叠 |
+| Hono + `@hono/node-server` | 服务层 | 端点会随下钻增加，路由与中间件比手写 http 清晰；生产模式由 Node 适配器提供静态资源 |
 
-不引入 ORM 与状态管理库：索引库只有单表，数据量为请求级（当前 380 条，量级可忽略）。
+不引入 ORM 与状态管理库：派生库只有请求表与扫描状态表，数据量在千行量级（实测快照见 [integration.md](./integration.md)）。
 
 ## 数据流
 
 ```
-~/.workbuddy/projects/*/*.jsonl ─┐
-                                 ├─→ 解析层（增量）─→ .data/index.db ─→ 服务层聚合 ─→ HTTP API ─→ React 面板
-~/.workbuddy/workbuddy.db ───────┘                          ↑
-   （只读：sessions / session_usage）                  启动时读取会话元信息（百余行，毫秒级）
+~/.workbuddy/projects/**/*.jsonl ──→ 文件增量解析 ──┐
+                                                     ├─→ .data/index.db ─→ 服务层聚合 ─→ HTTP API ─→ React 面板
+~/.workbuddy/workbuddy.db ──→ 积分挂接（每次刷新）──┘
+        └─→ sessions 元信息 ──────→ 服务层（启动时读入内存，百余行）
 ```
 
-刷新时机：`npm start` 启动时做一次增量解析；面板提供手动刷新入口触发同一流程。不做文件监听，避免与 WorkBuddy 运行时的频繁写入互相干扰。
+一次刷新包含两个**互不依赖**的步骤：
+
+1. **文件增量**：按 `source_files` 的 size/mtime 找出变化的 jsonl，整文件重解析，并以 `source_file` 为单位原子替换该文件贡献的请求行。
+2. **积分挂接**：无条件重读 `session_usage`，合成 `requestId → 积分` 映射，只更新映射中存在的请求；映射外的行不触碰、不主动清零。
+
+文件没有变化也要执行第 2 步（补上晚到的积分），积分表没有变化也不影响第 1 步。刷新时机：`npm start` 启动时执行一次，面板的手动刷新触发同一流程，由进程内互斥锁防止并发重复执行。不做文件监听，避免与 WorkBuddy 运行时的频繁写入互相干扰。
 
 ## 接口
 
-服务层对外只有一组只读端点，参数统一为 `from`、`to`（`YYYY-MM-DD`）与可选的 `project`、`model`、`session`：
+服务层不暴露原始日志，除刷新入口外均为只读端点。参数对应界面的四个筛选条件：时间 = `from` / `to`（`YYYY-MM-DD`）、分组 = `group`、对话 = `session`、模型 = `model`；不提供其它筛选开关。
 
 | 端点 | 返回 |
 | --- | --- |
-| `GET /api/summary` | 区间合计：token 四项、积分、请求数、会话数 |
-| `GET /api/timeseries?bucket=day\|week\|month` | 按时间桶的序列 |
-| `GET /api/breakdown?dim=project\|model\|session` | 按单一维度分组的聚合与占比 |
+| `GET /api/summary` | 区间合计：token 四项、积分、请求数、会话数；两个模块各取所需字段 |
+| `GET /api/timeseries` | 按天、按模型拆分的序列，支撑按模型着色的堆叠；粒度固定按天 |
+| `GET /api/breakdown?dim=group\|model\|session` | 按单一维度拆分的聚合与占比 |
 | `GET /api/requests` | 请求级明细，用于表格与排序 |
-| `POST /api/refresh` | 触发增量解析，返回新增/跳过文件数 |
+| `POST /api/refresh` | 触发一次刷新，返回新增/跳过文件数与补挂积分条数 |
 
 所有返回值为聚合结果或请求级明细，不下发原始 jsonl 内容。
 
 ## 部署方式
 
 - 开发：`npm run dev`，Vite 起面板，API 单独起并通过 Vite proxy 转发 `/api`。
-- 使用：`npm run build && npm start`，由服务层同端口提供静态资源与 API，浏览器打开 `http://localhost:<PORT>`。
+- 使用：`npm run build && npm start`，由服务层同端口提供静态资源与 API，浏览器打开 `http://127.0.0.1:<PORT>`（与 `HOST` 默认值一致；`localhost` 可能解析到 ::1）。
 - 无容器、无反向代理、无进程守护需求，单机单进程即可。
 
 ## 技术约束
 
-- **Node 版本**：PATH 首位是 WorkBuddy 托管的 22.22.2，其 `node:sqlite` 需 `--experimental-sqlite`；本机另有 24.19.0。项目以 `engines` 声明 `>=24` 并在入口校验版本，不依赖调用方 shell 的 PATH 顺序。
-- **外部库只读**：以只读模式打开 `workbuddy.db`，避免与运行中的 WorkBuddy 争锁。
-- **数据量**：当前 107 个 jsonl、158MB、380 个请求、6811 条带 usage 的记录。全量解析约 5–15 秒，因此增量更新是硬要求，不是优化项。
+- **Node 版本**：PATH 首位是 WorkBuddy 托管的 22.22.2，本机另有 24.19.0。实测两者都能直接加载 `node:sqlite` 且 `readOnly` 生效，**均不需要** `--experimental-sqlite`（该 flag 自 22.13.0 / 23.4.0 起已取消）；差别是 22 会打印 `ExperimentalWarning`，24 不会。项目仍以 `engines` 声明 `>=24` 并在入口校验版本，理由是 24 为 LTS、无实验性警告、类型定义更完整，不依赖调用方 shell 的 PATH 顺序。
+- **`node:sqlite` 稳定性**：该模块至今标记为实验性／发布候选（Stability 1.x），且自 25.7.0 起 `DatabaseSync` 已成为 `Database` 的弃用别名。`>=24` 不等于对未来主版本兼容；升级 Node 主版本前需回归解析与查询。
+- **外部库只读**：`workbuddy.db` 为 WAL 模式，以 `readOnly: true` 打开，避免与运行中的 WorkBuddy 争锁。WAL 只读连接依赖同目录的 `-wal` / `-shm`，WorkBuddy 运行时二者存在；实测写入被拒，且 `workbuddy.db`、`-wal`、`-shm` 三个文件的大小与 mtime 在只读查询前后均未变化。
+- **数据可得性**：只统计本地此刻能读到的数据。WorkBuddy 清理会话后其 `session_usage` 行会整行消失、部分 jsonl 也不再存在，由此产生的积分缺失不追溯、不补齐；子代理请求在本地没有任何积分记账，按 `credit = 0` / `has_credit = 0` 计入并通过覆盖率体现。`sessions.deleted_at` 不参与过滤。
+- **数据量**：jsonl 约百余个、百 MB 级，带 usage 的记录约七千条，归并后为数百个请求（快照见 [integration.md](./integration.md)）。`projects` 目录还含大量无关的 `.ndjson` 与 `.txt`，扫描按扩展名过滤。全量解析约 5–15 秒，因此增量更新是硬要求，不是优化项。
 - **路径处理**：Windows 盘符与分隔符差异统一交给 `node:path`，不手拼字符串。
-- **日志格式不稳定**：WorkBuddy 升级可能改字段，解析层需集中字段映射并保留兼容分支。
+- **日志格式不稳定**：WorkBuddy 升级可能改字段，解析层需集中字段映射并保留兼容分支。内部字段由本项目命名，外部键名由 WorkBuddy 决定，只能适配。
 
 ## 架构决策
 
 **AD-1 全 TypeScript 单仓。** 面板是唯一交付物，类型从解析层一路贯到图表 props，改字段时编译器能兜住；代价是接受 node_modules 与构建步骤。Python 方案在解析上更省事，但把成本转移到了前端手写图表与跨语言契约上。
 
-**AD-2 以请求（`conversationRequestId`）为核算单位。** 积分本身就是请求粒度，token 又在该粒度内累计，两者天然对齐；若按步骤统计，token 会重复计算约 20 倍以上。
+**AD-2 以请求（`conversationRequestId`）为核算单位。** 积分本身就是请求粒度，token 在该粒度内为累计值、取 `total_tokens` 最大那条即得请求总量，两者天然对齐；若按步骤统计，token 会重复计算约 22 倍。
 
-**AD-3 派生索引用 sqlite 而非单个 JSON 文件。** 需要按 mtime 增量 upsert、按维度聚合、按时间排序，sqlite 一条 SQL 就能覆盖；`node:sqlite` 零依赖，避免了 `better-sqlite3` 在 Windows 上的编译问题。索引可删可重建，因此不承担数据安全责任。
+**AD-3 派生索引用 sqlite 而非单个 JSON 文件。** 需要按文件原子替换、按维度聚合、按时间排序，sqlite 一条 SQL 就能覆盖；`node:sqlite` 零依赖，避免了 `better-sqlite3` 在 Windows 上的编译问题，代价是依赖实验性 API（见技术约束）。索引可删可重建，因此不承担数据安全责任。
 
 **AD-4 聚合放在服务层。** 若把请求级明细全量下发到前端再聚合，数据增长后首屏会越来越慢；服务端返回小结果集，钻取时再按需取明细。
 
 **AD-5 外部数据只读且不做备份。** 原始数据的所有权属于 WorkBuddy，本项目不复制、不归档，只派生。这样无论 WorkBuddy 如何清理旧日志，本项目都不会产生"过期副本"这类需要维护的东西。
 
 **AD-6 日期归属取请求内最早步骤的本地时间。** 跨零点的长请求归入发起当天，符合"这天花了多少"的直觉；用本地时区而非 UTC，避免出现"晚上八点算到明天"的错位。
+
+**AD-7 积分挂接与文件增量解耦。** `credit_json` 的写入时机与 jsonl 不同步，把积分挂接绑在"文件变化"上会让晚到的积分永久补不上。因此每次刷新都独立重读 `session_usage`，只按当前映射更新存在的请求；映射外的行不触碰。不做历史补齐，也不因外部记录消失而主动清零已读到的值。

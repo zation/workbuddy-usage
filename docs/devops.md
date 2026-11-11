@@ -4,8 +4,8 @@
 
 ## 环境准备
 
-- **Node.js ≥ 24**（必需）。本机已安装 v24.19.0，位于 `E:\Software\nodejs\`。
-  注意：PATH 首位是 WorkBuddy 托管的 v22.22.2（`~/.workbuddy/binaries/node/versions/`），其 `node:sqlite` 需要 `--experimental-sqlite`。若终端里 `node -v` 显示 22，用绝对路径调用，或把系统 Node 目录调到 PATH 前面。
+- **Node.js ≥ 24**（项目约定）。本机已安装 v24.19.0，位于 `E:\Software\nodejs\`。
+  注意：PATH 首位是 WorkBuddy 托管的 v22.22.2（`~/.workbuddy/binaries/node/versions/`）。实测 22.22.2 也能直接加载 `node:sqlite`（22.13.0 起已取消 `--experimental-sqlite`），但会打印 `ExperimentalWarning`；项目仍要求 24，理由见 [technical-architecture.md](./technical-architecture.md)。若终端里 `node -v` 显示 22，用绝对路径调用，或把系统 Node 目录调到 PATH 前面。
 - 首次拉取后安装依赖：`npm install`。
 - 无需数据库服务、无需 Docker、无需 Python。
 
@@ -23,6 +23,8 @@
 
 **不要改为 `0.0.0.0`。** 面板暴露的是本机完整对话用量记录，仅限回环访问。
 
+切换 `WORKBUDDY_HOME` 后先删除 `.data/index.db` 再启动。索引以绝对路径记录来源，直接切换会让旧路径被判为"文件已不存在"而清理对应请求。
+
 ## 部署
 
 本项目为本地单机工具，不需要服务端部署。
@@ -33,7 +35,9 @@
 2. `npm run dev`（开发，Vite 热更新 + API proxy）或 `npm run build && npm start`（日常使用，单端口）
 3. 打开 `http://127.0.0.1:4620`
 
-首次启动会全量解析全部 jsonl（当前 107 个文件、158MB，约 5–15 秒），之后按文件 mtime 与大小增量更新，通常秒级。
+首次启动会全量解析全部 `*.jsonl`（百余个文件、约百 MB，约 5–15 秒；快照见 [integration.md](./integration.md)），之后按文件 mtime 与大小增量更新，通常秒级。
+
+外部库为 WAL 模式，只读连接依赖同目录的 `-wal` / `-shm`；WorkBuddy 运行时二者存在，实测只读查询不会改动这三个文件。
 
 端口被占用时改 `PORT` 环境变量重启即可；不需要结束占用进程。
 
