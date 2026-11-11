@@ -61,7 +61,7 @@
 | `providerData.stepSeq` | number | 请求内步骤序号（部分旧记录缺失） |
 | `providerData.model` | string | 模型标识，如 `deepseek-v4.1-flash` |
 | `providerData.requestModelId` | string | 请求使用的模型 ID |
-| `providerData.requestModelName` | string | 模型展示名，如 `DeepSeek-V4.1-Flash` |
+| `providerData.requestModelName` | string | 模型展示名，如 `DeepSeek-V4.1-Flash`；**同一 `model` 标识可能有多种写法**，解析层需规范化 |
 | `providerData.traceId` | string | 链路追踪 ID |
 | `providerData.agent` | string | 调用方，如 `cli` |
 | `message.usage.input_tokens` | number | 输入 token（**累计值**） |
@@ -227,4 +227,5 @@ SQLite，由 WorkBuddy 管理。库内还有 `automations`、`automation_runs`�
 - 积分：224 条记录，合计 1673.61；169 个请求无积分记录（含全部 8 个子代理请求）；无孤键、无重复键、无非数字值。
 - 会话：117 条（20 条已删除、16 条 `cwd` 为空、16 条 `model` 为空）；`session_usage` 95 行。
 - 多步骤请求：359 / 393（约 91%）；6 个请求出现累计值回退，其中 1 个请求的时间末条小于最大值。
+- 维度规模（22:59 复测，405 个请求）：9 个模型标识、65 个分组、98 个有请求的会话；`deepseek-v4.1-flash` 等标识对应 2–3 种不同的 `requestModelName` 写法。
 - 恒等校验：`total = input + output` 与 `cache_read ≤ input` 均零例外；当前记录的 `timestamp` 与 `providerData.model` 无缺失。

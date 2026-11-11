@@ -60,10 +60,10 @@ WorkBuddy 把每次对话的 token 用量写在会话 jsonl 中，把积分写�
 **R6 对话归属**
 - 主会话的请求归入该会话。
 - 子代理的请求归入其**父会话**，不单独作为"对话"出现。
-- 会话展示名依次取 `custom_title`、`title`、会话 ID 前 8 位。
+- 会话展示名依次取 `custom_title`、`title`、会话 ID 前 8 位，在派生维表算好后由服务层 JOIN 取得；维表行缺失时回退会话 ID 前 8 位。
 
 **R7 模型归属**
-优先取请求级 `providerData.model`；缺失时回退该会话的 `sessions.model`；仍缺失归入 `未知模型`，但保留其用量，不丢弃。
+优先取请求级 `providerData.model`；缺失时回退该会话的 `sessions.model`；仍缺失归入 `未知模型`，但保留其用量，不丢弃。模型展示名存于模型维表，同一标识出现多种写法时按固定优先级规范化（见 [data-model.md](../data-model.md)）。
 
 **R8 积分归属**
 取 `session_usage.credit_json[conversationRequestId]`，一个请求一个值。**无记录时记 0，不估算、不按 token 比例分摊。** 覆盖率按"有积分记录的请求数 / 全部请求数"计算，分母包含子代理请求；快照见 [integration.md](../integration.md)。面板须同时展示覆盖率，避免把"记 0"误解为"免费"；"积分值为 0"与"没有积分记录"必须分别计数。
@@ -101,6 +101,7 @@ WorkBuddy 把每次对话的 token 用量写在会话 jsonl 中，把积分写�
 | `credit_json` 为 NULL、`{}` 或非法 JSON | 视为无积分记录，记 0，不中断解析 |
 | `usage` 中 `total_tokens` 缺失或为 0 | 用 `input + output` 兜底；仍为 0 则保留请求但标记异常 |
 | 累计值非单调（个别步骤数值回退） | 仍取 `total_tokens` 最大值那条，不按时间末条、不做差值推算 |
+| 同一 `model` 标识出现多种展示名 | 按固定优先级规范化后写入模型维表，结果与文件遍历顺序无关 |
 | 子代理请求无本地积分记录（已确认计入） | 计入 token 并归入父会话，积分记 0、覆盖率中体现，不补齐 |
 | 会话 `cwd` 为空但有 jsonl | 归入 `未知分组`，不丢弃请求 |
 | 同一会话跨多个 jsonl 文件续写 | 按会话 ID 合并，请求按 R3 去重 |
