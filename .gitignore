@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.data/
+.env
+.env.local
+*.local
+.DS_Store
+Thumbs.db
+.workbuddy/
