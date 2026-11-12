@@ -14,13 +14,19 @@
 
 # T002 取色链路切换与旧代码清理
 
-状态：pending
+状态：done
 
 目标与完成条件：`TrendChart` 删除 `colorIndex` prop，系列色直接取 `modelColor(modelKey)`，series 设 `id: modelKey`，加白色 1px 描边，删除顶层 `color: PALETTE`；`App` 删除 `modelPalette` 查询、`modelPaletteRows`、`modelColors` 与两处 `colorIndex` 传参；删除 `src/web/palette.ts`、`src/web/display.ts` 的 `modelColorIndex` 与 `tests/palette.test.ts`，`tests/display.test.ts` 移除对应 3 个用例并保留其它用例。0 值隐藏仍由 `modelOptions` + `visibleModelKeys` 驱动，聚合与筛选口径不变。对应 Spec R6 / R7、AC3 / AC5 与 Plan 顺序约束 1 / 2 / 4。
 
 必要依赖：T001。
 
 修改范围：`src/web/components/TrendChart.tsx`、`src/web/App.tsx`、`src/web/display.ts`、`src/web/palette.ts`、`tests/display.test.ts`、`tests/palette.test.ts`。
+
+实施结果：`TrendChart` 删除 `colorIndex` prop 与顶层 `color: PALETTE`，系列色改由 `modelColor(modelKey)` 直接取得，series 增加 `id: modelKey` 并加 1px 白色描边以分辨同系列相邻堆叠块；`App` 删除 `modelPalette` 查询、`modelPaletteRows`、`modelColors` 与两处 `colorIndex` 传参；删除 `modelColorIndex`、`palette.ts`、`palette.test.ts` 及 `display.test.ts` 中对应 3 个用例。0 值隐藏仍由 `modelOptions` + `visibleModelKeys` 驱动，聚合与筛选口径未动。
+
+验证：`npm run typecheck` 通过；`npx vitest run tests/display.test.ts tests/model-colors.test.ts` 22 项通过；`npm run build` 通过（Vite 仍有既存的 chunk 体积提示，非错误）。
+
+提交：
 
 # T003 色点组件与列表、明细着色
 

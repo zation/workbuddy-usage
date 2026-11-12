@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { BreakdownRow } from '../src/shared/types.ts';
 import {
   cacheHitRate,
-  modelColorIndex,
   visibleBreakdownRows,
   visibleModelKeys,
 } from '../src/web/display.ts';
@@ -130,38 +129,6 @@ describe('visibleBreakdownRows', () => {
     const original = [...rows];
     expect(visibleBreakdownRows(rows, 0)).toEqual([]);
     expect(rows).toEqual(original);
-  });
-});
-
-describe('modelColorIndex', () => {
-  const rows = [
-    row({ key: 'm-c', name: 'Gamma' }),
-    row({ key: 'm-a', name: 'Alpha' }),
-    row({ key: 'm-b', name: 'Beta' }),
-  ];
-
-  it('按展示名排序分配色位，与入参顺序无关', () => {
-    const expected = { 'm-a': 0, 'm-b': 1, 'm-c': 2 };
-    expect(modelColorIndex(rows)).toEqual(expected);
-    expect(modelColorIndex([...rows].reverse())).toEqual(expected);
-  });
-
-  it('展示名相同时按业务键兜底，重复业务键只占一个色位', () => {
-    const duplicated = [
-      row({ key: 'z-key', name: 'Same' }),
-      row({ key: 'a-key', name: 'Same' }),
-      row({ key: 'a-key', name: 'Same' }),
-      row({ key: 'b-key', name: 'Beta' }),
-    ];
-    expect(modelColorIndex(duplicated)).toEqual({ 'b-key': 0, 'a-key': 1, 'z-key': 2 });
-  });
-
-  it('两个 tab 的可见子集共享同一索引', () => {
-    const index = modelColorIndex(rows);
-    const tokenTab = rows.filter((item) => item.key !== 'm-b');
-    const creditTab = rows.filter((item) => item.key !== 'm-c');
-    expect(tokenTab.map((item) => index[item.key])).toEqual([2, 0]);
-    expect(creditTab.map((item) => index[item.key])).toEqual([0, 1]);
   });
 });
 
