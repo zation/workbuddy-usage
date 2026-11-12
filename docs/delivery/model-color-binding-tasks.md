@@ -62,13 +62,19 @@
 
 # T005 CDP 验收脚本改造
 
-状态：pending
+状态：done
 
 目标与完成条件：`scripts/panel-acceptance.mjs` 的 `chartStateExpr` 改为按 `series.id`（业务键）收集颜色，AC7 的 `colorsStable` 随之按业务键比对；`readModelOptions` 与第 353 / 361 行的原生 select 交互改为自定义下拉的点击 / 键盘交互，保持「选中后仍可切换」断言不降级；新增 AC3 断言「不带筛选参数的 `/api/breakdown?dim=model` 请求数为 0」且放在脚本自身 fetch 该路径之前；新增首帧颜色稳定断言与跨视图色点一致性断言（CSS `rgb()` 与 ECharts `#hex` 归一化后比较）。对应 Spec AC1 / AC3 / AC4 与 Plan「测试策略」。
 
 必要依赖：T004。
 
-修改范围：`scripts/panel-acceptance.mjs`。
+修改范围：`scripts/panel-acceptance.mjs`、`src/web/components/ModelSelect.tsx`。
+
+实施结果：`chartStateExpr` 改为按 `series.id`（业务键）收集颜色，AC7 的 `colorsStable` 随之按业务键比对；`ModelSelect` 的 trigger 与 option 补 `data-model`，使 CDP 断言能按业务键读取；新增 `selectModel` helper 以自定义下拉的点击替代原生 `select.value + dispatchEvent`，`readModelOptions` 改读 `.model-select-option`；新增「无参数 dim=model 请求数为 0」断言（放在脚本自身 fetch 该路径之前）、首帧颜色稳定断言、色点跨趋势图 / 拆分 / 下拉 / 明细一致性断言（CSS `rgb()` 与 ECharts `#hex` 归一化后比较），明细色点与图表颜色在「全部模型」筛选下比对。
+
+验证：`node --check scripts/panel-acceptance.mjs` 通过；`npm run typecheck` 通过；`npx vitest run tests/model-colors.test.ts tests/display.test.ts` 22 项通过；`npm run acceptance` 10 项全部 PASS。首轮 AC7 FAIL 的诊断：切 credit tab 前选中的模型 `credit = 0`，按 R7 被隐藏后积分趋势图走预期空态，导致读不到 y 轴；修复为在切 tab 前用「全部模型」清除模型筛选，未放宽任何断言。首轮与复跑的完整输出见本任务验证记录。
+
+提交：
 
 # T006 长期文档与一致性单测
 

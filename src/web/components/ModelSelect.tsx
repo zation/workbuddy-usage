@@ -84,6 +84,7 @@ export function ModelSelect({ rows, value, onChange }: ModelSelectProps) {
         type="button"
         id="filter-model"
         className="model-select-trigger"
+        data-model={value ?? ''}
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -112,6 +113,7 @@ export function ModelSelect({ rows, value, onChange }: ModelSelectProps) {
           <li
             key={item.key}
             id={`${listboxId}-${index}`}
+            data-model={item.key}
             role="option"
             aria-selected={item.key === (value ?? '')}
             className={`model-select-option${index === activeIndex ? ' is-active' : ''}`}

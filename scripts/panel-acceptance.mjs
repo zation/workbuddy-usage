@@ -1,4 +1,4 @@
-// 面板交互验收：通过 CDP 驱动本机 Chrome，核对 usage-panel-polish 的 AC1–AC7。
+// 面板交互验收：通过 CDP 驱动本机 Chrome，核对 usage-panel-polish 的交互验收项与模型固定色的配色断言。
 // 运行前提：`npm run dev` 已启动面板，且有一个带 --remote-debugging-port 的 Chrome。
 // 趋势图刻度与配色从页面已加载的 ECharts 实例读取，不改动产品代码。
 import { writeFile } from 'node:fs/promises';
@@ -98,6 +98,35 @@ async function setPreset(evaluate, value) {
 
 const summaryUrlExpr = `(() => performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.includes('/api/summary')).at(-1) ?? '')()`;
 const requestUrlsExpr = `(() => performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.includes('/api/requests')))()`;
+const paletteRequestsExpr = `(() => performance.getEntriesByType('resource')
+  .map((entry) => entry.name)
+  .filter((name) => {
+    try { return new URL(name).search === '?dim=model'; } catch { return false; }
+  }))()`;
+
+function normalizeColor(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const hex = value.match(/^#([0-9a-f]{6})$/i);
+  if (hex) {
+    const numeric = Number.parseInt(hex[1], 16);
+    return `rgb(${(numeric >> 16) & 255},${(numeric >> 8) & 255},${numeric & 255})`;
+  }
+  return value.replace(/\s+/g, '');
+}
+
+async function selectModel(evaluate, key) {
+  await evaluate(`(() => {
+    const trigger = document.querySelector('#filter-model');
+    if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+    const option = [...document.querySelectorAll('.model-select-option')]
+      .find((item) => item.dataset.model === ${JSON.stringify(key)});
+    if (!option) throw new Error('模型下拉缺少选项：' + ${JSON.stringify(key)});
+    option.click();
+  })()`);
+  await wait(1400);
+}
 
 let chartModuleUrls = [];
 
@@ -120,7 +149,7 @@ function chartStateExpr() {
         tooltip: typeof tip === 'function'
           ? [1000, 10000, 1000000].map((value) => String(tip(value)))
           : null,
-        colors: Object.fromEntries((option.series ?? []).map((s) => [s.name, s.itemStyle?.color])),
+        colors: Object.fromEntries((option.series ?? []).map((s) => [s.id ?? s.name, s.itemStyle?.color])),
       });
     } catch {
       // 该资源不是 echarts core，继续找下一个
@@ -150,6 +179,14 @@ async function main() {
     await evaluate(`(() => JSON.stringify(performance.getEntriesByType('resource')
       .map((entry) => entry.name)
       .filter((name) => /echarts/i.test(name))))()`),
+  );
+
+  // 配色专用全量请求必须在脚本自身读取模型行之前核对，避免 resource entries 被污染
+  const paletteRequests = await evaluate(paletteRequestsExpr);
+  check(
+    'AC3 不存在配色专用的全量模型拆分请求',
+    paletteRequests.length === 0,
+    `无筛选参数的 dim=model 请求 ${paletteRequests.length} 次`,
   );
 
   // AC2：tab 结构、ARIA 关联与默认激活
@@ -330,39 +367,106 @@ async function main() {
   await wait(1000);
   await setPreset(evaluate, 'all');
   const tokenChart = await readChart(evaluate);
+  await wait(1500);
+  const settledChart = await readChart(evaluate);
+  const frameStable =
+    Object.keys(tokenChart.colors).length > 0 &&
+    Object.entries(tokenChart.colors).every(([key, color]) => settledChart.colors[key] === color);
   await setPreset(evaluate, 'today');
   const todayChart = await readChart(evaluate);
-  const sharedModels = Object.keys(tokenChart.colors).filter((name) => todayChart.colors[name]);
+  const sharedModelKeys = Object.keys(tokenChart.colors).filter((key) => todayChart.colors[key]);
   const colorsStable =
-    sharedModels.length > 0 &&
-    sharedModels.every((name) => tokenChart.colors[name] === todayChart.colors[name]);
+    sharedModelKeys.length > 0 &&
+    sharedModelKeys.every((key) => tokenChart.colors[key] === todayChart.colors[key]);
   await setPreset(evaluate, 'all');
   const modelRows = (await (await fetch(new URL('/api/breakdown?dim=model', BASE_URL))).json()).rows;
   const zeroToken = modelRows.filter((row) => row.totalTokens === 0).map((row) => row.key);
   const zeroCredit = modelRows.filter((row) => row.credit === 0).map((row) => row.key);
 
   const readModelOptions = `(() => {
-    const select = document.querySelector('#filter-model');
-    return JSON.stringify({ value: select.value, options: [...select.options].slice(1).map((option) => option.value) });
+    const trigger = document.querySelector('#filter-model');
+    return JSON.stringify({
+      value: trigger.dataset.model ?? '',
+      options: [...document.querySelectorAll('.model-select-option')]
+        .map((option) => option.dataset.model ?? '')
+        .filter((key) => key !== ''),
+    });
   })()`;
 
   const tokenOptions = JSON.parse(await evaluate(readModelOptions));
   const zeroHiddenInToken = zeroToken.every((key) => !tokenOptions.options.includes(key));
-  await evaluate(`(() => {
-    const select = document.querySelector('#filter-model');
-    select.value = ${JSON.stringify(tokenOptions.options[0])};
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  })()`);
+  await selectModel(evaluate, tokenOptions.options[0]);
   await wait(1400);
   const afterSelect = JSON.parse(await evaluate(readModelOptions));
   const stillSwitchable = afterSelect.options.length === tokenOptions.options.length && afterSelect.value === tokenOptions.options[0];
-  await evaluate(`(() => {
-    const select = document.querySelector('#filter-model');
-    select.value = ${JSON.stringify(afterSelect.options.find((key) => key !== afterSelect.value) ?? afterSelect.value)};
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  })()`);
+  await selectModel(
+    evaluate,
+    afterSelect.options.find((key) => key !== afterSelect.value) ?? afterSelect.value,
+  );
   await wait(1400);
   const afterSwitch = JSON.parse(await evaluate(readModelOptions));
+
+  // 明细色点与图表颜色在同一筛选下比对，避免默认「今天」与「全部时间」的模型集合差异
+  await evaluate(`(() => { document.querySelectorAll('.table-toggle')[0].click(); })()`);
+  await wait(1400);
+  const tableDot = JSON.parse(
+    await evaluate(`(() => {
+      const cell = [...document.querySelectorAll('.table-body tbody td')]
+        .find((td) => td.querySelector('.model-dot'));
+      const dot = cell?.querySelector('.model-dot');
+      return JSON.stringify({
+        key: cell?.getAttribute('title') ?? '',
+        css: dot ? getComputedStyle(dot).backgroundColor : '',
+      });
+    })()`),
+  );
+  await evaluate(`(() => { document.querySelectorAll('.table-toggle')[0].click(); })()`);
+  await wait(600);
+
+  const dotState = JSON.parse(
+    await evaluate(`(() => {
+      const panel = [...document.querySelectorAll('.panel.breakdown')]
+        .find((item) => item.querySelector('h3')?.textContent === '按模型');
+      const row = panel?.querySelector('.breakdown-row');
+      const breakdownDot = row?.querySelector('.model-dot');
+      const key = row?.getAttribute('title') ?? '';
+      const option = [...document.querySelectorAll('.model-select-option')]
+        .find((item) => item.dataset.model === key);
+      const optionDot = option?.querySelector('.model-dot');
+      const triggerDot = document.querySelector('#filter-model .model-dot');
+      return JSON.stringify({
+        key,
+        breakdown: breakdownDot ? getComputedStyle(breakdownDot).backgroundColor : '',
+        option: optionDot ? getComputedStyle(optionDot).backgroundColor : '',
+        trigger: triggerDot ? getComputedStyle(triggerDot).backgroundColor : '',
+      });
+    })()`),
+  );
+  const expectedHex = tokenChart.colors[dotState.key];
+  const expectedRgb = normalizeColor(expectedHex ?? '');
+  const dotColorsMatch =
+    Boolean(expectedHex) &&
+    [dotState.breakdown, dotState.option].every((css) => normalizeColor(css) === expectedRgb);
+  const triggerExpectedHex = tokenChart.colors[afterSwitch.value];
+  const triggerMatch =
+    Boolean(triggerExpectedHex) &&
+    normalizeColor(dotState.trigger) === normalizeColor(triggerExpectedHex);
+  const tableExpectedHex = tokenChart.colors[tableDot.key];
+  const tableDotMatch =
+    Boolean(tableExpectedHex) && normalizeColor(tableDot.css) === normalizeColor(tableExpectedHex);
+  check(
+    'AC3 首帧颜色即最终值，无中途变色',
+    frameStable,
+    `比对 ${Object.keys(tokenChart.colors).length} 个模型`,
+  );
+  check(
+    'AC4 色点跨趋势图、拆分、下拉与明细一致',
+    dotColorsMatch && triggerMatch && tableDotMatch,
+    `拆分模型=${dotState.key} 图表=${expectedHex}，当前值=${afterSwitch.value} ${triggerExpectedHex}，明细=${tableDot.key} ${tableDot.css}`,
+  );
+
+  // 当前选中的模型可能在积分 tab 被 0 值隐藏（R7 预期空态），先回到「全部模型」再读积分图表
+  await selectModel(evaluate, '');
 
   await evaluate(`document.querySelector('#credit-tab').click()`);
   await wait(1400);
@@ -382,7 +486,7 @@ async function main() {
     zeroHiddenInToken && zeroHiddenInCredit && stillSwitchable &&
       afterSwitch.value !== afterSelect.value &&
       colorsStable && creditAxisOk,
-    `token 隐藏 ${zeroToken.length} 项、credit 隐藏 ${zeroCredit.length} 项，选中后下拉项 ${afterSelect.options.length} → ${afterSwitch.options.length}，配色稳定=${colorsStable}（比对 ${sharedModels.length} 个模型），积分轴=${creditChart.axis?.join('/') ?? '无'}`,
+    `token 隐藏 ${zeroToken.length} 项、credit 隐藏 ${zeroCredit.length} 项，选中后下拉项 ${afterSelect.options.length} → ${afterSwitch.options.length}，配色稳定=${colorsStable}（比对 ${sharedModelKeys.length} 个模型），积分轴=${creditChart.axis?.join('/') ?? '无'}`,
   );
 
   if (SCREENSHOT_DIR) {
