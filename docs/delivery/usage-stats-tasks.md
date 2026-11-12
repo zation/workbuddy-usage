@@ -52,7 +52,7 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 
 依赖：T001、T002。
 
-修改范围：`src/etl/`（schema 与连接管理）。
+修改范围：`src/etl/`（schema 与连接管理）、`server/index.ts`（启动时打开索引）。
 
 实施结果：`src/etl/config.ts` 解析 `WORKBUDDY_HOME` 与固定索引路径，并提供外部库、projects 根目录定位；`src/etl/index-db.ts` 建立 `groups` / `sessions` / `models` / `source_files` / `requests` / `meta` 六张表、五个查询索引与业务键 UNIQUE，`meta` 以 `CHECK (id = 1)` 保证单行。打开时先探测 `schema_version`，不匹配或文件不可读则关闭连接、删除 `index.db` 及其 `-wal` / `-shm` / `-journal` 后重建，新库直接写入 `last_full_scan_at`。服务启动时打开索引并打印是否重建。
 
@@ -124,9 +124,9 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 
 依赖：T003、T006。
 
-修改范围：`src/etl/`（写入与刷新编排）。
+修改范围：`src/etl/`（写入与刷新编排）、`server/index.ts`（启动时执行首次刷新）。
 
-实施结果：`src/etl/refresh.ts` 串起完整刷新：只读读取外部快照 → 同步会话/分组维表 → 扫描并按 `size_bytes` + `mtime_ms` 求变化集合 → 对已消失文件在同一事务内删除其请求与 `source_files` 行（C8）→ 逐文件流式解析 → 汇总全部候选后统一计算模型展示名 → 每个变化文件在单一事务内 `ensureSourceFile`、按 `source_file_id` 删除、批量插入请求，`source_files` 状态随事务提交（C9 / C10）→ 更新 `meta.last_refresh_at`。解析或写入失败的文件不推进扫描状态，恢复可读后下次刷新自动重试。跨文件重复请求按 `request_id` upsert 只保留一行，取 `total_tokens` 较大者并计入新增的 `duplicateRequestIds` 告警（R11）。进程内互斥锁覆盖全流程，并发调用等待当前刷新并返回 `skipped: true`。`RefreshResult` 增加 `failedFiles` 以便观察失败文件。
+实施结果：`src/etl/refresh.ts` 串起完整刷新：只读读取外部快照 → 同步会话/分组维表 → 扫描并按 `size_bytes` + `mtime_ms` 求变化集合 → 对已消失文件在同一事务内删除其请求与 `source_files` 行（C8）→ 逐文件流式解析 → 汇总全部候选后统一计算模型展示名 → 每个变化文件在单一事务内 `ensureSourceFile`、按 `source_file_id` 删除、批量插入请求，`source_files` 状态随事务提交（C9 / C10）→ 更新 `meta.last_refresh_at`。解析或写入失败的文件不推进扫描状态，恢复可读后下次刷新自动重试。跨文件重复请求按 `request_id` upsert 只保留一行，取 `total_tokens` 较大者并计入新增的 `duplicateRequestIds` 告警（R11）。进程内互斥锁覆盖全流程，并发调用等待当前刷新并返回 `skipped: true`。`RefreshResult` 增加 `failedFiles` 以便观察失败文件。服务启动时调用同一刷新入口，并打印扫描文件数、写入请求数、补挂积分条数与耗时。
 
 验证：`npm run typecheck` 通过；`npm test` 38 个用例通过，新增 8 个用例覆盖首次刷新写入、无变化跳过（< 1 秒、零写入）、整文件原子替换且同文件其它请求不变、来源文件删除清理、跨文件重复只保留一行、并发只执行一次、非法 JSON 只告警、解析失败不推进 `source_files` 且恢复后重试成功（C9）。真实数据全量刷新：265 个文件、903 个去重请求、合计 169,749,342 token、耗时 5.6 秒；数据无变化时二次刷新 0 变更、0 写入、耗时 55ms；发现 31 个 `request_id` 同时出现在两个会话文件中（数值相同），已按 R11 只计一次并告警，与 [integration.md](../integration.md) 快照中「跨文件重复为 0」不一致，需在收尾时更新该事实。
 
@@ -156,13 +156,13 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 
 目标：实现 Plan「服务层」与架构文档接口段的五个端点。
 
-完成条件：入参与返回值只用业务键字符串，服务层转换为内部 `id` 过滤（C14）；`from` / `to` 映射为含首尾的 `date_key` 区间（R12）；聚合全部在 SQL，LEFT JOIN 维表取业务键与展示名，维度筛选值取 JOIN 结果的 `DISTINCT`；`timeseries` 固定按天、按模型拆分；`summary` 提供覆盖率所需的 `has_credit` 计数（AC8）；分组求和等于总览（AC3）；生产模式提供静态资源且仅监听 `127.0.0.1`。
+完成条件：入参与返回值只用业务键字符串，服务层按业务键过滤（C14）；`from` / `to` 映射为含首尾的 `date_key` 区间（R12）；聚合全部在 SQL，LEFT JOIN 维表取业务键与展示名，维度筛选值取 JOIN 结果的 `DISTINCT`；`timeseries` 固定按天、按模型拆分；`summary` 提供覆盖率所需的 `has_credit` 计数（AC8）；分组求和等于总览（AC3）；生产模式提供静态资源且仅监听 `127.0.0.1`。
 
 依赖：T007、T008。
 
 修改范围：`server/`。
 
-实施结果：`server/query.ts` 以 SQL 完成四个只读端点：`summary` 四项 token、积分、请求数、会话数与 `has_credit` 覆盖率计数；`timeseries` 按 `date_key + model_id` 分组并由 `from` / `to` 补齐连续日期；`breakdown` 按 `group` / `model` / `session` 分组，筛选值来自 JOIN 结果，占比在服务层按 token 与积分分别计算；`requests` 排序在 SQL 完成，返回业务键、展示名与 `hasCredit`。所有筛选参数都是业务键字符串，维表只用于 JOIN 展示名，内部 `id` 不出现在响应中（C14）。`server/app.ts` 提供五个端点、参数校验（日期、日期区间、维度、排序字段）与生产模式静态资源；未知 `/api/*` 保持 JSON 404。`server/index.ts` 启动时打开索引、执行首次刷新并监听；`HOST` 只接受回环地址，默认 `127.0.0.1`。
+实施结果：`server/query.ts` 以 SQL 完成四个只读端点：`summary` 四项 token、积分、请求数、会话数与 `has_credit` 覆盖率计数；`timeseries` 按 `date_key + model_id` 分组并由 `from` / `to` 补齐连续日期；`breakdown` 按 `group` / `model` / `session` 分组，筛选值来自 JOIN 结果，占比在服务层按 token 与积分分别计算；`requests` 排序在 SQL 完成，返回业务键、展示名与 `hasCredit`。所有筛选参数都是业务键字符串，LEFT JOIN 维表取得业务键与展示名后直接按业务键列过滤，内部 `id` 不出现在响应中（C14）。`server/app.ts` 提供五个端点、参数校验（日期、日期区间、维度、排序字段）与生产模式静态资源；未知 `/api/*` 保持 JSON 404。`server/index.ts` 启动时打开索引、执行首次刷新并监听；`HOST` 只接受回环地址，默认 `127.0.0.1`。
 
 验证：`npm run typecheck` 通过；`npm test` 51 个用例通过，新增 12 个用例覆盖 summary 数值与覆盖率、三维度求和等于总览（AC3）、业务键与展示名、按天按模型序列与日期补齐、四个筛选条件组合、非法参数 400、明细默认排序与积分升序、响应递归不含 `id`（C14）、静态资源与 `/api` 404、刷新入口与 501。真实索引冒烟：`summary` 合计 169,805,366 token、903 个请求、203 个会话、477/903 覆盖率；分组 58 行、模型 11 行、会话 203 行三种拆分的 token 与请求数均等于总览，占比合计为 1。
 
@@ -236,6 +236,8 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 
 未执行检查：ESLint 未配置，Plan 标注为非必需（`tsc --noEmit` + Vitest 已覆盖类型与行为）；未引入 jsdom / Testing Library，AC11 结构以人工核对代替自动化 DOM 断言。
 
+快照说明：Spec 的 AC2「约 1:22」与 AC6「快照中的 8 个子代理请求」是 Spec 确认时的样本数字；当前数据已增长到约 39.8 倍与 43 个子代理请求，验收按口径与下界执行，不回写 Spec 数字。
+
 剩余风险：真实数据出现 31 个 `request_id` 同时存在于两个会话文件（数值相同），当前按 R11 只保留一行并把归属记在其中一个来源文件；若该来源文件被删除而副本仍在，需等副本文件变化后才会重新入索引。数据中另有 2,995 条零 token 步骤与 2 行非法 JSON，均已按兜底与告警处理。前端包体偏大，属本地工具可接受范围。
 
 提交：cc2d982
@@ -252,13 +254,13 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 
 修改范围：`docs/`、本文件。
 
-实施结果：T001–T012 的「提交」字段已统一回填（`e6fbdda`、`8db0d06`、`aaac845`、`b3975b7`、`d5d3bdd`、`7208979`、`f660509`、`4e85da5`、`5fa672c`、`51b4e69`、`6b092f2`、`cc2d982`）；T013 为收尾任务，按约定不填提交字段。长期文档按实现同步：`product-brief.md` 补齐请求数与会话数指标，并把步骤累加倍数改为当前实测口径；`technical-architecture.md` 更新 Node 版本、数据规模、全量解析耗时与 AD-2 / AD-8 的实测数字；`data-model.md` 补充 C8 同时删除 `source_files` 行、C12 展示名在增量刷新中保持稳定的行为；`integration.md` 用 2026-11-12 快照替换旧快照，记录 31 个跨文件重复请求与新的 token / 积分 / 会话规模；`devops.md` 更新 Node 安装位置、类型检查与测试命令、首次刷新耗时、`HOST` 回环限制与启动顺序。
+实施结果：T001–T012 的「提交」字段已统一回填（`e6fbdda`、`8db0d06`、`aaac845`、`b3975b7`、`d5d3bdd`、`7208979`、`f660509`、`4e85da5`、`5fa672c`、`51b4e69`、`6b092f2`、`cc2d982`）；T013 为收尾任务，按约定不填提交字段。长期文档按实现同步：`product-brief.md` 补齐请求数与会话数指标，并把步骤累加倍数改为当前实测口径；`technical-architecture.md` 更新 Node 版本、数据规模、全量解析耗时与 AD-2 / AD-8 的实测数字；`data-model.md` 补充 C8 同时删除 `source_files` 行、C12 展示名在增量刷新中保持稳定的行为；`integration.md` 用 2026-11-12 快照替换旧快照，记录 31 个跨文件重复请求与新的 token / 积分 / 会话规模；`devops.md` 更新 Node 安装位置、类型检查与测试命令、首次刷新耗时、`HOST` 回环限制与启动顺序；`usage-stats-plan.md` 的服务层过滤措辞同步修正为 LEFT JOIN 后按业务键过滤。
 
 验证：
 
 - Spec 的 AC1–AC11 均在 T012 有对应结论：AC1、AC2、AC3、AC4、AC5、AC6、AC7、AC8、AC9、AC10 有自动断言；AC11 经生产模式人工核对。剩余风险（跨文件重复请求的归属、零 token 步骤、前端包体）已记录在 T012。
 - 任务状态：T001–T013 均为 `done`；T001–T012 的实施结果、验证与提交字段齐全，T013 为收尾任务按约定不填提交字段。任务编号未重排，新增信息只追加。
-- 文档同步：五份长期文档已按实际实现更新；检索旧表述（`24.19`、`E:\Software`、`5–15 秒`、`405 个请求`、`22 倍`、`跨文件重复为 0`）在长期文档中已无残留，历史 Spec / Plan 保留原文不改写。
+- 文档同步：五份长期文档已按实际实现更新；检索旧表述（`24.19`、`E:\Software`、`5–15 秒`、`405 个请求`、`22 倍`、`跨文件重复为 0`）在长期文档中已无残留。历史 Spec / Plan 的验收快照数字保留原文不改写；Plan 的服务层过滤措辞已按实际实现修正（LEFT JOIN 后按业务键过滤，不换内部 `id`）。
 - `docs/backlog/` 仅有 `.gitkeep`，本次交付没有需要更新、移除或转化的条目；跨文件重复请求的极端场景已作为剩余风险记录，不单独立项。
 - 收尾复跑：`npm run typecheck` 通过；`npm test` 8 个文件 / 63 个用例通过；`npm run build` 通过。工作区在本提交前只包含本次文档变更。
 

@@ -42,7 +42,7 @@
 ### 服务层
 
 - 端点与参数按 [technical-architecture.md](../technical-architecture.md) 接口段：`/api/summary`、`/api/timeseries`、`/api/breakdown`、`/api/requests`、`/api/refresh`。
-- 入参一律业务键字符串：服务层用子查询 / JOIN 把业务键换成内部 `id` 再过滤，`from` / `to` 映射为 `date_key` 范围（含首尾）；返回值也不含内部 `id`（C14）。
+- 入参一律业务键字符串：服务层用 LEFT JOIN 维表后按业务键过滤（不换成内部 `id`），`from` / `to` 映射为 `date_key` 范围（含首尾）；返回值也不含内部 `id`（C14）。
 - 聚合全部在 SQL：`SUM` 四项 token 与积分、`COUNT(DISTINCT session_id)`、`SUM(has_credit)` 算覆盖率；`breakdown` / `timeseries` 按维度 `GROUP BY`，LEFT JOIN 维表取业务键与展示名；明细排序在 SQL 完成。维表缺失行按 C13 兜底。
 - 生产模式由 `@hono/node-server` 提供静态资源；监听 `HOST=127.0.0.1`，不改为 `0.0.0.0`。
 
