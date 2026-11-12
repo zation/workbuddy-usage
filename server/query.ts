@@ -101,10 +101,15 @@ export function getSummary(db: DatabaseSync, filters: Filters): SummaryResponse 
   const requestCount = number(raw?.request_count);
   const credited = number(raw?.credited_count);
   const credit = number(raw?.credit);
+  const meta = db.prepare('SELECT last_refresh_at FROM meta WHERE id = 1').get() as
+    | { last_refresh_at?: number | null }
+    | undefined;
 
   return {
     from: filters.from ?? null,
     to: filters.to ?? null,
+    lastRefreshAt:
+      typeof meta?.last_refresh_at === 'number' ? meta.last_refresh_at : null,
     token: {
       totalTokens: number(raw?.total_tokens),
       inputTokens: number(raw?.input_tokens),

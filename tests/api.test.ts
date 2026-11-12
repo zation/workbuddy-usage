@@ -46,7 +46,7 @@ afterEach(() => {
 
 describe('服务层聚合', () => {
   it('summary 返回 token、积分与覆盖率', async () => {
-    const { app } = await setup();
+    const { fixture, app } = await setup();
     const response = await app.request('/api/summary');
     expect(response.status).toBe(200);
     const body = (await response.json()) as SummaryResponse;
@@ -67,6 +67,28 @@ describe('服务层聚合', () => {
       uncreditedRequestCount: 2,
       coverage: 0.6,
     });
+
+    const meta = fixture.db
+      .prepare('SELECT last_refresh_at FROM meta WHERE id = 1')
+      .get() as { last_refresh_at: number | null };
+    expect(typeof body.lastRefreshAt).toBe('number');
+    expect(body.lastRefreshAt).toBe(meta.last_refresh_at);
+  });
+
+  it('从未刷新时 lastRefreshAt 为 null 且与筛选无关', async () => {
+    const fixture = await createStatsFixture();
+    fixtures.push(fixture);
+    const app = createApp({ db: fixture.db, refresher: fixture.refresher });
+
+    const fresh = (await (await app.request('/api/summary')).json()) as SummaryResponse;
+    expect(fresh.lastRefreshAt).toBeNull();
+
+    await fixture.refresher.refresh();
+    const filtered = (await (
+      await app.request('/api/summary?group=%2Fwork%2Falpha')
+    ).json()) as SummaryResponse;
+    expect(filtered.from).toBeNull();
+    expect(typeof filtered.lastRefreshAt).toBe('number');
   });
 
   it('三个维度拆分之和都等于总览（AC3）', async () => {

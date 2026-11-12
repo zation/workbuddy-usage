@@ -117,6 +117,8 @@ export interface SummaryResponse {
   to: string | null;
   token: TokenMetrics;
   credit: CreditMetrics;
+  /** 上次刷新完成时间，与筛选无关；从未刷新时为 null。 */
+  lastRefreshAt: number | null;
 }
 
 /** 按天、按模型拆分的序列，days 由服务层补齐连续日期。 */

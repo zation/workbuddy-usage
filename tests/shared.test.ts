@@ -45,6 +45,7 @@ describe('共享契约', () => {
     const summary: SummaryResponse = {
       from: '2026-11-12',
       to: '2026-11-12',
+      lastRefreshAt: 1,
       token: {
         totalTokens: 10,
         inputTokens: 6,
