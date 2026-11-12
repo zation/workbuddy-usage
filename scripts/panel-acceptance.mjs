@@ -1,5 +1,6 @@
 // 面板交互验收：通过 CDP 驱动本机 Chrome，核对 usage-panel-polish 的 AC1–AC7。
 // 运行前提：`npm run dev` 已启动面板，且有一个带 --remote-debugging-port 的 Chrome。
+// 趋势图刻度与配色从页面已加载的 ECharts 实例读取，不改动产品代码。
 import { writeFile } from 'node:fs/promises';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://127.0.0.1:5173/';
@@ -98,6 +99,41 @@ async function setPreset(evaluate, value) {
 const summaryUrlExpr = `(() => performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.includes('/api/summary')).at(-1) ?? '')()`;
 const requestUrlsExpr = `(() => performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.includes('/api/requests')))()`;
 
+let chartModuleUrls = [];
+
+function chartStateExpr() {
+  return `(async () => {
+  const el = document.querySelector('.chart');
+  const urls = ${JSON.stringify(chartModuleUrls)};
+  for (const url of urls) {
+    try {
+      const mod = await import(url);
+      const instance = typeof mod.getInstanceByDom === 'function' ? mod.getInstanceByDom(el) : null;
+      if (!instance) continue;
+      const option = instance.getOption();
+      const axis = option.yAxis?.[0]?.axisLabel?.formatter;
+      const tip = option.tooltip?.[0]?.valueFormatter;
+      return JSON.stringify({
+        axis: typeof axis === 'function'
+          ? [0, 1000, 10000, 1000000, 1000000000].map((value) => String(axis(value)))
+          : null,
+        tooltip: typeof tip === 'function'
+          ? [1000, 10000, 1000000].map((value) => String(tip(value)))
+          : null,
+        colors: Object.fromEntries((option.series ?? []).map((s) => [s.name, s.itemStyle?.color])),
+      });
+    } catch {
+      // 该资源不是 echarts core，继续找下一个
+    }
+  }
+  return JSON.stringify({ axis: null, tooltip: null, colors: {} });
+})()`;
+}
+
+async function readChart(evaluate) {
+  return JSON.parse(await evaluate(chartStateExpr()));
+}
+
 async function main() {
   const target = await findPageTarget();
   const socket = new WebSocket(target.webSocketDebuggerUrl);
@@ -109,6 +145,12 @@ async function main() {
 
   await openPage(client);
   const { evaluate } = client;
+  // 后续会 clearResourceTimings，先缓存 ECharts 模块地址供 readChart 动态导入
+  chartModuleUrls = JSON.parse(
+    await evaluate(`(() => JSON.stringify(performance.getEntriesByType('resource')
+      .map((entry) => entry.name)
+      .filter((name) => /echarts/i.test(name))))()`),
+  );
 
   // AC2：tab 结构、ARIA 关联与默认激活
   const structure = JSON.parse(
@@ -125,18 +167,24 @@ async function main() {
         hidden: panel.hasAttribute('hidden'),
       })),
       canvases: document.querySelectorAll('canvas').length,
+      activeTab: document.querySelector('[role=tab][aria-selected=true]')?.id ?? '',
     }))()`),
   );
+  const hiddenPanels = structure.panels.filter((panel) => panel.hidden);
+  const inactiveTab = structure.tabs.find((tab) => tab.selected === 'false');
   check(
-    'AC2 两个 tab、默认激活 Token、aria-controls 均指向存在的面板',
+    'AC2 两个 tab、默认激活 Token、aria-controls 与隐藏面板对应、只渲染一个图表',
     structure.tabs.length === 2 &&
       structure.tabs[0].selected === 'true' &&
       structure.tabs[1].selected === 'false' &&
       structure.tabs.every((tab) => tab.targetExists) &&
+      structure.activeTab === structure.tabs[0].id &&
       structure.panels.length === 2 &&
       structure.panels.every((panel) => panel.labelledby) &&
-      structure.panels.some((panel) => panel.hidden),
-    JSON.stringify(structure.tabs.map((tab) => tab.id)),
+      hiddenPanels.length === 1 &&
+      hiddenPanels[0].id === inactiveTab?.controls &&
+      structure.canvases === 1,
+    `隐藏面板=${hiddenPanels.map((panel) => panel.id).join(',')}，canvas=${structure.canvases}`,
   );
 
   // AC4：明细默认折叠且折叠时不请求
@@ -213,14 +261,24 @@ async function main() {
       .join(' ');
     return !texts.includes('万') && !texts.includes('亿');
   })()`);
-  const tokenPattern = /^-?\d+(\.\d)?[KMB]?$/;
+  const tokenPattern = /^-?[\d,]+(\.\d)?[KMB]?$/;
+  const chart = await readChart(evaluate);
+  const axisOk =
+    Array.isArray(chart.axis) &&
+    chart.axis.every((text) => !text.includes('万') && !text.includes('亿') && !text.includes('k')) &&
+    chart.axis.some((text) => /[KMB]$/.test(text));
+  const tooltipOk =
+    Array.isArray(chart.tooltip) &&
+    chart.tooltip.every((text) => !text.includes('万') && !text.includes('亿'));
   const rate = summary.token.inputTokens > 0 ? ((summary.token.cacheReadTokens / summary.token.inputTokens) * 100).toFixed(1) : null;
   check(
-    'AC5 token 使用 K/M/B、计数为整数、页面无「万 / 亿」',
+    'AC5 token 使用 K/M/B、趋势图刻度与 tooltip 无中文单位、页面无「万 / 亿」',
     ['合计 Token', '输入', '输出', '缓存命中'].every((label) => tokenPattern.test(byLabel[label] ?? '')) &&
       /^\d[\d,]*$/.test(byLabel['请求数'] ?? '') &&
-      noChineseUnit,
-    `合计=${byLabel['合计 Token']} 请求数=${byLabel['请求数']}`,
+      noChineseUnit &&
+      axisOk &&
+      tooltipOk,
+    `合计=${byLabel['合计 Token']} 请求数=${byLabel['请求数']} y轴=${chart.axis?.join('/') ?? '无'}`,
   );
   const hitSuffix = suffixByLabel['缓存命中'] ?? '';
   check(
@@ -271,6 +329,14 @@ async function main() {
   await evaluate(`(() => { [...document.querySelectorAll('button')].find((button) => button.textContent === '重置').click(); })()`);
   await wait(1000);
   await setPreset(evaluate, 'all');
+  const tokenChart = await readChart(evaluate);
+  await setPreset(evaluate, 'today');
+  const todayChart = await readChart(evaluate);
+  const sharedModels = Object.keys(tokenChart.colors).filter((name) => todayChart.colors[name]);
+  const colorsStable =
+    sharedModels.length > 0 &&
+    sharedModels.every((name) => tokenChart.colors[name] === todayChart.colors[name]);
+  await setPreset(evaluate, 'all');
   const modelRows = (await (await fetch(new URL('/api/breakdown?dim=model', BASE_URL))).json()).rows;
   const zeroToken = modelRows.filter((row) => row.totalTokens === 0).map((row) => row.key);
   const zeroCredit = modelRows.filter((row) => row.credit === 0).map((row) => row.key);
@@ -304,11 +370,19 @@ async function main() {
   const zeroHiddenInCredit = zeroCredit
     .filter((key) => key !== creditOptions.value)
     .every((key) => !creditOptions.options.includes(key));
+  const creditChart = await readChart(evaluate);
+  const creditAxisOk =
+    Array.isArray(creditChart.axis) &&
+    creditChart.axis.every((text) => !text.includes('k') && !text.includes('万') && !text.includes('亿')) &&
+    Array.isArray(creditChart.tooltip) &&
+    creditChart.tooltip.every((text) => !text.includes('k'));
 
   check(
-    'AC7 两个 tab 按主指标隐藏 0 值模型，选中后下拉仍可切换',
-    zeroHiddenInToken && zeroHiddenInCredit && stillSwitchable && afterSwitch.value !== afterSelect.value,
-    `token 隐藏 ${zeroToken.length} 项、credit 隐藏 ${zeroCredit.length} 项，选中后下拉项 ${afterSelect.options.length} → ${afterSwitch.options.length}`,
+    'AC7 0 值隐藏、下拉可切换、配色跨筛选稳定、积分刻度无 k',
+    zeroHiddenInToken && zeroHiddenInCredit && stillSwitchable &&
+      afterSwitch.value !== afterSelect.value &&
+      colorsStable && creditAxisOk,
+    `token 隐藏 ${zeroToken.length} 项、credit 隐藏 ${zeroCredit.length} 项，选中后下拉项 ${afterSelect.options.length} → ${afterSwitch.options.length}，配色稳定=${colorsStable}（比对 ${sharedModels.length} 个模型），积分轴=${creditChart.axis?.join('/') ?? '无'}`,
   );
 
   if (SCREENSHOT_DIR) {

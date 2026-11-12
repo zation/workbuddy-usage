@@ -46,7 +46,7 @@ dev 的 Vite proxy 只转发 `^/api/` 前缀。不要改回 `/api`：前端模�
 
 ## 交互验收
 
-交互类验收用 `scripts/panel-acceptance.mjs`：脚本通过 CDP 驱动本机 Chrome，核对 tab 与 ARIA 关联、筛选两入口一致、拆分列表行数与滚动、明细折叠与懒加载、token 单位、缓存命中率、0 值隐藏与模型下拉可切换，逐项打印 PASS/FAIL，失败时退出码为 1。
+交互类验收用 `scripts/panel-acceptance.mjs`：脚本通过 CDP 驱动本机 Chrome，核对 tab 与 ARIA 关联（含非激活面板 `hidden` 与 canvas 数）、筛选两入口一致、拆分列表行数与滚动、明细折叠与懒加载、token 单位、缓存命中率、0 值隐藏与模型下拉可切换。趋势图部分从页面已加载的 ECharts 实例读取 y 轴刻度、tooltip 与 series 颜色，另核对单位无「万 / 亿」/ 积分 `k` 与配色跨筛选稳定。逐项打印 PASS/FAIL，失败时退出码为 1。
 
 1. 用 Node 24 启动面板：`npm run dev`
 2. 另开一个带调试端口的 Chrome（示例为 macOS 路径，其它系统换成自己的 Chrome 可执行文件）：
