@@ -328,7 +328,7 @@
 
 验证：`npm run typecheck`、`npm test`（11 文件 91 项）、`npm run build` 通过；`npm run acceptance` 7/7 PASS；逐条核对 Spec 与 Plan 的正面表述已按实情更新（Tasks 中保留的旧措辞仅为修订说明中的引用）。
 
-提交：
+提交：54d01c5
 
 # T020 配色跨筛选稳定
 
@@ -336,13 +336,13 @@
 
 目标与完成条件：色位按不带筛选的全量模型集合固定，切换 tab、0 值隐藏与改变时间 / 分组 / 对话筛选都不改变同一模型的颜色；不改统计口径、不改 API 契约、不新增依赖；Spec 与 Plan 同步该口径。对应二次复核意见「筛选改变模型成员时色位重编号导致换色」。
 
-修改范围：`src/web/App.tsx`、`docs/delivery/usage-panel-polish-spec.md`、`docs/delivery/usage-panel-polish-plan.md`。
+修改范围：`src/web/App.tsx`。
 
-实施结果：新增一次不带筛选的 `GET /api/breakdown?dim=model` 查询（路径固定，只随 `version` 重取），`modelColors` 改由该全量集合计算；`modelColorIndex` 纯函数与 `TrendChart` 不变。0 值隐藏的判定集合仍是带时间 / 分组 / 对话筛选的 `modelOptions`，两者互不混用；全量集合返回前图表沿用可见集合顺序，返回后色位固定。
+实施结果：新增一次不带筛选的 `GET /api/breakdown?dim=model` 查询（路径固定，只随 `version` 重取），`modelColors` 改由该全量集合计算；`modelColorIndex` 纯函数与 `TrendChart` 不变。0 值隐藏的判定集合仍是带时间 / 分组 / 对话筛选的 `modelOptions`，两者互不混用；全量集合返回前图表沿用可见集合顺序，返回后色位固定。Spec 与 Plan 的对应口径说明随 T019 的文档同步提交入库。
 
 验证：`npm run acceptance` 7/7 PASS（AC7 新增「全部时间 → 今天」前后同名模型颜色一致比对）；`npm run typecheck`、`npm test`（11 文件 91 项）、`npm run build` 通过。
 
-提交：
+提交：3c29d9b
 
 # T021 验收脚本断言补全
 
@@ -356,4 +356,11 @@
 
 验证：`npm run acceptance` 7/7 PASS；`npm run typecheck`、`npm test`、`npm run build` 通过。
 
-提交：
+提交：1363461
+
+## 二次复核收尾检查（2026-11-12）
+
+- T019–T021 状态与实施记录准确，提交字段已回填；收尾提交自身的 hash 不记录。
+- `npm run acceptance` 7/7 PASS（含新增的 canvas 数、hidden 面板对应、趋势图刻度与配色断言）；`npm run typecheck`、`npm test`（11 文件 91 项）、`npm run build` 全部通过；项目无 lint 脚本，未执行 lint（原因见 `devops.md`）。
+- Spec、Plan、Tasks 与长期文档的正面表述已与代码一致；旧措辞只保留在修订说明的引用中。`docs/backlog/` 只剩与本交付无关的 `subagent-credit-reconciliation.md`。
+- 归档仍待开发者确认发布：三份交付文档在 `docs/delivery/` 顶层，无版本 tag，`package.json` 仍为 1.0.0。
