@@ -2,20 +2,10 @@ import { useMemo } from 'react';
 import type { EChartsOption } from 'echarts';
 import type { TimeseriesResponse } from '../../shared/types.ts';
 import { formatCredit, formatInteger } from '../format.ts';
+import { MODEL_COLORS } from '../palette.ts';
 import { EChart } from './EChart.tsx';
 
-const PALETTE = [
-  '#2563eb',
-  '#0ea5e9',
-  '#14b8a6',
-  '#f59e0b',
-  '#ef4444',
-  '#8b5cf6',
-  '#ec4899',
-  '#84cc16',
-  '#f97316',
-  '#64748b',
-];
+const PALETTE = MODEL_COLORS;
 
 interface TrendChartProps {
   title: string;
