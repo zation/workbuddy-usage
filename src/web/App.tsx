@@ -18,7 +18,7 @@ import type { SortState } from './components/RequestTable.tsx';
 import { TrendChart } from './components/TrendChart.tsx';
 import { applyPresetRange, rangeForPreset, todayKey } from './filters.ts';
 import type { CustomRange, PresetKey } from './filters.ts';
-import { cacheHitRate } from './display.ts';
+import { cacheHitRate, visibleModelKeys } from './display.ts';
 import type { ModuleTab } from './display.ts';
 import { formatCredit, formatInteger, formatPercent, formatTokens } from './format.ts';
 import { useQuery } from './useQuery.ts';
@@ -76,9 +76,33 @@ export function App() {
     deps,
   );
 
+  const modelRowsData = modelRows.data?.rows ?? [];
+
+  /** R7：按当前 tab 的主指标隐藏 0 值模型，只作用于展示，不改变聚合结果。 */
+  const visibleModels = useMemo(
+    () => visibleModelKeys(modelRowsData, activeTab),
+    [modelRowsData, activeTab],
+  );
+
+  const visibleModelRows = modelRowsData.filter((row) => visibleModels.has(row.key));
+
+  const visibleTimeseries = useMemo(() => {
+    if (!timeseries.data) {
+      return null;
+    }
+    return {
+      days: timeseries.data.days,
+      rows: timeseries.data.rows.filter((row) => visibleModels.has(row.model)),
+    };
+  }, [timeseries.data, visibleModels]);
+
   const optionGroups = groupOptions.data?.rows ?? [];
   const optionSessions = sessionOptions.data?.rows ?? [];
-  const optionModels = modelOptions.data?.rows ?? [];
+
+  // 已选模型即使在本 tab 被隐藏，也保留下拉项，避免筛选值与下拉状态矛盾
+  const optionModels = (modelOptions.data?.rows ?? []).filter(
+    (row) => visibleModels.has(row.key) || row.key === filters.model,
+  );
 
   const patchFilters = (patch: Partial<Filters>) => {
     setFilters((previous) => ({ ...previous, ...patch }));
@@ -235,7 +259,7 @@ export function App() {
             <TrendChart
               title="按天 Token 趋势"
               metric="tokens"
-              data={timeseries.data}
+              data={visibleTimeseries}
               loading={timeseries.loading}
               error={timeseries.error}
             />
@@ -262,7 +286,7 @@ export function App() {
             <BreakdownList
               title="按模型"
               metric="tokens"
-              rows={modelRows.data?.rows ?? []}
+              rows={visibleModelRows}
               loading={modelRows.loading}
               error={modelRows.error}
               emptyText="当前筛选下没有模型数据"
@@ -304,7 +328,7 @@ export function App() {
             <TrendChart
               title="按天积分趋势"
               metric="credit"
-              data={timeseries.data}
+              data={visibleTimeseries}
               loading={timeseries.loading}
               error={timeseries.error}
             />
@@ -331,7 +355,7 @@ export function App() {
             <BreakdownList
               title="按模型"
               metric="credit"
-              rows={modelRows.data?.rows ?? []}
+              rows={visibleModelRows}
               loading={modelRows.loading}
               error={modelRows.error}
               emptyText="当前筛选下没有模型数据"
