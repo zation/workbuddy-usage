@@ -1,4 +1,6 @@
+import type { CSSProperties } from 'react';
 import type { BreakdownRow } from '../../shared/types.ts';
+import { visibleBreakdownRows } from '../display.ts';
 import { formatCredit, formatInteger, formatPercent } from '../format.ts';
 
 interface BreakdownListProps {
@@ -10,6 +12,8 @@ interface BreakdownListProps {
   emptyText: string;
   onSelect?: (key: string) => void;
 }
+
+const MAX_VISIBLE_ROWS = 8;
 
 export function BreakdownList({
   title,
@@ -23,6 +27,7 @@ export function BreakdownList({
   const sorted = [...rows].sort((left, right) =>
     metric === 'tokens' ? right.totalTokens - left.totalTokens : right.credit - left.credit,
   );
+  const visible = visibleBreakdownRows(sorted, MAX_VISIBLE_ROWS);
 
   return (
     <div className="panel breakdown">
@@ -44,8 +49,11 @@ export function BreakdownList({
       {!loading && !error && rows.length === 0 ? <p className="panel-empty">{emptyText}</p> : null}
 
       {rows.length > 0 ? (
-        <ul className="breakdown-list">
-          {sorted.map((row) => {
+        <ul
+          className="breakdown-list"
+          style={{ '--rows': visible.length } as CSSProperties}
+        >
+          {visible.map((row) => {
             const value = metric === 'tokens' ? row.totalTokens : row.credit;
             const share = metric === 'tokens' ? row.tokenShare : row.creditShare;
             return (

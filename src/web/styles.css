@@ -17,6 +17,7 @@
   --credit-soft: #fff7ed;
   --danger: #b42318;
   --radius: 14px;
+  --breakdown-row-height: 52px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
@@ -584,16 +585,17 @@ th[aria-sort='ascending'] .sort-button {
   margin: 0;
   padding: 0;
   list-style: none;
-  max-height: 360px;
-  overflow: auto;
+  height: calc(var(--rows, 0) * var(--breakdown-row-height));
 }
 
 .breakdown-row {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 6px;
   width: 100%;
-  padding: 8px 6px;
+  height: var(--breakdown-row-height);
+  padding: 0 6px;
   border: 0;
   border-radius: 8px;
   background: transparent;
