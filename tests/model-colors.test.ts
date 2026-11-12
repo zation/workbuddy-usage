@@ -118,6 +118,17 @@ describe('系列归属与兜底', () => {
   });
 });
 
+describe('文档一致性', () => {
+  it('docs/model-colors.md 的显式色表与代码逐项一致', () => {
+    const doc = readFileSync(new URL('../docs/model-colors.md', import.meta.url), 'utf8');
+    const rows = [
+      ...doc.matchAll(/^\|\s*`([^`]+)`\s*\|[^|]*\|\s*`(#[0-9a-f]{6})`\s*\|/gm),
+    ].map((match) => [match[1], match[2].toLowerCase()] as const);
+    expect(rows).toHaveLength(Object.keys(MODEL_COLOR_TABLE).length);
+    expect(Object.fromEntries(rows)).toEqual(MODEL_COLOR_TABLE);
+  });
+});
+
 describe('色值来源', () => {
   it('组件与面板不在本地内联显式色值', () => {
     const componentDir = new URL('../src/web/components/', import.meta.url);
