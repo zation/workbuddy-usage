@@ -1,12 +1,25 @@
 import { useMemo, useState } from 'react';
-import type { BreakdownResponse, BreakdownRow, Filters } from '../shared/types.ts';
-import { filterParams } from './api.ts';
+import type {
+  BreakdownResponse,
+  BreakdownRow,
+  Filters,
+  RequestsResponse,
+  SummaryResponse,
+  TimeseriesResponse,
+} from '../shared/types.ts';
+import { filterParams, postRefresh } from './api.ts';
 import { BreakdownList } from './components/BreakdownList.tsx';
 import { FilterBar } from './components/FilterBar.tsx';
 import type { ActiveChip } from './components/FilterBar.tsx';
+import { MetricCards } from './components/MetricCards.tsx';
+import type { MetricItem } from './components/MetricCards.tsx';
 import { ModuleSection } from './components/ModuleSection.tsx';
+import { RequestTable } from './components/RequestTable.tsx';
+import type { SortState } from './components/RequestTable.tsx';
+import { TrendChart } from './components/TrendChart.tsx';
 import { rangeForPreset, todayKey } from './filters.ts';
 import type { CustomRange, PresetKey } from './filters.ts';
+import { formatCredit, formatInteger, formatPercent } from './format.ts';
 import { useQuery } from './useQuery.ts';
 
 type DrillDimension = 'group' | 'session' | 'model';
@@ -24,20 +37,42 @@ export function App() {
   );
   const [rangeError, setRangeError] = useState<string | null>(null);
   const [detailSession, setDetailSession] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshInfo, setRefreshInfo] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [tokenSort, setTokenSort] = useState<SortState>({ field: 'totalTokens', order: 'desc' });
+  const [creditSort, setCreditSort] = useState<SortState>({ field: 'credit', order: 'desc' });
 
   const query = filterParams(filters);
-  const groupRows = useQuery<BreakdownResponse>(`/api/breakdown?dim=group&${query}`);
-  const sessionRows = useQuery<BreakdownResponse>(`/api/breakdown?dim=session&${query}`);
-  const modelRows = useQuery<BreakdownResponse>(`/api/breakdown?dim=model&${query}`);
+  const deps = [version];
+
+  const summary = useQuery<SummaryResponse>(`/api/summary?${query}`, deps);
+  const timeseries = useQuery<TimeseriesResponse>(`/api/timeseries?${query}`, deps);
+  const groupRows = useQuery<BreakdownResponse>(`/api/breakdown?dim=group&${query}`, deps);
+  const sessionRows = useQuery<BreakdownResponse>(`/api/breakdown?dim=session&${query}`, deps);
+  const modelRows = useQuery<BreakdownResponse>(`/api/breakdown?dim=model&${query}`, deps);
+
+  const tokenRequests = useQuery<RequestsResponse>(
+    `/api/requests?${filterParams(filters, { sort: tokenSort.field, order: tokenSort.order })}`,
+    deps,
+  );
+  const creditRequests = useQuery<RequestsResponse>(
+    `/api/requests?${filterParams(filters, { sort: creditSort.field, order: creditSort.order })}`,
+    deps,
+  );
 
   const groupOptions = useQuery<BreakdownResponse>(
     `/api/breakdown?dim=group&${filterParams({ ...filters, group: undefined })}`,
+    deps,
   );
   const sessionOptions = useQuery<BreakdownResponse>(
     `/api/breakdown?dim=session&${filterParams({ ...filters, session: undefined })}`,
+    deps,
   );
   const modelOptions = useQuery<BreakdownResponse>(
     `/api/breakdown?dim=model&${filterParams({ ...filters, model: undefined })}`,
+    deps,
   );
 
   const optionGroups = groupOptions.data?.rows ?? [];
@@ -93,6 +128,25 @@ export function App() {
     setFilters(rangeForPreset('today', today, { from: today, to: today }));
   };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      const result = await postRefresh();
+      const seconds = (result.durationMs / 1000).toFixed(1);
+      const skipped = result.skipped ? '（已有刷新在进行中）' : '';
+      setRefreshInfo(
+        `扫描 ${result.scannedFiles} 个文件 · 更新 ${result.upsertedRequests} 条请求 · ` +
+          `补挂 ${result.creditAttached} 条积分 · 耗时 ${seconds} 秒${skipped}`,
+      );
+      setVersion((previous) => previous + 1);
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const drill = (dimension: DrillDimension, key: string, moduleId: string) => {
     setFilters((previous) => ({ ...previous, [dimension]: key }));
     if (dimension === 'session') {
@@ -106,6 +160,49 @@ export function App() {
     ? labelOf(sessionRows.data?.rows ?? optionSessions, detailSession)
     : null;
 
+  const tokenMetrics = summary.data?.token;
+  const creditMetrics = summary.data?.credit;
+
+  const tokenItems: MetricItem[] = [
+    {
+      label: '合计 Token',
+      value: tokenMetrics ? formatInteger(tokenMetrics.totalTokens) : '—',
+      emphasis: true,
+    },
+    { label: '输入', value: tokenMetrics ? formatInteger(tokenMetrics.inputTokens) : '—' },
+    { label: '输出', value: tokenMetrics ? formatInteger(tokenMetrics.outputTokens) : '—' },
+    {
+      label: '缓存命中',
+      value: tokenMetrics ? formatInteger(tokenMetrics.cacheReadTokens) : '—',
+    },
+    { label: '请求数', value: tokenMetrics ? formatInteger(tokenMetrics.requestCount) : '—' },
+    { label: '会话数', value: tokenMetrics ? formatInteger(tokenMetrics.sessionCount) : '—' },
+  ];
+
+  const creditItems: MetricItem[] = [
+    {
+      label: '积分合计',
+      value: creditMetrics ? formatCredit(creditMetrics.credit) : '—',
+      emphasis: true,
+    },
+    {
+      label: '覆盖率',
+      value: creditMetrics ? formatPercent(creditMetrics.coverage) : '—',
+      hint: creditMetrics
+        ? `${formatInteger(creditMetrics.creditedRequestCount)} / ${formatInteger(creditMetrics.requestCount)} 请求`
+        : undefined,
+    },
+    {
+      label: '请求数',
+      value: creditMetrics ? formatInteger(creditMetrics.requestCount) : '—',
+    },
+    {
+      label: '无积分记录',
+      value: creditMetrics ? formatInteger(creditMetrics.uncreditedRequestCount) : '—',
+      hint: '含全部子代理请求',
+    },
+  ];
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -113,8 +210,24 @@ export function App() {
           <h1>WorkBuddy 用量统计</h1>
           <p>本机只读数据 · 按请求归并核算 · Token 与积分分模块呈现</p>
         </div>
-        <span className="source-badge">本地数据</span>
+        <div className="header-actions">
+          <span className="source-badge">本地数据</span>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? '刷新中…' : '刷新数据'}
+          </button>
+        </div>
       </header>
+
+      {refreshInfo || refreshError ? (
+        <div className={`refresh-strip${refreshError ? ' is-error' : ''}`}>
+          {refreshError ?? refreshInfo}
+        </div>
+      ) : null}
 
       <FilterBar
         preset={preset}
@@ -138,7 +251,11 @@ export function App() {
             <span className="detail-eyebrow">会话明细</span>
             <strong>{detailName}</strong>
           </div>
-          <button type="button" className="ghost-button" onClick={() => patchFilters({ session: undefined })}>
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={() => patchFilters({ session: undefined })}
+          >
             退出会话明细
           </button>
         </div>
@@ -150,7 +267,19 @@ export function App() {
         title="Token 用量"
         description="按请求取累计值最大的一条，输入 / 输出 / 缓存命中与合计同源。"
       >
-        <div className="panel-grid">
+        <div className="module-block">
+          <MetricCards items={tokenItems} />
+        </div>
+        <div className="module-block">
+          <TrendChart
+            title="按天 Token 趋势"
+            metric="tokens"
+            data={timeseries.data}
+            loading={timeseries.loading}
+            error={timeseries.error}
+          />
+        </div>
+        <div className="panel-grid module-block">
           <BreakdownList
             title="按分组"
             metric="tokens"
@@ -179,15 +308,43 @@ export function App() {
             onSelect={(key) => drill('model', key, 'token-module')}
           />
         </div>
+        <div className="module-block">
+          <RequestTable
+            title="Token 请求明细"
+            rows={tokenRequests.data?.rows ?? []}
+            loading={tokenRequests.loading}
+            error={tokenRequests.error}
+            sort={tokenSort}
+            onSort={(field, order) => setTokenSort({ field, order })}
+            emptyText="当前筛选下没有请求"
+          />
+        </div>
       </ModuleSection>
 
       <ModuleSection
         id="credit-module"
         accent="credit"
         title="积分消耗"
-        description="请求级积分与覆盖率；无本地记账按 0 计，子代理请求不在本地记账。"
+        description="请求级积分与覆盖率；无本地记账按 0 计，不补齐、不追溯。"
       >
-        <div className="panel-grid">
+        <p className="module-note">
+          覆盖率 {creditMetrics ? formatPercent(creditMetrics.coverage) : '—'} · 有积分记录{' '}
+          {creditMetrics ? formatInteger(creditMetrics.creditedRequestCount) : '—'} /{' '}
+          {creditMetrics ? formatInteger(creditMetrics.requestCount) : '—'} 请求 · 子代理请求无本地积分记录
+        </p>
+        <div className="module-block">
+          <MetricCards items={creditItems} />
+        </div>
+        <div className="module-block">
+          <TrendChart
+            title="按天积分趋势"
+            metric="credit"
+            data={timeseries.data}
+            loading={timeseries.loading}
+            error={timeseries.error}
+          />
+        </div>
+        <div className="panel-grid module-block">
           <BreakdownList
             title="按分组"
             metric="credit"
@@ -214,6 +371,17 @@ export function App() {
             error={modelRows.error}
             emptyText="当前筛选下没有模型数据"
             onSelect={(key) => drill('model', key, 'credit-module')}
+          />
+        </div>
+        <div className="module-block">
+          <RequestTable
+            title="积分请求明细"
+            rows={creditRequests.data?.rows ?? []}
+            loading={creditRequests.loading}
+            error={creditRequests.error}
+            sort={creditSort}
+            onSort={(field, order) => setCreditSort({ field, order })}
+            emptyText="当前筛选下没有请求"
           />
         </div>
       </ModuleSection>

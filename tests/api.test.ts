@@ -126,6 +126,19 @@ describe('服务层聚合', () => {
       ['2026-11-13', 'model-c', 500],
     ]);
     expect(body.rows[0]?.modelName).toBe('Model-A');
+
+    const all = (await (await app.request('/api/timeseries')).json()) as TimeseriesResponse;
+    expect(all.days).toEqual(['2026-11-11', '2026-11-12', '2026-11-13']);
+
+    const partial = (await (
+      await app.request('/api/timeseries?from=2026-11-10')
+    ).json()) as TimeseriesResponse;
+    expect(partial.days).toEqual([
+      '2026-11-10',
+      '2026-11-11',
+      '2026-11-12',
+      '2026-11-13',
+    ]);
   });
 
   it('四个筛选条件按业务键生效', async () => {

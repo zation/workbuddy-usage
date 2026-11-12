@@ -76,6 +76,53 @@ button {
   font-size: 13px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.primary-button {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid #1d4ed8;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    background 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.primary-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.refresh-strip {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+  background: #f2f6ff;
+  color: #334155;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.refresh-strip.is-error {
+  border-color: #fecdca;
+  background: #fef3f2;
+  color: var(--danger);
+}
+
 .source-badge {
   display: inline-flex;
   align-items: center;
@@ -330,6 +377,196 @@ button {
   font-size: 12px;
 }
 
+.module-note {
+  display: block;
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: var(--credit-soft);
+  color: #7c2d12;
+  font-size: 12px;
+}
+
+.module-block {
+  margin-bottom: 16px;
+}
+
+.module-block:last-child {
+  margin-bottom: 0;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.metric-card-emphasis {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.metric-label {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.metric-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 19px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.trend-panel {
+  background: var(--surface);
+  padding: 14px 16px 8px;
+}
+
+.chart {
+  width: 100%;
+  min-width: 0;
+}
+
+.chart-skeleton {
+  height: 300px;
+  margin: 12px 0;
+}
+
+.table-panel {
+  background: var(--surface);
+  padding: 14px 16px 12px;
+}
+
+.table-wrap {
+  max-height: 440px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  transition: opacity 0.15s ease;
+}
+
+.table-wrap.is-loading {
+  opacity: 0.6;
+}
+
+.table-wrap table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+
+.table-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table-wrap tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f0f2f4;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.table-wrap tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table-wrap tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.table-wrap .numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-wrap .nowrap {
+  white-space: nowrap;
+}
+
+.table-wrap .truncate {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+th[aria-sort='descending'] .sort-button,
+th[aria-sort='ascending'] .sort-button {
+  color: var(--accent);
+}
+
+.sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+}
+
+.sort-button:hover {
+  color: var(--accent);
+}
+
+.sort-indicator {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.session-name {
+  display: inline-block;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.badge-subagent {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 10px;
+  vertical-align: bottom;
+}
+
+.cell-muted {
+  color: #a3aab6;
+}
+
 .panel-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -491,6 +728,15 @@ button {
 @media (max-width: 720px) {
   .app-shell {
     padding: 20px 14px 48px;
+  }
+
+  .app-header {
+    flex-direction: column;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .panel-grid {

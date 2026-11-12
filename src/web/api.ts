@@ -1,4 +1,4 @@
-import type { Filters } from '../shared/types.ts';
+import type { Filters, RefreshResult } from '../shared/types.ts';
 
 export function filterParams(
   filters: Filters,
@@ -21,10 +21,11 @@ export function filterParams(
   return params.toString();
 }
 
-export async function fetchJson<T>(path: string): Promise<T> {
-  const response = await fetch(path);
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const action = init?.method === 'POST' ? '刷新失败' : '请求失败';
+  const response = await fetch(path, init);
   if (!response.ok) {
-    let message = `请求失败（${response.status}）`;
+    let message = `${action}（${response.status}）`;
     try {
       const body = (await response.json()) as { error?: string };
       if (body.error) {
@@ -36,4 +37,12 @@ export async function fetchJson<T>(path: string): Promise<T> {
     throw new Error(message);
   }
   return (await response.json()) as T;
+}
+
+export function fetchJson<T>(path: string): Promise<T> {
+  return requestJson<T>(path);
+}
+
+export function postRefresh(): Promise<RefreshResult> {
+  return requestJson<RefreshResult>('/api/refresh', { method: 'POST' });
 }

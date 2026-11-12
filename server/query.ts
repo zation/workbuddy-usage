@@ -170,10 +170,13 @@ export function getTimeseries(db: DatabaseSync, filters: Filters): TimeseriesRes
   }));
 
   let days: string[];
-  if (filters.from && filters.to) {
-    days = filters.from <= filters.to ? enumerateDays(filters.from, filters.to) : [];
+  if (mapped.length === 0) {
+    days = [];
   } else {
-    days = [...new Set(mapped.map((row) => row.date))].sort();
+    const dates = mapped.map((row) => row.date).sort();
+    const start = filters.from ?? dates[0] ?? '';
+    const end = filters.to ?? dates[dates.length - 1] ?? '';
+    days = start && end && start <= end ? enumerateDays(start, end) : [];
   }
 
   return { days, rows: mapped };
