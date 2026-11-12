@@ -14,15 +14,23 @@ const TOKEN_UNITS = [
   { threshold: 1_000, suffix: 'K' },
 ] as const;
 
-/** token 数值统一用 K / M / B 缩写，保留 1 位小数；小于 10³ 显示整数。 */
+/**
+ * token 数值统一用 K / M / B 缩写，保留 1 位小数；小于 10³ 显示整数。
+ * 四舍五入后达到 1000.0 的进位到上一单位，避免出现 `1000.0K` 这类不直观的写法。
+ */
 export function formatTokens(value: number): string {
   const magnitude = Math.abs(value);
-  for (const { threshold, suffix } of TOKEN_UNITS) {
-    if (magnitude >= threshold) {
-      return `${(value / threshold).toFixed(1)}${suffix}`;
-    }
+  let index = TOKEN_UNITS.findIndex((unit) => magnitude >= unit.threshold);
+  if (index === -1) {
+    return formatInteger(value);
   }
-  return formatInteger(value);
+
+  let scaled = Number((value / TOKEN_UNITS[index].threshold).toFixed(1));
+  while (Math.abs(scaled) >= 1000 && index > 0) {
+    index -= 1;
+    scaled = Number((value / TOKEN_UNITS[index].threshold).toFixed(1));
+  }
+  return `${scaled.toFixed(1)}${TOKEN_UNITS[index].suffix}`;
 }
 
 /** 上次刷新完成时间，本地时区 HH:mm。 */

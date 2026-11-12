@@ -136,7 +136,7 @@
 
 验证：`npm run typecheck`、`npm test`、`npm run build` 通过；全部时间下 Token tab 模型下拉 10 项（缺 `hy4-preview-f`）、积分 tab 8 项（缺 `step-5-preview` / `hy3` / `glm-5.2`），两侧项数与 0 值模型数之和均为 11；选中 `hy3` 后切到积分 tab，下拉仍显示 `Hy3`；被隐藏后对应视图显示空态而非报错；页面无任何隐藏提示文案。
 
-已知缺口（复核补充）：可见集合取自含模型筛选的 `modelRows`，却用于过滤去掉模型筛选的 `modelOptions`，实测选中某个模型后下拉只剩该模型与「全部模型」，无法直接切换；本次验收只覆盖了「已选模型仍显示」，未覆盖「选中后仍可切换」，记入 `docs/backlog/panel-display-fixes.md`。
+已知缺口（复核补充）：可见集合取自含模型筛选的 `modelRows`，却用于过滤去掉模型筛选的 `modelOptions`，实测选中某个模型后下拉只剩该模型与「全部模型」，无法直接切换；本次验收只覆盖了「已选模型仍显示」，未覆盖「选中后仍可切换」。由复核后追加的 T014 修复。
 
 提交：2919b93、35da5ff
 
@@ -182,7 +182,7 @@
 - **AC4 通过**：两张表默认折叠且状态独立；折叠时无 `/api/requests` 请求；展开后按 `startedAt desc` 请求并可点表头切换排序；表格保留 440px 内部滚动。
 - **AC5 通过**：token 数值（卡片 / 拆分 / 明细 / tooltip / y 轴）均为 K/M/B，页面文本无「万」「亿」；积分与计数格式不变，积分轴无 `k`；无任何数值型 `title`，不存在精确值 hover。
 - **AC6 通过**：页面「缓存命中」卡 `5.0M 97.4%`，与 `cacheReadTokens / inputTokens = 5 035 584 / 5 167 808` 手算一致；无请求时显示 `0 —`；积分模块无该后缀、无按天趋势。
-- **AC7 通过（有缺口）**：Token tab 隐藏 `totalTokens = 0` 的 `hy4-preview-f`，积分 tab 隐藏 `credit = 0` 的 `step-5-preview` / `hy3` / `glm-5.2`，而 `hy4-preview-f` 因有积分在积分 tab 保留；下拉与拆分项同步过滤；无任何提示文案。缺口：选中某个模型后下拉只剩该模型，无法直接切换，属可见集合口径问题，记入 T009 与 `docs/backlog/panel-display-fixes.md`。
+- **AC7 通过（有缺口）**：Token tab 隐藏 `totalTokens = 0` 的 `hy4-preview-f`，积分 tab 隐藏 `credit = 0` 的 `step-5-preview` / `hy3` / `glm-5.2`，而 `hy4-preview-f` 因有积分在积分 tab 保留；下拉与拆分项同步过滤；无任何提示文案。缺口：选中某个模型后下拉只剩该模型，无法直接切换，属可见集合口径问题，由 T014 修复。
 - **AC8 通过**：`hy4` 与 `hy4-free` 仍为两个业务键，展示名为 `Hy4` 与 `Hy4 (hy4-free)`；连续两次删库全量重建结果逐字节一致；增量刷新不回退由单测覆盖。
 - **AC9 通过**：首屏显示 `上次刷新 18:30` 与服务端一致；触发刷新后服务端时间戳前进、页面更新为 `上次刷新 18:31`；无刷新记录显示「尚未刷新」（代码路径 + 接口单测覆盖）。
 - **AC10 通过**：全部时间无筛选下，分组 / 模型 / 对话三个维度的 token 与积分之和均等于总览（token 174 089 537、积分 5 783.62）；被隐藏的 0 值模型贡献为 0，展示截断不改变合计。
@@ -190,7 +190,7 @@
 
 全量检查：`npm run typecheck` 通过；`npm test` 11 个文件 86 项通过；`npm run build` 通过（服务端 `tsc` + 前端 `vite build`）。项目无 lint 脚本，未执行 lint（原因见 `devops.md`）。
 
-收尾检查（AGENTS.md 第 5 节）：Spec 验收标准已逐条满足；Tasks 状态与实施记录已更新，T001–T010 提交字段已回填；测试与类型检查通过；三份长期文档已按实现更新且与代码无矛盾；`docs/backlog/` 已新增 `panel-display-fixes.md` 记录本交付遗留的展示与验收细节问题，`subagent-credit-reconciliation.md` 与本交付无关、保持原状。
+收尾检查（AGENTS.md 第 5 节）：Spec 验收标准已逐条满足；Tasks 状态与实施记录已更新，T001–T010 提交字段已回填；测试与类型检查通过；三份长期文档已按实现更新且与代码无矛盾；复核发现的代码与验收细节问题改为追加 T012–T018 在本流程内修复，不新增其它文档；`subagent-credit-reconciliation.md` 与本交付无关、保持原状。
 
 ## 复核后修订（2026-11-12）
 
@@ -203,4 +203,62 @@
 - Tasks 修改范围补记漏项：T005 补 `ModuleSection.tsx` / `vite.config.ts`，T007 / T008 / T010 补 `styles.css`；T005 的两个提交按时间顺序改为 `e73fa1c`、`f1caa3a`。
 - T005 原称「tab 与面板 id 由同一组函数生成」只对了一半：面板 id 仍由 `App` 传入字面量，已按实情改写。
 - 长期文档：`technical-architecture.md` 的分层原则与 AD-4 补「缓存命中率是唯一的前端求值项」；`product-brief.md` 核心问题删去与「非目标」冲突的「命中率是否随使用改善」；`devops.md` 修正 dev / 生产入口并补代理前缀约束与无 lint 的事实；`data-model.md` 补「新增字典序更小的同组标识会让原首项改名」的已知行为。
-- 本交付遗留的代码与验收细节问题（模型下拉塌缩、非激活 tab 的 `aria-controls` 悬空、面板 id 未与 `modulePanelId` 打通、配色随 tab 漂移、`visibleModelKeys` 用 `> 0` 与 R7 的 `=== 0` 表述差异、两处测试名实不符、`formatTokens(999_999)` 输出 `1000.0K`、验收脚本未入库）未在本次修改，统一记入 `docs/backlog/panel-display-fixes.md`。
+- 复核发现的代码与验收细节问题（模型下拉塌缩、非激活 tab 的 `aria-controls` 悬空、面板 id 未与 `modulePanelId` 打通、配色随 tab 漂移、`visibleModelKeys` 用 `> 0` 与 R7 的 `=== 0` 表述差异、两处测试名实不符、`formatTokens(999_999)` 输出 `1000.0K`、验收脚本未入库）不新增文档，改为在本流程追加 T012–T018 逐项修复。
+
+# T012 K/M/B 进位边界
+
+状态：pending
+
+目标与完成条件：`formatTokens` 在四舍五入后达到 `1000.0` 时进位到上一单位（`999_999` → `1.0M`），未达进位阈值时保持原单位（`999_000` → `999.0K`），小于 10³ 仍显示整数；`tests/display.test.ts` 更新临界值断言并补进位用例；Spec R5 同步该规则。对应复核意见「`formatTokens(999_999)` 输出 `1000.0K` 与数值易读目标相悖」。
+
+修改范围：`src/web/format.ts`、`tests/display.test.ts`、`docs/delivery/usage-panel-polish-spec.md`。
+
+# T013 0 值判定的正负语义
+
+状态：pending
+
+目标与完成条件：`visibleModelKeys` 由 `metric > 0` 改为 `metric !== 0`，与 Spec R7「过滤 `=== 0` 的模型」一致，负值视为可见；`tests/display.test.ts` 补 0 隐藏、正值可见、负值可见三类断言。对应复核意见「判定口径微差、负值无单测覆盖」。
+
+修改范围：`src/web/display.ts`、`tests/display.test.ts`。
+
+# T014 模型下拉可见集合口径
+
+状态：pending
+
+目标与完成条件：0 值判定改用「当前时间 / 分组 / 对话筛选、不含模型筛选」的模型结果（`modelOptions`），同一集合统一作用于趋势图、按模型拆分与模型下拉；选中任意模型后下拉仍保留全部可切换项，切换后过滤结果仍随当前 tab 主指标变化；Spec R7 与 AC7 补判定集合与可切换要求。对应复核意见「0 值隐藏的下拉口径混用，选中模型后下拉塌缩」。
+
+必要依赖：T013。
+
+修改范围：`src/web/App.tsx`、`docs/delivery/usage-panel-polish-spec.md`。
+
+# T015 tab 与面板 ARIA 关联
+
+状态：pending
+
+目标与完成条件：两个 `tabpanel` 容器常驻页面，未激活时用 `hidden` 隐藏，`aria-controls` 始终指向存在的 id；面板 id 由 `modulePanelId` 生成，`aria-labelledby` 由 `moduleTabId` 生成，不再由调用方手写字面量；未激活 tab 仍不挂载模块内容，ECharts 不在零尺寸容器中初始化；`ModuleSection` 去掉 `id` / `role` / `aria-labelledby`。对应复核意见「`aria-controls` 引用悬空、面板 id 未与 `modulePanelId` 打通」。
+
+修改范围：`src/web/App.tsx`、`src/web/components/ModuleSection.tsx`。
+
+# T016 趋势图配色稳定
+
+状态：pending
+
+目标与完成条件：配色索引按「当前筛选下（不含模型筛选）按展示名排序的模型序列」确定，与当前 tab 的可见集合无关；同一模型在 Token / 积分 tab 颜色一致；新增纯函数覆盖排序与去重，`tests/display.test.ts` 补用例；`TrendChart` 通过可选配色索引接收映射，缺省回退原行为。对应复核意见「模型配色随 tab 漂移」。
+
+修改范围：`src/web/display.ts`、`src/web/App.tsx`、`src/web/components/TrendChart.tsx`、`tests/display.test.ts`。
+
+# T017 测试命名与断言强度
+
+状态：pending
+
+目标与完成条件：`tests/acceptance.test.ts` 的 `AC11 界面结构` 改为如实描述（该用例只断言首屏所需的服务层聚合数据，界面结构由本 Spec 的验收记录覆盖）；`tests/api.test.ts`「与筛选无关」用例改为比对带筛选与不带筛选的 `lastRefreshAt` 相等，而不只断言类型。对应复核意见「测试名实不符」。
+
+修改范围：`tests/acceptance.test.ts`、`tests/api.test.ts`。
+
+# T018 验收脚本入库
+
+状态：pending
+
+目标与完成条件：把 CDP 驱动的交互验收整理为 `scripts/panel-acceptance.mjs`，覆盖 AC1–AC7 的关键 DOM 断言（tab 与 ARIA、筛选两入口、拆分列表行数与滚动、明细折叠与懒加载、数值单位、命中率、0 值隐藏与下拉可切换），逐项打印 PASS/FAIL 并以退出码反映结果；`devops.md` 记录启动调试 Chrome 与运行脚本的步骤；脚本不引入依赖、不改产品代码。对应复核意见「验收证据不可复现」。
+
+修改范围：`scripts/panel-acceptance.mjs`、`docs/devops.md`、`package.json`。

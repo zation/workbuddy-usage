@@ -39,11 +39,18 @@ describe('formatTokens', () => {
   it('按 10³ / 10⁶ / 10⁹ 切换单位并保留 1 位小数', () => {
     expect(formatTokens(1_000)).toBe('1.0K');
     expect(formatTokens(1_500)).toBe('1.5K');
-    expect(formatTokens(999_999)).toBe('1000.0K');
+    expect(formatTokens(999_000)).toBe('999.0K');
     expect(formatTokens(1_000_000)).toBe('1.0M');
     expect(formatTokens(1_250_000)).toBe('1.3M');
     expect(formatTokens(1_000_000_000)).toBe('1.0B');
     expect(formatTokens(2_500_000_000)).toBe('2.5B');
+  });
+
+  it('四舍五入后达到 1000.0 时进位到上一单位', () => {
+    expect(formatTokens(999_999)).toBe('1.0M');
+    expect(formatTokens(999_990)).toBe('1.0M');
+    expect(formatTokens(999_999_999)).toBe('1.0B');
+    expect(formatTokens(-999_999)).toBe('-1.0M');
   });
 
   it('其它格式函数行为不变', () => {
