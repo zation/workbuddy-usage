@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { ParseWarnings, RefreshResult } from '../shared/types.ts';
 import { emptyWarnings } from '../shared/types.ts';
 import type { EtlConfig } from './config.ts';
+import { attachCredits } from './credit.ts';
 import { DimensionWriter, computeModelDisplayNames } from './dimensions.ts';
 import { readExternalSnapshot } from './external.ts';
 import { parseSourceFile } from './parse.ts';
@@ -200,6 +201,8 @@ async function doRefresh(db: DatabaseSync, config: EtlConfig): Promise<RefreshRe
     }
   }
 
+  const creditAttached = attachCredits(db, external.credits);
+
   const finishedAt = Date.now();
   db.prepare('UPDATE meta SET last_refresh_at = ? WHERE id = 1').run(finishedAt);
   const meta = db.prepare('SELECT last_refresh_at FROM meta WHERE id = 1').get() as
@@ -211,7 +214,7 @@ async function doRefresh(db: DatabaseSync, config: EtlConfig): Promise<RefreshRe
     scannedFiles: scan.files.length,
     changedFiles: writtenFiles,
     upsertedRequests,
-    creditAttached: 0,
+    creditAttached,
     failedFiles,
     durationMs: finishedAt - startedAt,
     lastRefreshAt: typeof meta?.last_refresh_at === 'number' ? meta.last_refresh_at : null,

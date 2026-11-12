@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { EtlConfig } from '../src/etl/config.ts';
 import { closeIndex, openIndex } from '../src/etl/index-db.ts';
@@ -24,6 +24,12 @@ function writeProject(home: string, relativePath: string, lines: string[]): void
   const absolute = join(home, 'projects', relativePath);
   mkdirSync(dirname(absolute), { recursive: true });
   writeFileSync(absolute, `${lines.join('\n')}\n`);
+}
+
+function setCreditJson(home: string, sessionId: string, json: string | null): void {
+  const db = new DatabaseSync(join(home, 'workbuddy.db'));
+  db.prepare('UPDATE session_usage SET credit_json = ? WHERE session_id = ?').run(json, sessionId);
+  db.close();
 }
 
 function setup(): Fixture {
@@ -126,7 +132,7 @@ describe('刷新编排与文件原子替换', () => {
       scannedFiles: 3,
       changedFiles: 3,
       upsertedRequests: 4,
-      creditAttached: 0,
+      creditAttached: 2,
       failedFiles: 0,
     });
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
@@ -149,8 +155,8 @@ describe('刷新编排与文件原子替换', () => {
       session_key: 's1',
       model: 'model-a',
       display_name: 'Model-A',
-      credit: 0,
-      has_credit: 0,
+      credit: 1.5,
+      has_credit: 1,
     });
 
     const r3 = requests.find((row) => row.request_id === 'r3');
@@ -282,6 +288,49 @@ describe('刷新编排与文件原子替换', () => {
     expect(result.warnings.invalidJsonLines).toBe(1);
     expect(result.failedFiles).toBe(0);
     expect(joinedRequests(fixture.db).map((row) => row.request_id)).toEqual(['ok']);
+  });
+
+  it('积分晚到补挂、值修正，映射消失不主动清零（AC9 / C6）', async () => {
+    const fixture = setup();
+    writeStandardFixture(fixture.home);
+    await fixture.refresh();
+
+    const baseline = joinedRequests(fixture.db);
+    expect(baseline.find((row) => row.request_id === 'r2')).toMatchObject({
+      credit: 0,
+      has_credit: 1,
+    });
+    expect(baseline.find((row) => row.request_id === 'r3')).toMatchObject({
+      credit: 0,
+      has_credit: 0,
+    });
+
+    setCreditJson(fixture.home, 's1', '{"r1":2.25,"r2":0,"r3":3}');
+    const late = await fixture.refresh();
+    expect(late).toMatchObject({ changedFiles: 0, creditAttached: 2 });
+
+    const afterLate = joinedRequests(fixture.db);
+    expect(afterLate.find((row) => row.request_id === 'r1')).toMatchObject({
+      credit: 2.25,
+      has_credit: 1,
+    });
+    expect(afterLate.find((row) => row.request_id === 'r2')).toMatchObject({
+      credit: 0,
+      has_credit: 1,
+    });
+    expect(afterLate.find((row) => row.request_id === 'r3')).toMatchObject({
+      credit: 3,
+      has_credit: 1,
+    });
+    expect(afterLate.find((row) => row.request_id === 'r4')).toMatchObject({
+      credit: 0,
+      has_credit: 0,
+    });
+
+    setCreditJson(fixture.home, 's1', null);
+    const cleared = await fixture.refresh();
+    expect(cleared.creditAttached).toBe(0);
+    expect(joinedRequests(fixture.db)).toEqual(afterLate);
   });
 
   it.skipIf(process.platform === 'win32')(
