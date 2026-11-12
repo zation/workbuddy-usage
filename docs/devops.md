@@ -44,6 +44,22 @@ dev 的 Vite proxy 只转发 `^/api/` 前缀。不要改回 `/api`：前端模�
 
 端口被占用时改 `PORT` 环境变量重启即可；不需要结束占用进程。
 
+## 交互验收
+
+交互类验收用 `scripts/panel-acceptance.mjs`：脚本通过 CDP 驱动本机 Chrome，核对 tab 与 ARIA 关联、筛选两入口一致、拆分列表行数与滚动、明细折叠与懒加载、token 单位、缓存命中率、0 值隐藏与模型下拉可切换，逐项打印 PASS/FAIL，失败时退出码为 1。
+
+1. 用 Node 24 启动面板：`npm run dev`
+2. 另开一个带调试端口的 Chrome（示例为 macOS 路径，其它系统换成自己的 Chrome 可执行文件）：
+
+   ```bash
+   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --no-sandbox \
+     --remote-debugging-port=9222 --user-data-dir=/tmp/wb-acceptance about:blank
+   ```
+
+3. 运行 `npm run acceptance`
+
+可用 `BASE_URL`（默认 `http://127.0.0.1:5173/`）与 `CDP_PORT`（默认 `9222`）指向其它实例，设置 `SCREENSHOT_DIR` 会额外保存一张面板截图。脚本只读页面与 `/api`，不改动数据；依赖 Node 内置 WebSocket，不引入新依赖。
+
 ## 回滚
 
 - **数据口径异常**：删除 `.data/index.db` 后重启，索引会从原始数据全量重建。索引是纯派生物，删除无数据风险。

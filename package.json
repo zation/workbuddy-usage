@@ -16,7 +16,8 @@
     "build:web": "vite build",
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "acceptance": "node scripts/panel-acceptance.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.7",
