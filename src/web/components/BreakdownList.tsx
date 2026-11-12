@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import type { BreakdownRow } from '../../shared/types.ts';
 import { visibleBreakdownRows } from '../display.ts';
 import { formatCredit, formatPercent, formatTokens } from '../format.ts';
+import { ModelDot } from './ModelDot.tsx';
 
 interface BreakdownListProps {
   title: string;
@@ -11,6 +12,7 @@ interface BreakdownListProps {
   error: string | null;
   emptyText: string;
   onSelect?: (key: string) => void;
+  showModelDot?: boolean;
 }
 
 const MAX_VISIBLE_ROWS = 8;
@@ -23,6 +25,7 @@ export function BreakdownList({
   error,
   emptyText,
   onSelect,
+  showModelDot,
 }: BreakdownListProps) {
   const sorted = [...rows].sort((left, right) =>
     metric === 'tokens' ? right.totalTokens - left.totalTokens : right.credit - left.credit,
@@ -66,7 +69,9 @@ export function BreakdownList({
                   title={row.key}
                 >
                   <span className="breakdown-line">
-                    <span className="breakdown-name">{row.name}</span>
+                    <span className="breakdown-name">
+                      {showModelDot ? <ModelDot modelKey={row.key} /> : null}{row.name}
+                    </span>
                     <span className="breakdown-value">
                       {metric === 'tokens' ? formatTokens(value) : formatCredit(value)}
                     </span>

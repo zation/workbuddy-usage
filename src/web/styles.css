@@ -686,6 +686,16 @@ th[aria-sort='ascending'] .sort-button {
   color: var(--text-secondary);
 }
 
+.model-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
 .breakdown-value {
   flex-shrink: 0;
   font-size: 13px;

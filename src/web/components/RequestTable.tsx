@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import type { RequestRow, RequestSortField, SortOrder } from '../../shared/types.ts';
 import { formatCredit, formatDateTime, formatTokens } from '../format.ts';
+import { ModelDot } from './ModelDot.tsx';
 
 export interface SortState {
   field: RequestSortField;
@@ -142,7 +143,7 @@ export function RequestTable({
                         {row.isSubagent ? <span className="badge-subagent">子代理</span> : null}
                       </td>
                       <td className="truncate" title={row.model}>
-                        {row.modelName}
+                        <ModelDot modelKey={row.model} />{row.modelName}
                       </td>
                       {NUMERIC_COLUMNS.map((column) => (
                         <td key={column.field} className="numeric">

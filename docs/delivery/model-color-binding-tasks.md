@@ -30,13 +30,19 @@
 
 # T003 色点组件与列表、明细着色
 
-状态：pending
+状态：done
 
 目标与完成条件：新增 `src/web/components/ModelDot.tsx` 与 `.model-dot` 样式，组件内部只调 `modelColor`；`BreakdownList` 增加可选 `showModelDot`，仅「按模型」两处传 `true`；`RequestTable` 模型列在文本前插入色点。保持 52px 行高、8 行截断、`.truncate` 的 190px 与省略号行为，色点不改变布局、不承载数值、不影响点击与筛选。对应 Spec R5、AC4 与 Plan「色点复用」。
 
 必要依赖：T002。
 
 修改范围：`src/web/components/ModelDot.tsx`、`BreakdownList.tsx`、`RequestTable.tsx`、`src/web/styles.css`、`src/web/App.tsx`。
+
+实施结果：新增 `ModelDot`，内部只调 `modelColor` 并以 `backgroundColor` 输出，保证色点与图表取同一个色值字符串；`BreakdownList` 增加可选 `showModelDot`，仅「按模型」两处启用，色点置于 `.breakdown-name` 内以保留省略号与 52px 行高；`RequestTable` 模型列在文本前插入色点，`.truncate` 的 190px 与截断行为不变；新增 `.model-dot` 样式（8px 圆点、`flex-shrink: 0`、`vertical-align: middle`）。
+
+验证：`npm run typecheck` 通过；`npm test` 11 个文件 94 项通过、1 项既存 skip；`npm run build` 通过。
+
+提交：
 
 # T004 自定义模型下拉
 

@@ -317,6 +317,7 @@ export function App() {
                 loading={modelRows.loading}
                 error={modelRows.error}
                 emptyText="当前筛选下没有模型数据"
+                showModelDot
                 onSelect={(key) => patchFilters({ model: key })}
               />
             </div>
@@ -392,6 +393,7 @@ export function App() {
                 loading={modelRows.loading}
                 error={modelRows.error}
                 emptyText="当前筛选下没有模型数据"
+                showModelDot
                 onSelect={(key) => patchFilters({ model: key })}
               />
             </div>
