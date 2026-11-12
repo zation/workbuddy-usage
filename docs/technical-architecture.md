@@ -6,7 +6,7 @@
 
 - **输入**：`~/.workbuddy/projects/**/*.jsonl`（会话事件流）与 `~/.workbuddy/workbuddy.db`（会话元信息与积分）。全部只读。字段与表结构见 [integration.md](./integration.md)。
 - **输出**：本地浏览器面板；仓库内的派生索引 `.data/index.db`（可删除重建，不入库）。
-- **不跨越的边界**：不向网络发送任何数据，不写 `~/.workbuddy` 下任何文件，不修改 WorkBuddy 配置。不读取云端官方用量接口，也不追溯补齐本地已不可读的数据。
+- **不跨越的边界**：不向网络发送任何数据，不写 `~/.workbuddy` 下任何文件，不修改 WorkBuddy 配置。不追溯补齐本地已不可读的数据。**明确不接入云端官方计量接口**：2026-11-13 评估过 `POST /billing/meter/get-user-request-usage`，它只有请求级 `credit`、没有 `sessionId` / `groupId`（31 天内 58% 无法归属），四维统计不成立，接入成本与收益不匹配；对账改用仓库外的一次性脚本，证据见 [integration.md](./integration.md) 的「与官方账单的对比」。
 
 ## 模块划分
 
@@ -24,7 +24,7 @@
 
 | 依赖 | 用途 | 说明 |
 | --- | --- | --- |
-| Node.js ≥ 24 | 运行时 | `node:sqlite` 零依赖、免 native 编译；本机 24.21.0 实测可用且无实验性警告，选择理由见技术约束 |
+| Node.js ≥ 24 | 运行时 | `node:sqlite` 零依赖、免 native 编译；本机 24.19.0（`E:\Software\nodejs`）实测可用且无实验性警告，选择理由见技术约束 |
 | TypeScript + `@types/node` | 全仓类型 | 解析结果类型即 API 契约，贯穿到面板 props；`node:sqlite` 类型由 `@types/node` 提供 |
 | Vite + React | 面板 | 开发期热更新 |
 | ECharts | 图表 | 按天趋势与按模型着色的堆叠 |
@@ -66,11 +66,11 @@
 
 ## 技术约束
 
-- **Node 版本**：PATH 首位是 WorkBuddy 托管的 22.22.2，本机另有 nvm 安装的 24.21.0。实测两者都能直接加载 `node:sqlite` 且 `readOnly` 生效，**均不需要** `--experimental-sqlite`（该 flag 自 22.13.0 / 23.4.0 起已取消）；差别是 22 会打印 `ExperimentalWarning`，24 不会。项目仍以 `engines` 声明 `>=24` 并在入口校验版本，理由是 24 为 LTS、无实验性警告、类型定义更完整，不依赖调用方 shell 的 PATH 顺序。
+- **Node 版本**：PATH 首位是 WorkBuddy 托管的 22.22.2，本机另有 24.19.0（`E:\Software\nodejs`）。实测两者都能直接加载 `node:sqlite` 且 `readOnly` 生效，**均不需要** `--experimental-sqlite`（该 flag 自 22.13.0 / 23.4.0 起已取消）；差别是 22 会打印 `ExperimentalWarning`，24 不会。项目仍以 `engines` 声明 `>=24` 并在入口校验版本，理由是 24 为 LTS、无实验性警告、类型定义更完整，不依赖调用方 shell 的 PATH 顺序。
 - **`node:sqlite` 稳定性**：该模块至今标记为实验性／发布候选（Stability 1.x），且自 25.7.0 起 `DatabaseSync` 已成为 `Database` 的弃用别名。`>=24` 不等于对未来主版本兼容；升级 Node 主版本前需回归解析与查询。
 - **外部库只读**：`workbuddy.db` 为 WAL 模式，以 `readOnly: true` 打开，避免与运行中的 WorkBuddy 争锁。WAL 只读连接依赖同目录的 `-wal` / `-shm`，WorkBuddy 运行时二者存在；实测写入被拒，且 `workbuddy.db`、`-wal`、`-shm` 三个文件的大小与 mtime 在只读查询前后均未变化。
-- **数据可得性**：只统计本地此刻能读到的数据。WorkBuddy 清理会话后其 `session_usage` 行会整行消失、部分 jsonl 也不再存在，由此产生的积分缺失不追溯、不补齐；子代理请求在本地没有任何积分记账，按 `credit = 0` / `has_credit = 0` 计入并通过覆盖率体现。`sessions.deleted_at` 不参与过滤。
-- **数据量**：jsonl 265 个、约 444MB，带 usage 的记录约 3.1 万条，归并后为 903 个请求；维度规模实测为 11 个模型、58 个有请求的分组、203 个有请求的会话，LEFT JOIN 成本可忽略（快照见 [integration.md](./integration.md)）。`projects` 目录还含大量无关的 `.ndjson` 与 `.txt`，扫描按扩展名过滤。实测全量解析约 2.4 秒，因此增量更新仍是硬要求，不是优化项。
+- **数据可得性**：只统计本地此刻能读到的数据。WorkBuddy 清理会话后其 `session_usage` 行会整行消失、部分 jsonl 也不再存在，由此产生的积分缺失不追溯、不补齐。子代理请求在本地没有独立积分键：团队子代理的积分并入父请求，普通子代理与 `custom_agent` 不记账（后者属真实缺口）；`has_credit` 只能表示本地账本有无键，无法区分免费模型、子代理与真缺失。`sessions.deleted_at` 不参与过滤。
+- **数据量**：2026-11-13 实测 jsonl 140 个、约 187MB，归并后 434 个请求；维度规模为 11 个模型、66 个有请求的分组、105 个有请求的会话，LEFT JOIN 成本可忽略（数值随 WorkBuddy 清理而下降，快照见 [integration.md](./integration.md)）。`projects` 目录还含大量无关的 `.ndjson` 与 `.txt`，扫描按扩展名过滤。全量解析在秒级，因此增量更新仍是硬要求，不是优化项。
 - **路径处理**：Windows 盘符与分隔符差异统一交给 `node:path`，不手拼字符串。
 - **日志格式不稳定**：WorkBuddy 升级可能改字段，解析层需集中字段映射并保留兼容分支。内部字段由本项目命名，外部键名由 WorkBuddy 决定，只能适配。
 

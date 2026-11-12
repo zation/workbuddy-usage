@@ -89,7 +89,7 @@
 
 | 键 | 来源 | 用途 | 可靠性 |
 | --- | --- | --- | --- |
-| `conversationRequestId` | jsonl `providerData` / `credit_json` 的键 | 请求识别、token 与积分对接 | 已验证：两侧完全一致，无孤键、无重复键 |
+| `conversationRequestId` | jsonl `providerData` / `credit_json` 的键 | 请求识别、token 与积分对接 | 已验证：两侧同一命名空间、无重复键；会话清理后会留下少量孤键，挂接时忽略 |
 | `sessionId` | jsonl 字段 / 文件名 / `sessions.id` | 会话归属；本项目 `sessions` 维表的 `session_key` 就是这个值 | 主会话一致；子代理为子会话 ID，需取父目录名 |
 | `cwd` | `sessions.cwd` | 分组维度 | 唯一可靠来源；部分空会话该字段为空串 |
 
@@ -178,7 +178,9 @@ SQLite，由 WorkBuddy 管理。库内还有 `automations`、`automation_runs`�
 | `updated_at` | INTEGER NOT NULL | 更新时间（毫秒） |
 | `credit_json` | TEXT | JSON 对象 `{conversationRequestId: 积分}`，可为 NULL 或 `{}` |
 
-积分覆盖率不足 100%：部分请求没有积分记录，子代理请求全部没有；具体数量见文末实测快照。因此统计必须区分"积分值为 0"与"没有积分记录"两种情况。
+`credit_json` 的值是**该请求所有消息步的积分之和**（客户端按 `usage_update.cost` 累加，见「积分数据形态」），不是取最大值、也不是末条。子代理请求不会单独成键：普通子代理本来不计费，团队子代理的积分并入父请求，详见下一节。
+
+积分覆盖率不足 100%：部分请求没有积分记录；具体数量见文末实测快照。因此统计必须区分"积分值为 0"与"没有积分记录"两种情况。
 
 ### `workspaces`（2 列）
 
@@ -187,12 +189,109 @@ SQLite，由 WorkBuddy 管理。库内还有 `automations`、`automation_runs`�
 | `path` | TEXT PK | 工作区路径 |
 | `last_opened_at` | INTEGER NOT NULL | 最后打开时间（毫秒） |
 
+## 积分数据形态（实测）
+
+积分在本地有三套记录，粒度不同，不能互相替代。
+
+### 逐条积分（jsonl）
+
+`providerData.rawUsage.credit` 是模型响应携带的积分值，**按消息步增量计**（同一请求内各步数值独立，求和才是请求总额）；`message.usage` 只有四个 token 字段，不含 `credit`。少数旧记录的 `providerData.usage.credit` 语义相同，可作为别名兜底。
+
+同一对象里还有 `original_credit`：实测 534 条、**全部 `credit = 0`**，合计 1552.26，是免费模型（`hy4-free` / `hy3` 等）按原价折算的名义值，不是实付积分——统计只能用 `credit`，不能用它。
+
+### 独立积分事件（`credit-usage`）
+
+`type=credit-usage` 是唯一的“单独一条积分记录”，普通请求没有。实测 166 条、`source` 全部是 `team_member`，字段固定为：
+
+```
+id, parentId, timestamp, type, cwd, _meta,
+providerData: { conversationRequestId, credit, source, stageId, messageId }
+```
+
+它由客户端在团队子代理回传积分时写入父会话，同时以父 `conversationRequestId` 上报 cost，最终并入父请求的 `credit_json`。
+
+### 请求级积分（`credit_json`）
+
+客户端不把响应里的 `credit` 直接落库，而是通过 ACP `usage_update` 的 `cost.amount` 上报，桌面端按 `_meta["codebuddy.ai/requestId"]` **累加**后写入 `credit_json`（`app.asar` 的 `wireBackend`：`credit[requestId] = (credit[requestId] ?? 0) + cost.amount`）。由此可得：
+
+- 一条请求的 `credit_json` 值 = 该请求全部消息步之和，再加上并入的 `team_member` / `generation_tool` 等来源的 cost。
+- 累加是浮点相加，值可能带尾差（如 `202.38999999999996`）。
+- 刷新时整份重读，口径与 jsonl 的 token 最大值取值无关。
+
+### 子代理积分
+
+- 普通子代理（Task 等）的 `rawUsage.credit` 实测为 `0`：现存 240 条子代理记录中 97 条为 0（Task 类），143 条为正且全部来自同一次团队运行。Task 子代理两边都不计费，本地看不到独立金额。
+- 团队成员的子代理积分大于 0，客户端经 `_fromSubAgent` 输入项转成 `credit-usage`（`source=team_member`）历史事件写入**父会话 jsonl**，同时以父请求 ID 上报 cost。实测一次团队请求：143 条 `credit-usage` 合计 108.84，父请求 `credit_json` 为 202.39 = 主会话 16 步 93.55 + 108.84。
+- 所以子代理积分在本地是**存在**的，只是记在父请求名下；子代理自己的 `conversationRequestId` 实测未成为 `credit_json` 的键。
+
+### 对账实测（2026-11-12）
+
+- 423 个请求在 jsonl 里带 `credit` 字段，其中 243 个合计为正；`credit_json` 当前 238 个键。
+- 逐请求对比（jsonl 按 `messageId` 去重后求和 vs `credit_json`）：215 个完全一致（±0.01）、23 个本地偏高、**0 个本地偏低**。两个最大的偏高值正好等于并入父请求的子代理积分（108.84、25.36），其余为 0.1–1 量级。
+- 按会话汇总（主文件 + 子代理文件合计）对比：68 个可比会话中 55 个一致，13 个本地偏高（最大 25.36），无偏低。
+- 结论：本地 jsonl 与 `credit_json` 之间**不存在系统性偏低**；差异方向是本地略高（约 1–2%），不是缺失。但这是本地两套数据之间的对账，看不到服务端计费——与官方接口对照后结论有补充，见下节。
+
+### 不进入本地 `requests` 的辅助调用
+
+官方账单里还有几类独立 `requestId`，但本地 jsonl 不产生请求行：
+
+| `agentPurpose` | 31 天实测 | 本地是否有请求行 |
+| --- | --- | --- |
+| `webfetch`（网页内容分析） | 22 条 / 10.79 | **0 条**，完全不落 |
+| `conversation_topic`（生成会话标题） | 146 条 / 0.12 | 0 条 |
+| `context_summary_*` / `prompt_suggestion` | 3 条 / 3.10 | 0 条 |
+| `conversation:compact` | 20 条 / 155.76 | 12 条（桌面端触发，积分与接口完全一致）；8 条为云端或已清理 |
+
+因此本地积分总额天然低于官方账单，不能按“缺失”处理；这些调用也不进入覆盖率分母。
+
+### 官方计量接口（未接入）
+
+第三方项目 `workbuddy-switch` 使用 `POST https://www.workbuddy.cn/billing/meter/get-user-request-usage`，body 为 `{startTime, endTime, pageNum: 1, pageSize: 3000}`，响应 `data.data[]` 每条含 `requestId` / `credit` / `model` / `client` / `requestTime`，另有 `agentPurpose`、`appType`、`subscribeType`，以及 `input` / `inputTrunc`（prompt 原文，含本机路径，**不得落库**）。
+
+- WorkBuddy 客户端本身**不调用**该接口：`app.asar` 内只有 `get-user-resource-summary`（余额）与 `get-enterprise-user-usage`，没有逐请求明细接口；客户端拿到的逐条明细只有流式响应里的 `rawUsage.credit`。
+- 与本地的差异：粒度（每请求一行 vs 本地按消息步累加）、归属（是否单列子代理请求）、覆盖（31 天窗口 vs 仅现存 `session_usage` 行）、取值（服务端账单 vs 客户端累加）。
+- **不含 token**：单条记录只有 `requestId` / `credit` / `model` / `client` / `requestTime` / `input` / `inputTrunc` / `agentPurpose` / `appType` / `subscribeType`，没有任何 token 字段；网页用量页也只展示 credit。token 只存在于模型响应的 `usage`（本地 jsonl）与 CodeBuddy IDE 的 `CodeBuddyExtension/Data/**/history/**/index.json` 的 `requests[].usage` 中。
+- **鉴权**：网页端用 `session` cookie（约 7 天，值内含过期时间戳）；插件 / CLI 用 `Authorization: Bearer`，OAuth 设备码流程为 `POST /v2/plugin/auth/state` → 浏览器登录 → 轮询 `GET /v2/plugin/auth/token?state=`，刷新走 `POST /v2/plugin/auth/token/refresh`（`X-Refresh-Token` + `X-Auth-Refresh-Source: plugin`）。实测 access token 28 天、refresh token 30 天。
+- **本地登录态**：`%LOCALAPPDATA%\CodeBuddyExtension\Data\Public\auth\workbuddy-desktop.info`，`auth.accessToken` / `refreshToken` 是 `{$wbEncrypted, envelope}` 加密信封，`expiresAt` / `refreshExpiresAt` 明文可读；第三方无法解密，参考项目也只在账号切换时原样透传。
+- 接入需要鉴权与联网，属于系统边界变更；2026-11-13 评估后决定不接入，原因见系统边界。
+
+### 与官方账单的对比（2026-11-12）
+
+用网页 `session` cookie 实调 31 天窗口（`pageSize=3000`，一次取回 749 行）：
+
+| 区间 | 接口 | 本地 | 本地 / 接口 | 接口独有 |
+| --- | --- | --- | --- | --- |
+| 10-14 – 11-04 | 439 行 / 1904.69 | 199 行 / 830.72 | 43.6% | 338 行 / 1188.00 |
+| 11-05 – 11-12 | 310 行 / 1246.70 | 212 行 / 1199.16 | 96.2% | 98 行 / 46.86 |
+| 合计 | 749 行 / 3151.39 | 411 行 / 2029.88 | 64.4% | 436 行 / 1234.86 |
+
+- 近 8 天接口 = `WorkBuddy` 1207.46 + `app_cloud` 39.24；本地缺的 46.86 里 `app_cloud` 占 39.24，其余是 webfetch / compact / 标题等辅助请求。**本地有、接口无：0 行**，接口是超集。
+- 更早半个月本地只剩 43.6%：本地留存的同期请求几乎都是免费模型，付费请求无 `sessions` 行也无 jsonl，属“从来没落过地”；`transport='cloud'` 的 16 个会话本地 0 条请求。
+- 删除会话确实会同时清掉 jsonl 与 `session_usage`，但 `deleted_at > 0` 只有 24 个（20 个当天创建当天删除），被删会话在本地仅残留 3 条请求，量级不足以解释缺口。
+- 未发现统一的按天保留期（9 月底的文件仍在），所以不像“到点自动清理”。
+
+### 官方接口抽样对照（2026-11-12）
+
+`POST /billing/meter/get-user-request-usage` 返回的 `requestId` 与本地 `conversationRequestId` **同一命名空间**：抽样 15 个 ULID 请求，13 个与本地 `credit` 分毫不差，2 个差 −0.65 / +0.31；1 个进行中的请求本地偏高（接口快照早于请求结束）。
+
+但接口会把 **`custom_agent` 这类独立子代理**按独立 `requestId` 单列并计费，而本地该请求的 `credit` 为 0：
+
+| requestId | 本地 | 接口 | 说明 |
+| --- | --- | --- | --- |
+| `e012efdd…`（agentPurpose `custom_agent:sheet-agent`） | 0 | 4.15 | 本地存在该请求、`is_subagent=1`，但无积分 |
+| `0dec73fe…`（同类） | 无记录 | 2.73 | 接口有、本地索引未收录 |
+| `01a1caf9…` | 15.49 | 15.49 | 主请求，逐条 jsonl 只加到 3.36，说明本地累加值才是账单值 |
+
+结论修正：**主请求本地与账单一致**；Task 子代理（`hy4-free`）两边都是 0，不构成缺口；`custom_agent` 这类独立子代理接口有计费、本地 0，是真实缺口（31 天实测 4 条 / 10.20 分）。团队子代理的积分则并入父请求，见上。
+
+补充（同日 23:18 用页面导出核对）：导出 300 行里，「请求」列以「子Agent…」开头的 5 条均为 `hy4-free`、积分 0，与本地一致；以「文件路径：」开头的 2 条 custom_agent 请求分别 2.73 / 4.15，本地均为 0——即**计费缺口集中在 custom_agent 这类独立子代理**。8 天窗口本地合计 1142.60、导出 WorkBuddy 通道 1146.31，净差 −3.71（−0.32%），缺口被本地少量高估抵消，总额量级可用。
+
 ## 数据可得性（已实测）
 
 - `sessions.deleted_at` 非空是软删除标记，`sessions` 行仍在；但 WorkBuddy 清理会话时会移除对应的 `session_usage` 行，部分会话的 jsonl 也已不存在。实测已删除会话中只有少数仍有 jsonl，**全部没有 `session_usage` 行**：这类会话通常只剩 jsonl 中的 token，拿不到积分。
-- 子代理请求的 token 可读，但 `credit_json` 中没有任何对应键，父会话也没有未匹配的孤键，即本地不存在子代理积分的记账。
+- 子代理请求的 token 可读；`credit_json` 中没有任何以子代理 `conversationRequestId` 为键的记录。Task 子代理的响应积分为 0，团队子代理的积分并入父请求，因此**本地并非没有子代理积分，而是没有独立的键**（见「积分数据形态」）。
 - `conversationRequestId` 只对齐 jsonl 的 token 与 `credit_json` 的积分；分组、对话名、删除态由 `sessionId` → `sessions` 提供，不是同一个键。
-- 所有 credit 键都能对应到现存请求，无孤键、无跨会话重复；带 `usage` 的记录当前无时间戳缺失。
+- 实测存在少量孤键（`session_usage` 仍有键、对应 jsonl 已删；当前 11 个），挂接时忽略；无跨会话重复键；带 `usage` 的记录当前无时间戳缺失。
 - `sessions.deleted_at` 在本项目不参与过滤，也不提供排除开关：只要 jsonl 仍在，已删除会话的 token 就计入。
 - 因此本项目只统计本地此刻能读到的数据，对已不可读的记录不追溯、不补齐。
 
@@ -226,7 +325,7 @@ SQLite，由 WorkBuddy 管理。库内还有 `automations`、`automation_runs`�
 - 请求：903 个去重请求（主会话 860、子代理 43）；多步骤请求 842 个（约 93%）；累计值回退 47 个，其中 3 个的时间末条小于最大值。
 - 跨文件重复：31 个 `request_id` 同时存在于两个会话文件，数值完全相同；按 R11 只计一次。
 - token：按请求取最大值合计 169,950,303（主会话 165,776,607、子代理 4,176,182）；逐条累加 6,757,760,362，约 39.8 倍。
-- 积分：477 条记录，合计 5,581.40；426 个请求无积分记录（含全部 43 个子代理请求）；无孤键、无重复键、无非数字值。
+- 积分：477 条记录，合计 5,581.40；426 个请求无积分记录（含全部 43 个子代理请求——子代理没有独立键，团队子代理积分并入父请求）；无重复键、无非数字值，当时无孤键。
 - 会话：251 条（39 条已删除、11 条 `cwd` 为空、11 条 `model` 为空）；`session_usage` 207 行；已删除会话均无 `session_usage` 行。
 - 维度规模：11 个模型标识、58 个有请求的分组（分组维表 80 行）、203 个有请求的会话；`deepseek-v4.1-flash` 等标识对应 2–3 种不同的 `requestModelName` 写法。
 - 恒等校验：`total = input + output` 与 `cache_read ≤ input` 均零例外；当前记录的 `timestamp` 与 `providerData.model` 无缺失。

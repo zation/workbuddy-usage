@@ -4,7 +4,7 @@
 
 ## 环境准备
 
-- **Node.js ≥ 24**（项目约定）。本机通过 nvm 安装 v24.21.0，位于 `~/.nvm/versions/node/v24.21.0/bin`。
+- **Node.js ≥ 24**（项目约定）。本机为 v24.19.0，位于 `E:\Software\nodejs`。
   注意：PATH 首位是 WorkBuddy 托管的 v22.22.2（`~/.workbuddy/binaries/node/versions/`）。实测 22.22.2 也能直接加载 `node:sqlite`（22.13.0 起已取消 `--experimental-sqlite`），但会打印 `ExperimentalWarning`；项目仍要求 24，理由见 [technical-architecture.md](./technical-architecture.md)。若终端里 `node -v` 显示 22，用绝对路径调用，或把系统 Node 目录调到 PATH 前面。
 - 首次拉取后安装依赖：`npm install`。
 - 日常检查：`npm run typecheck`（独立类型检查）、`npm test`（Vitest）、`npm run build`（服务端 tsc + 前端 Vite）。项目未配置 lint（无 ESLint / Prettier 依赖），因此没有 lint 检查项。

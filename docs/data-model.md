@@ -49,7 +49,7 @@
 | `cache_read_tokens` | INTEGER NOT NULL DEFAULT 0 | 缓存命中读取 token（输入的子集） |
 | `total_tokens` | INTEGER NOT NULL DEFAULT 0 | 合计 token |
 | `credit` | REAL NOT NULL DEFAULT 0 | 积分；无记录为 0，非 NULL |
-| `has_credit` | INTEGER NOT NULL DEFAULT 0 | 是否存在积分记录；有记录为 1（含积分值为 0），无记录为 0。用于覆盖率计数，不能用 `credit > 0` 代替 |
+| `has_credit` | INTEGER NOT NULL DEFAULT 0 | 是否存在积分记录；有记录为 1（含积分值为 0），无记录为 0。用于覆盖率计数，不能用 `credit > 0` 代替。它只表示本地账本有无键，无法区分免费模型、子代理与真缺失 |
 | `step_count` | INTEGER NOT NULL DEFAULT 1 | 该请求归并了多少条步骤记录，审计用 |
 
 `started_at` / `ended_at` 独立取自全部步骤的时间边界，与四项 token 的取值来源（C2）无关。
