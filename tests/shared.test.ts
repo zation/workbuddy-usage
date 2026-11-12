@@ -37,6 +37,7 @@ describe('共享契约', () => {
       changedFiles: 1,
       upsertedRequests: 3,
       creditAttached: 2,
+      failedFiles: 0,
       durationMs: 12,
       lastRefreshAt: 1,
       warnings: emptyWarnings(),

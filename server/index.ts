@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { resolveEtlConfig } from '../src/etl/config.ts';
 import { openIndex } from '../src/etl/index-db.ts';
+import { createRefresher } from '../src/etl/refresh.ts';
 
 const REQUIRED_NODE_MAJOR = 24;
 const nodeMajor = Number.parseInt(process.versions.node.split('.')[0] ?? '0', 10);
@@ -19,6 +20,16 @@ const config = resolveEtlConfig();
 const index = openIndex(config.indexPath);
 
 console.log(`派生索引就绪：${config.indexPath}${index.rebuilt ? '（已重建）' : ''}`);
+
+try {
+  const result = await createRefresher(index.db, config).refresh();
+  console.log(
+    `首次刷新完成：扫描 ${result.scannedFiles} 个文件，变更 ${result.changedFiles} 个，` +
+      `写入 ${result.upsertedRequests} 条请求，耗时 ${result.durationMs}ms`,
+  );
+} catch (error) {
+  console.error('首次刷新失败，索引保持原状，可在面板中手动重试。', error);
+}
 
 app.get('/api/health', (c) => c.json({ ok: true }));
 

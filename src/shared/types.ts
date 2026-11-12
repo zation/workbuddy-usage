@@ -86,6 +86,7 @@ export interface RefreshResult {
   changedFiles: number;
   upsertedRequests: number;
   creditAttached: number;
+  failedFiles: number;
   durationMs: number;
   lastRefreshAt: number | null;
   warnings: ParseWarnings;
