@@ -4,7 +4,7 @@
 
 ## 设计原则
 
-- **内部代理主键**：所有表用自增整数 `id` 做主键；外部标识（`conversationRequestId` / `cwd` / `sessionId` / `model` 标识 / 文件路径）只作为带 UNIQUE 约束的**业务键**列。外部值由 WorkBuddy 决定，可能变化、为空或重复（如自定义模型与原生模型使用同一标识），不应成为派生库的主键。
+- **内部代理主键**：所有表用自增整数 `id` 做主键；外部标识（`conversationRequestId` / `cwd` / `sessionId` / `model` 标识 / 文件路径）只作为带 UNIQUE 约束的**业务键**列。外部值由 WorkBuddy 决定，可能变化或为空，不应成为派生库的主键；当前原始日志没有可区分模型来源的字段，同名自定义模型暂与原生模型合并（见 `models` 表说明）。
 - **事实表 + 维表**：`requests` 只放度量、外键、时间与审计字段；描述属性（展示名、标题）放维表。
 - **内部 id 不出 API**：删库重建后 `id` 会重新分配，所以 API 的筛选参数与返回值一律用业务键字符串，服务层在库内转换为 `id`；内部 `id` 不能进 URL、缓存或面板状态。
 - **业务键换 id**：解析层用 `INSERT ... ON CONFLICT DO NOTHING` + `SELECT id` 把业务键换成内部外键，保证同一业务键只有一行，且维表行稳定。
@@ -19,7 +19,7 @@
 | **Request** | 一次请求 | `id` | `request_id` = `conversationRequestId` | `requests`（事实表） |
 | **Group** | 工作目录 | `id` | `group_path` = `sessions.cwd` | `groups`（维表） |
 | **Session** | 一次连续对话 | `id` | `session_key` = WorkBuddy 会话 ID | `sessions`（维表） |
-| **Model** | 模型标识 | `id` | `model` + `source` | `models`（维表） |
+| **Model** | 模型标识 | `id` | `model` | `models`（维表） |
 | **SourceFile** | 一个 jsonl 文件 | `id` | `path` | `source_files`（维表 + 扫描状态） |
 | **Step** | 请求内一次模型调用 | — | — | 否，解析期归并后丢弃 |
 | **Credit** | 一个请求一条 | — | — | 否，内联为 `requests.credit` / `has_credit` |
@@ -84,14 +84,13 @@
 | 列 | 类型 | 说明 |
 | --- | --- | --- |
 | `id` | INTEGER PRIMARY KEY | 内部代理主键 |
-| `model` | TEXT NOT NULL | `providerData.model` 标识；`未知模型` 也作为一行 |
-| `source` | TEXT NOT NULL DEFAULT `workbuddy` | 来源区分位，与 `model` 组成联合唯一键 |
+| `model` | TEXT NOT NULL UNIQUE | `providerData.model` 标识；`未知模型` 也作为一行 |
 | `model_name` | TEXT | 规范化后的展示名 |
 | `display_name` | TEXT NOT NULL | `model_name` 缺失时回退 `model` |
 
-`UNIQUE (model, source)`。**换成 `id` 做主键本身不能区分"自定义模型与原生模型标识相同"**——解析时仍要靠标识找维表行，同名会落到同一行。因此保留 `source` 作为区分位：当前日志没有可靠的自定义模型来源字段，统一填 `workbuddy`；将来 `providerData` 出现可区分字段（如 `requestModelId` 前缀、模型类型）时，解析层填不同的 `source` 即可，无需改表结构。
-
 **展示名必须规范化**：实测同一个 `model` 标识会对应多个不同的 `requestModelName`（如 `deepseek-v4.1-flash` 同时出现 `DeepSeek-V4.1-Flash`、`Deepseek-V4.1-Flash` 和全小写标识本身）。写入规则：先筛出含大写且不等于 `model` 标识的候选，取其中出现次数最多、并列时字典序最小的一个；没有候选则回退 `model` 标识。结果只取决于候选集合，与文件遍历顺序无关，重复解析稳定。
+
+**已知限制**：原始日志没有可区分自定义模型来源的字段，若自定义模型与原生模型使用同一 `model` 标识，会被合并为一行，不单独统计。当前不为此预留额外列；待 WorkBuddy 提供来源字段后再扩展维表，届时递增 `schema_version` 删库重建即可。
 
 ### `source_files`（扫描状态表 / 来源维表）
 
@@ -131,7 +130,7 @@ models   1 ──┘
 
 内部外键（整数）：`requests.group_id` → `groups.id`、`session_id` → `sessions.id`、`model_id` → `models.id`、`source_file_id` → `source_files.id`。**不建外键约束**，查询用 LEFT JOIN。
 
-业务键唯一约束：`requests.request_id`、`groups.group_path`、`sessions.session_key`、`models(model, source)`、`source_files.path`。API 只用业务键，不用内部 `id`。
+业务键唯一约束：`requests.request_id`、`groups.group_path`、`sessions.session_key`、`models.model`、`source_files.path`。API 只用业务键，不用内部 `id`。
 
 - 一个请求恰好属于一个会话；子代理请求归属其父会话，因此对话维度的会话数不会因父子拆分而虚增。
 - 一个请求至多一条积分；无记录时为 0，不用 NULL 表达"缺失"，以免聚合时与"0 积分"混淆——是否缺失由 `has_credit` 单独标记，覆盖率按该列计数。
@@ -160,7 +159,7 @@ models   1 ──┘
 1. **扫描**：递归查找 `projects/**/*.jsonl`，按路径判定 `main` / `subagent`，与 `source_files` 比对解析前 stat 的 `size_bytes` + `mtime_ms`（C9），得出待解析集合。
 2. **外部元信息同步**：重读 `sessions` 表，按 `session_key` / `group_path` upsert `sessions` / `groups` 维表（C11、C14）；映射外不触碰、不删除。
 3. **解析**：逐行读取，跳过不完整行与时间戳非法的行；按 `conversationRequestId` 归并步骤，套用 C2 选出最大值那条，得到请求级记录。
-4. **关联**：把业务键（`session_key` / `cwd` / `model` + `source` / `path`）upsert 进维表换取内部 `id`（C14）；模型展示名按 C12 规范化；写入 `requests` 的四个外键。
+4. **关联**：把业务键（`session_key` / `cwd` / `model` / `path`）upsert 进维表换取内部 `id`（C14）；模型展示名按 C12 规范化；写入 `requests` 的四个外键。
 5. **写入**：对每个待解析文件按 C10 在事务内原子替换其请求行，再更新 `source_files` 的扫描状态。
 6. **积分挂接**：与文件增量无关，每次刷新无条件重读 `session_usage`，按 C6 只更新当前映射中存在的请求。
 7. **查询**：服务层把 API 的业务键筛选参数转换成内部 `id`，对 `requests` 做 LEFT JOIN 取业务键与展示名；按维度聚合与时序聚合用 SQL 现算，维度筛选值从 JOIN 结果的业务键 `DISTINCT` 取。
