@@ -18,8 +18,9 @@ import type { SortState } from './components/RequestTable.tsx';
 import { TrendChart } from './components/TrendChart.tsx';
 import { applyPresetRange, rangeForPreset, todayKey } from './filters.ts';
 import type { CustomRange, PresetKey } from './filters.ts';
+import { cacheHitRate } from './display.ts';
 import type { ModuleTab } from './display.ts';
-import { formatCredit, formatInteger, formatPercent } from './format.ts';
+import { formatCredit, formatInteger, formatPercent, formatTokens } from './format.ts';
 import { useQuery } from './useQuery.ts';
 
 export function App() {
@@ -133,17 +134,22 @@ export function App() {
   const tokenMetrics = summary.data?.token;
   const creditMetrics = summary.data?.credit;
 
+  const hitRate = tokenMetrics
+    ? cacheHitRate(tokenMetrics.inputTokens, tokenMetrics.cacheReadTokens)
+    : null;
+
   const tokenItems: MetricItem[] = [
     {
       label: '合计 Token',
-      value: tokenMetrics ? formatInteger(tokenMetrics.totalTokens) : '—',
+      value: tokenMetrics ? formatTokens(tokenMetrics.totalTokens) : '—',
       emphasis: true,
     },
-    { label: '输入', value: tokenMetrics ? formatInteger(tokenMetrics.inputTokens) : '—' },
-    { label: '输出', value: tokenMetrics ? formatInteger(tokenMetrics.outputTokens) : '—' },
+    { label: '输入', value: tokenMetrics ? formatTokens(tokenMetrics.inputTokens) : '—' },
+    { label: '输出', value: tokenMetrics ? formatTokens(tokenMetrics.outputTokens) : '—' },
     {
       label: '缓存命中',
-      value: tokenMetrics ? formatInteger(tokenMetrics.cacheReadTokens) : '—',
+      value: tokenMetrics ? formatTokens(tokenMetrics.cacheReadTokens) : '—',
+      suffix: tokenMetrics ? (hitRate === null ? '—' : formatPercent(hitRate)) : undefined,
     },
     { label: '请求数', value: tokenMetrics ? formatInteger(tokenMetrics.requestCount) : '—' },
     { label: '会话数', value: tokenMetrics ? formatInteger(tokenMetrics.sessionCount) : '—' },

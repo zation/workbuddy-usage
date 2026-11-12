@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import type { RequestRow, RequestSortField, SortOrder } from '../../shared/types.ts';
-import { formatCredit, formatDateTime, formatInteger } from '../format.ts';
+import { formatCredit, formatDateTime, formatTokens } from '../format.ts';
 
 export interface SortState {
   field: RequestSortField;
@@ -153,7 +153,7 @@ export function RequestTable({
                               <span className="cell-muted">无记录</span>
                             )
                           ) : (
-                            formatInteger(column.value(row))
+                            formatTokens(column.value(row))
                           )}
                         </td>
                       ))}

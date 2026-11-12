@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { BreakdownRow } from '../../shared/types.ts';
 import { visibleBreakdownRows } from '../display.ts';
-import { formatCredit, formatInteger, formatPercent } from '../format.ts';
+import { formatCredit, formatPercent, formatTokens } from '../format.ts';
 
 interface BreakdownListProps {
   title: string;
@@ -68,7 +68,7 @@ export function BreakdownList({
                   <span className="breakdown-line">
                     <span className="breakdown-name">{row.name}</span>
                     <span className="breakdown-value">
-                      {metric === 'tokens' ? formatInteger(value) : formatCredit(value)}
+                      {metric === 'tokens' ? formatTokens(value) : formatCredit(value)}
                     </span>
                   </span>
                   <span className="breakdown-meter">

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { EChartsOption } from 'echarts';
 import type { TimeseriesResponse } from '../../shared/types.ts';
-import { formatCredit, formatInteger } from '../format.ts';
+import { formatCredit, formatInteger, formatTokens } from '../format.ts';
 import { MODEL_COLORS } from '../palette.ts';
 import { EChart } from './EChart.tsx';
 
@@ -16,16 +16,7 @@ interface TrendChartProps {
 }
 
 function axisValue(value: number, metric: 'tokens' | 'credit'): string {
-  if (metric === 'credit') {
-    return Math.abs(value) >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(Math.round(value));
-  }
-  if (Math.abs(value) >= 100_000_000) {
-    return `${(value / 100_000_000).toFixed(1)}亿`;
-  }
-  if (Math.abs(value) >= 10_000) {
-    return `${(value / 10_000).toFixed(1)}万`;
-  }
-  return String(Math.round(value));
+  return metric === 'credit' ? formatInteger(value) : formatTokens(value);
 }
 
 export function TrendChart({ title, metric, data, loading, error }: TrendChartProps) {
@@ -68,7 +59,7 @@ export function TrendChart({ title, metric, data, loading, error }: TrendChartPr
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
         valueFormatter: (value) =>
-          metric === 'tokens' ? formatInteger(Number(value)) : formatCredit(Number(value)),
+          metric === 'tokens' ? formatTokens(Number(value)) : formatCredit(Number(value)),
       },
       legend: {
         bottom: 0,

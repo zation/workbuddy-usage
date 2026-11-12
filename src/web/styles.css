@@ -405,6 +405,13 @@ button {
   font-size: 11px;
 }
 
+.metric-suffix {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .trend-panel {
   background: var(--surface);
   padding: 14px 16px 8px;
