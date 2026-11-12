@@ -10,13 +10,19 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 
 # T001 工程脚手架与构建配置
 
-状态：pending
+状态：done
 
 目标：建立可运行、可类型检查的全 TypeScript 单仓骨架，依赖与脚本对齐 Plan「目录与分层」。
 
 完成条件：`npm install` 成功；`tsc --noEmit` 与 `npm run build` 通过；`npm run dev` 能同时启动 Vite 与 API 并通过 proxy 转发 `/api`；`.gitignore` 覆盖 `.data/`、`dist/`、`node_modules/`、`.env.local`。
 
 修改范围：仓库根配置（`package.json`、`tsconfig.json`、`vite.config.ts`、`vitest.config.ts`、`.gitignore`）。
+
+实施结果：按 Plan 依赖建立 Vite + React 面板与 Hono API 的单仓骨架；服务端用 Node 24 原生类型剥离直接运行 `server/index.ts`，不引入额外运行器。新增 `tsconfig.build.json`（服务端编译到 `dist/server`），Web 由 Vite 构建到 `dist/web`。为满足 dev 联调完成条件，同时创建了最小 `server/index.ts`、`src/web/index.html`、`main.tsx`、`App.tsx` 与样式文件，后续任务在其上扩展。`.gitignore` 原有条目已覆盖 `.data/`、`dist/`、`node_modules/`、`.env.local`，未改动。
+
+验证：`npm install` 成功；`npm run typecheck` 通过；`npm run build` 通过（服务端 tsc + Vite，产物 `dist/server/index.js` 与 `dist/web/`）；`npm run dev` 同时启动 API（`127.0.0.1:4620`）与 Vite（`127.0.0.1:5173`），`curl http://127.0.0.1:5173/api/health` 经 proxy 返回 `{"ok":true}`，首页返回 200。
+
+提交：
 
 # T002 共享类型契约
 
