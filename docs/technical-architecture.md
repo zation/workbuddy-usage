@@ -16,9 +16,9 @@
 | 积分挂接 | `src/etl/` | 每次刷新无条件重读 `session_usage`，只更新当前映射中存在的请求，与文件增量解耦 |
 | 索引层 | `.data/index.db` | 派生 sqlite：请求事实表 + 分组/会话/模型维表 + 扫描状态表，按文件 mtime/大小增量更新 |
 | 服务层 | `server/` | 读索引做聚合查询，LEFT JOIN 维表补业务键与展示名，提供 HTTP API，生产模式下兼作静态资源服务器 |
-| 面板层 | `src/web/` | React + ECharts，Token 与积分分两个模块、共用四个筛选器，不承担统计口径 |
+| 面板层 | `src/web/` | React + ECharts，Token 与积分分两个 tab、共用一组筛选栏，不承担统计口径 |
 
-分层原则：**口径只存在于解析层与服务层**。面板层只渲染 API 返回值，不自行求和或换算，避免同一指标出现两套算法。两个模块是前端信息架构，后端端点共用，不为此拆分 API。**面板查询不读 WorkBuddy 数据**，也**不接触派生库的内部 `id`**：API 一律用业务键字符串。
+分层原则：**口径只存在于解析层与服务层**。面板层只渲染 API 返回值，不自行求和或换算，避免同一指标出现两套算法。两个 tab 是前端信息架构，后端端点共用，不为此拆分 API。0 值隐藏与拆分列表截断只影响展示，不改变任何聚合值。**面板查询不读 WorkBuddy 数据**，也**不接触派生库的内部 `id`**：API 一律用业务键字符串。
 
 ## 关键依赖
 
@@ -28,7 +28,7 @@
 | TypeScript + `@types/node` | 全仓类型 | 解析结果类型即 API 契约，贯穿到面板 props；`node:sqlite` 类型由 `@types/node` 提供 |
 | Vite + React | 面板 | 开发期热更新 |
 | ECharts | 图表 | 按天趋势与按模型着色的堆叠 |
-| Hono + `@hono/node-server` | 服务层 | 端点会随下钻增加，路由与中间件比手写 http 清晰；生产模式由 Node 适配器提供静态资源 |
+| Hono + `@hono/node-server` | 服务层 | 端点数量固定、按维度拆分查询，路由与中间件比手写 http 清晰；生产模式由 Node 适配器提供静态资源 |
 
 不引入 ORM 与状态管理库：派生库只有五张表（事实表、三张维表、扫描状态表）与一张单行配置表，数据量在千行量级（实测快照见 [integration.md](./integration.md)）。
 
@@ -50,7 +50,7 @@
 
 | 端点 | 返回 |
 | --- | --- |
-| `GET /api/summary` | 区间合计：token 四项、积分、积分覆盖率（有/无记录的请求数）、请求数、会话数；两个模块各取所需字段 |
+| `GET /api/summary` | 区间合计：token 四项、积分、积分覆盖率（有/无记录的请求数）、请求数、会话数；顶层另返回上次刷新完成时间 `lastRefreshAt`（与筛选无关，从未刷新为 `null`） |
 | `GET /api/timeseries` | 按天、按模型拆分的序列，支撑按模型着色的堆叠；粒度固定按天 |
 | `GET /api/breakdown?dim=group\|model\|session` | 按单一维度拆分的聚合与占比 |
 | `GET /api/requests` | 请求级明细，用于表格与排序 |
@@ -60,7 +60,7 @@
 
 ## 部署方式
 
-- 开发：`npm run dev`，Vite 起面板，API 单独起并通过 Vite proxy 转发 `/api`。
+- 开发：`npm run dev`，Vite 起面板，API 单独起并通过 Vite proxy 转发 `/api/`（只匹配该前缀，避免误拦前端模块 `api.ts`）。
 - 使用：`npm run build && npm start`，由服务层同端口提供静态资源与 API，浏览器打开 `http://127.0.0.1:<PORT>`（与 `HOST` 默认值一致；`localhost` 可能解析到 ::1）。
 - 无容器、无反向代理、无进程守护需求，单机单进程即可。
 
