@@ -180,7 +180,7 @@ SQLite，由 WorkBuddy 管理。库内还有 `automations`、`automation_runs`�
 
 `credit_json` 的值是**该请求所有消息步的积分之和**（客户端按 `usage_update.cost` 累加，见「积分数据形态」），不是取最大值、也不是末条。子代理请求不会单独成键：普通子代理本来不计费，团队子代理的积分并入父请求，详见下一节。
 
-积分覆盖率不足 100%：部分请求没有积分记录；具体数量见文末实测快照。因此统计必须区分"积分值为 0"与"没有积分记录"两种情况。
+`credit_json` 不是每个请求都有键：免费模型与部分辅助调用在本地不记账。因此统计必须区分"积分值为 0"与"没有积分记录"两种情况，但不再用覆盖率一类指标呈现（分子分母都无法从本地可靠定义，决策见 [backlog](./backlog/subagent-credit-reconciliation.md)）。
 
 ### `workspaces`（2 列）
 
@@ -242,7 +242,7 @@ providerData: { conversationRequestId, credit, source, stageId, messageId }
 | `context_summary_*` / `prompt_suggestion` | 3 条 / 3.10 | 0 条 |
 | `conversation:compact` | 20 条 / 155.76 | 12 条（桌面端触发，积分与接口完全一致）；8 条为云端或已清理 |
 
-因此本地积分总额天然低于官方账单，不能按“缺失”处理；这些调用也不进入覆盖率分母。
+这些调用在本地没有请求行，因此本地积分总额天然低于官方账单，不能按“缺失”处理。
 
 ### 官方计量接口（未接入）
 

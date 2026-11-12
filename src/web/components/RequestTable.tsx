@@ -147,15 +147,9 @@ export function RequestTable({
                       </td>
                       {NUMERIC_COLUMNS.map((column) => (
                         <td key={column.field} className="numeric">
-                          {column.field === 'credit' ? (
-                            row.hasCredit ? (
-                              formatCredit(row.credit)
-                            ) : (
-                              <span className="cell-muted">无记录</span>
-                            )
-                          ) : (
-                            formatTokens(column.value(row))
-                          )}
+                          {column.field === 'credit'
+                            ? formatCredit(row.credit)
+                            : formatTokens(column.value(row))}
                         </td>
                       ))}
                     </tr>

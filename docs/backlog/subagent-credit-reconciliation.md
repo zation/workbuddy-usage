@@ -18,7 +18,7 @@
 ## 决策
 
 - **不接入官方计量接口**：只有 `requestId` / `credit` / `model` / `client` / `requestTime`，没有 `sessionId` / `groupId`；31 天内 58% 的行无法归属，四维筛选不成立，OAuth + 加密存储的维护成本与收益不匹配。
-- **移除覆盖率指标**（另立轻量交付）：删除 `/api/summary` 的 `coverage` / `creditedRequestCount` / `uncreditedRequestCount` 与「覆盖率」「无积分记录」两张卡片；`requests.has_credit` 列保留但不再展示。
+- **移除覆盖率指标**（已完成 2026-11-13）：`/api/summary` 的 `coverage` / `creditedRequestCount` / `uncreditedRequestCount` 与「覆盖率」「无积分记录」两张卡片已删除；请求行不再返回 `hasCredit`，界面统一显示积分值。`requests.has_credit` 列保留，仅用于对账与排查。
 
 ## 保留资产
 

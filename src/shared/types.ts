@@ -102,14 +102,11 @@ export interface TokenMetrics {
   sessionCount: number;
 }
 
-/** 积分模块的总览指标，覆盖率按有积分记录的请求数计算。 */
+/** 积分模块的总览指标，按请求累加。 */
 export interface CreditMetrics {
   credit: number;
   requestCount: number;
   sessionCount: number;
-  creditedRequestCount: number;
-  uncreditedRequestCount: number;
-  coverage: number;
 }
 
 export interface SummaryResponse {
@@ -187,7 +184,6 @@ export interface RequestRow {
   cacheReadTokens: number;
   totalTokens: number;
   credit: number;
-  hasCredit: boolean;
   stepCount: number;
 }
 

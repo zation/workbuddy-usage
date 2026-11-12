@@ -58,9 +58,6 @@ describe('共享契约', () => {
         credit: 1.5,
         requestCount: 1,
         sessionCount: 1,
-        creditedRequestCount: 1,
-        uncreditedRequestCount: 0,
-        coverage: 1,
       },
     };
     const row: RequestRow = {
@@ -80,12 +77,11 @@ describe('共享契约', () => {
       cacheReadTokens: 2,
       totalTokens: 10,
       credit: 1.5,
-      hasCredit: true,
       stepCount: 2,
     };
 
     expect(refreshed.upsertedRequests).toBe(3);
-    expect(summary.credit.coverage).toBe(1);
+    expect(summary.credit.credit).toBe(1.5);
     expect(Object.keys(row)).not.toContain('id');
   });
 });

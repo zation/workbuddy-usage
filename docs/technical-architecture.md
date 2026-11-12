@@ -50,7 +50,7 @@
 
 | 端点 | 返回 |
 | --- | --- |
-| `GET /api/summary` | 区间合计：token 四项、积分、积分覆盖率（有/无记录的请求数）、请求数、会话数；顶层另返回上次刷新完成时间 `lastRefreshAt`（与筛选无关，从未刷新为 `null`） |
+| `GET /api/summary` | 区间合计：token 四项、积分、请求数、会话数；顶层另返回上次刷新完成时间 `lastRefreshAt`（与筛选无关，从未刷新为 `null`） |
 | `GET /api/timeseries` | 按天、按模型拆分的序列，支撑按模型着色的堆叠；粒度固定按天 |
 | `GET /api/breakdown?dim=group\|model\|session` | 按单一维度拆分的聚合与占比 |
 | `GET /api/requests` | 请求级明细，用于表格与排序 |

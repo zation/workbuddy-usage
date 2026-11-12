@@ -49,7 +49,7 @@
 | `cache_read_tokens` | INTEGER NOT NULL DEFAULT 0 | 缓存命中读取 token（输入的子集） |
 | `total_tokens` | INTEGER NOT NULL DEFAULT 0 | 合计 token |
 | `credit` | REAL NOT NULL DEFAULT 0 | 积分；无记录为 0，非 NULL |
-| `has_credit` | INTEGER NOT NULL DEFAULT 0 | 是否存在积分记录；有记录为 1（含积分值为 0），无记录为 0。用于覆盖率计数，不能用 `credit > 0` 代替。它只表示本地账本有无键，无法区分免费模型、子代理与真缺失 |
+| `has_credit` | INTEGER NOT NULL DEFAULT 0 | 是否存在积分记录；有记录为 1（含积分值为 0），无记录为 0。**仅用于对账与排查，不参与任何展示**，不能用 `credit > 0` 代替。它只表示本地账本有无键，无法区分免费模型、子代理与真缺失 |
 | `step_count` | INTEGER NOT NULL DEFAULT 1 | 该请求归并了多少条步骤记录，审计用 |
 
 `started_at` / `ended_at` 独立取自全部步骤的时间边界，与四项 token 的取值来源（C2）无关。
@@ -135,7 +135,7 @@ models   1 ──┘
 业务键唯一约束：`requests.request_id`、`groups.group_path`、`sessions.session_key`、`models.model`、`source_files.path`。API 只用业务键，不用内部 `id`。
 
 - 一个请求恰好属于一个会话；子代理请求归属其父会话，因此对话维度的会话数不会因父子拆分而虚增。
-- 一个请求至多一条积分；无记录时为 0，不用 NULL 表达"缺失"，以免聚合时与"0 积分"混淆——是否缺失由 `has_credit` 单独标记，覆盖率按该列计数。
+- 一个请求至多一条积分；无记录时为 0，不用 NULL 表达"缺失"，以免聚合时与"0 积分"混淆——是否缺失由 `has_credit` 单独标记，仅供对账，不进入接口与界面。
 - 一个请求可有多条步骤（当前约 91% 的请求），但只落一行。
 - 维表行可能滞后或缺失：外部会话被清理、模型标识为 `未知模型` 时，仍要展示请求本身。
 
@@ -146,7 +146,7 @@ models   1 ──┘
 - **C3 token 恒等**：`total_tokens = input_tokens + output_tokens`（约 7000 条原始记录零例外），写入前校验，不等则记录告警并保留原值。
 - **C4 缓存归属**：`cache_read_tokens ≤ input_tokens`（零例外），缓存命中是输入的子集，不额外计入合计。
 - **C5 日期派生**：`date_key` 只能由 `started_at` 派生，不单独维护，避免两处不一致；时间戳缺失或非数字的步骤直接跳过并计入解析告警，不生成"未知日期"。保留该列的理由见 `requests` 表说明。
-- **C6 积分取值**：`credit` 直接取 `credit_json[request_id]`，有记录时 `has_credit = 1`（即使值为 0），缺失时 `credit = 0` 且 `has_credit = 0`；不做比例分摊、不做金额换算。每次刷新无条件重读 `session_usage`，只更新当前映射中存在的请求（含值的修正）；映射外的请求行不触碰、不主动清零。本地已不可读的记录不追溯补齐。
+- **C6 积分取值**：`credit` 直接取 `credit_json[request_id]`，有记录时 `has_credit = 1`（即使值为 0），缺失时 `credit = 0` 且 `has_credit = 0`；不做比例分摊、不做金额换算。`has_credit` 只用于对账与排查，不对外暴露、不参与展示，也不用于计算覆盖率一类指标。每次刷新无条件重读 `session_usage`，只更新当前映射中存在的请求（含值的修正）；映射外的请求行不触碰、不主动清零。本地已不可读的记录不追溯补齐。
 - **C7 分组快照**：解析时把 `sessions.cwd` 换成 `groups.id` 写入 `requests.group_id`；`groups` 行是快照（C11），会话被清理后未重新解析的请求仍指向原分组；该文件被重新解析而会话已不存在时，指向 `未知分组` 那一行。
 - **C8 对账**：`source_files` 中记录的文件若已不存在，删除 `source_file_id` 等于该文件 `id` 的请求行，并删除该 `source_files` 行，使文件再次出现时按新文件全量解析；文件仍在但内容变化时由 C10 原子替换，不残留已消失的请求。反过来，`requests` 中不应出现 `source_files` 之外的文件来源。
 - **C9 增量快照**：`source_files` 的 `size_bytes` / `mtime_ms` 必须取**解析开始前**的 stat 值，不能用解析结束时的值，否则会跳过解析期间追加的行。

@@ -123,7 +123,6 @@ describe('AC1 可复算', () => {
       cacheReadTokens: 50,
       totalTokens: 250,
       credit: 1.5,
-      hasCredit: true,
       stepCount: 5,
     });
     expect(findRow(rows, 'r3')).toMatchObject({
@@ -132,7 +131,6 @@ describe('AC1 可复算', () => {
       cacheReadTokens: 0,
       totalTokens: 400,
       credit: 0,
-      hasCredit: false,
       isSubagent: true,
       session: 'sess-alpha-0001',
       group: '/work/alpha',
@@ -142,7 +140,6 @@ describe('AC1 可复算', () => {
       outputTokens: 280,
       totalTokens: 700,
       credit: 0,
-      hasCredit: false,
       group: '未知分组',
       session: 'sess-missing-0005',
     });
@@ -291,8 +288,8 @@ describe('AC5 全量重建', () => {
   });
 });
 
-describe('AC6 子代理覆盖', () => {
-  it('子代理请求计入总量并归入父会话与分组，积分标记为无记录', async () => {
+describe('AC6 子代理归属', () => {
+  it('子代理请求计入总量并归入父会话与分组，积分按 0 计', async () => {
     const fixture = createFixture();
     await fixture.refresh();
 
@@ -304,7 +301,6 @@ describe('AC6 子代理覆盖', () => {
       sessionName: 'Alpha 会话',
       group: '/work/alpha',
       credit: 0,
-      hasCredit: false,
     });
 
     const alpha = getBreakdown(fixture.db, { group: '/work/alpha' }, 'session').rows;
@@ -338,17 +334,15 @@ describe('AC7 空值兜底', () => {
   });
 });
 
-describe('AC8 覆盖率可见', () => {
-  it('有积分记录请求数与总请求数符合预期', async () => {
+describe('AC8 积分合计可用', () => {
+  it('积分合计与请求数符合预期', async () => {
     const fixture = createFixture();
     await fixture.refresh();
     const summary = getSummary(fixture.db, {});
 
-    expect(summary.credit.creditedRequestCount).toBe(3);
-    expect(summary.credit.uncreditedRequestCount).toBe(4);
     expect(summary.credit.requestCount).toBe(7);
-    expect(summary.credit.coverage).toBeCloseTo(3 / 7, 10);
     expect(summary.credit.credit).toBeCloseTo(3.75, 10);
+    expect(summary.credit).not.toHaveProperty('coverage');
   });
 });
 
@@ -367,7 +361,6 @@ describe('AC9 积分独立刷新', () => {
     expect(result).toMatchObject({ changedFiles: 0, creditAttached: 1 });
     expect(findRow(getRequests(fixture.db, {}).rows, 'r3')).toMatchObject({
       credit: 5,
-      hasCredit: true,
     });
   });
 });
@@ -428,7 +421,7 @@ describe('AC11 首屏数据完整性', () => {
     expect(timeseries.days).toEqual(['2026-11-11', '2026-11-12', '2026-11-13']);
     expect(new Set(timeseries.rows.map((row) => row.date)).size).toBe(3);
     expect(breakdowns.every((item) => item.rows.length > 0)).toBe(true);
-    expect(rows[0]).toHaveProperty('hasCredit');
+    expect(rows[0]).not.toHaveProperty('hasCredit');
     expect(rows[0]).not.toHaveProperty('id');
   });
 });

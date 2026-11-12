@@ -63,9 +63,6 @@ describe('服务层聚合', () => {
       credit: 3.75,
       requestCount: 5,
       sessionCount: 3,
-      creditedRequestCount: 3,
-      uncreditedRequestCount: 2,
-      coverage: 0.6,
     });
 
     const meta = fixture.db
@@ -205,7 +202,6 @@ describe('请求级明细', () => {
       model: 'model-b',
       modelName: 'Model-B',
       credit: 2.25,
-      hasCredit: true,
       isSubagent: false,
     });
 
@@ -215,11 +211,10 @@ describe('请求级明细', () => {
       session: 's1',
       groupName: 'alpha',
       credit: 0,
-      hasCredit: false,
     });
 
     const zeroCredit = body.rows.find((row) => row.requestId === 'a2');
-    expect(zeroCredit).toMatchObject({ credit: 0, hasCredit: true });
+    expect(zeroCredit).toMatchObject({ credit: 0 });
   });
 
   it('支持按积分升序排序', async () => {

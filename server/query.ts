@@ -77,10 +77,9 @@ interface SummaryRaw {
   credit: number | null;
   request_count: number;
   session_count: number;
-  credited_count: number | null;
 }
 
-/** 区间合计；覆盖率以有积分记录的请求数为分子，分母包含子代理请求。 */
+/** 区间合计；积分按请求累加，不推断是否存在本地记账。 */
 export function getSummary(db: DatabaseSync, filters: Filters): SummaryResponse {
   const { where, params } = buildWhere(filters);
   const raw = db
@@ -92,14 +91,12 @@ export function getSummary(db: DatabaseSync, filters: Filters): SummaryResponse 
          COALESCE(SUM(r.cache_read_tokens), 0) AS cache_read_tokens,
          COALESCE(SUM(r.credit), 0) AS credit,
          COUNT(*) AS request_count,
-         COUNT(DISTINCT r.session_id) AS session_count,
-         COALESCE(SUM(r.has_credit), 0) AS credited_count
+         COUNT(DISTINCT r.session_id) AS session_count
        ${BASE_FROM} ${where}`,
     )
     .get(...params) as unknown as SummaryRaw;
 
   const requestCount = number(raw?.request_count);
-  const credited = number(raw?.credited_count);
   const credit = number(raw?.credit);
   const meta = db.prepare('SELECT last_refresh_at FROM meta WHERE id = 1').get() as
     | { last_refresh_at?: number | null }
@@ -122,9 +119,6 @@ export function getSummary(db: DatabaseSync, filters: Filters): SummaryResponse 
       credit,
       requestCount,
       sessionCount: number(raw?.session_count),
-      creditedRequestCount: credited,
-      uncreditedRequestCount: Math.max(0, requestCount - credited),
-      coverage: requestCount > 0 ? credited / requestCount : 0,
     },
   };
 }
@@ -289,7 +283,6 @@ interface RequestRaw {
   cache_read_tokens: number;
   total_tokens: number;
   credit: number;
-  has_credit: number;
   step_count: number;
 }
 
@@ -317,7 +310,6 @@ export function getRequests(
          r.cache_read_tokens,
          r.total_tokens,
          r.credit,
-         r.has_credit,
          r.step_count,
          g.group_path,
          COALESCE(g.display_name, g.group_path, '未知分组') AS group_name,
@@ -347,7 +339,6 @@ export function getRequests(
     cacheReadTokens: number(row.cache_read_tokens),
     totalTokens: number(row.total_tokens),
     credit: number(row.credit),
-    hasCredit: row.has_credit === 1,
     stepCount: number(row.step_count),
   }));
 

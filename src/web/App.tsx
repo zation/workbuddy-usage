@@ -207,20 +207,8 @@ export function App() {
       emphasis: true,
     },
     {
-      label: '覆盖率',
-      value: creditMetrics ? formatPercent(creditMetrics.coverage) : '—',
-      hint: creditMetrics
-        ? `${formatInteger(creditMetrics.creditedRequestCount)} / ${formatInteger(creditMetrics.requestCount)} 请求`
-        : undefined,
-    },
-    {
       label: '请求数',
       value: creditMetrics ? formatInteger(creditMetrics.requestCount) : '—',
-    },
-    {
-      label: '无积分记录',
-      value: creditMetrics ? formatInteger(creditMetrics.uncreditedRequestCount) : '—',
-      hint: '含全部子代理请求',
     },
   ];
 
@@ -348,13 +336,8 @@ export function App() {
           <ModuleSection
             accent="credit"
             title="积分消耗"
-            description="请求级积分与覆盖率；无本地记账按 0 计，不补齐、不追溯。"
+            description="按请求汇总的积分消耗。"
           >
-            <p className="module-note">
-              覆盖率 {creditMetrics ? formatPercent(creditMetrics.coverage) : '—'} · 有积分记录{' '}
-              {creditMetrics ? formatInteger(creditMetrics.creditedRequestCount) : '—'} /{' '}
-              {creditMetrics ? formatInteger(creditMetrics.requestCount) : '—'} 请求 · 子代理请求无本地积分记录
-            </p>
             <div className="module-block">
               <MetricCards items={creditItems} />
             </div>
