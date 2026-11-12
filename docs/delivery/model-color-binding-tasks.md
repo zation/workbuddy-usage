@@ -46,13 +46,19 @@
 
 # T004 自定义模型下拉
 
-状态：pending
+状态：done
 
 目标与完成条件：按确认的方案 A，把 `FilterBar` 的模型下拉改为 button + `role="listbox"` / `role="option"` 的自定义下拉，每项带 `ModelDot`；分组、对话、时间三个原生 select 保持不变。补齐键盘（Enter / Space 打开、↑↓ 移动、Enter 选中、Esc 关闭、Tab 离开）、`aria-expanded` / `aria-controls` / `aria-selected`、点击外部关闭、与 `filters.model` 受控同步，以及「当前筛选值不在选项里」的兜底项。样式沿用 `.filter-field` 的 34px 高度、8px 圆角与浅色主题变量。对应 Spec R7、AC4 与 Plan「模型下拉（方案 A）」。
 
 必要依赖：T003。
 
-修改范围：`src/web/components/FilterBar.tsx`、`src/web/styles.css`。
+修改范围：`src/web/components/FilterBar.tsx`、`src/web/styles.css`、`src/web/components/ModelSelect.tsx`。
+
+实施结果：按确认的方案 A 新增 `ModelSelect`，模型下拉改为 `role="combobox"` 按钮 + 常驻 DOM 的 `role="listbox"`（关闭时 `hidden`），每个选项与当前选中值都带 `ModelDot`；补齐 Enter / Space 打开、↑↓ 移动、Enter 选中、Esc 关闭、Tab 离开、`aria-expanded` / `aria-controls` / `aria-activedescendant` / `aria-selected`、点击外部关闭，以及「当前筛选值不在选项里」的兜底项。分组、对话、时间三个原生 select 保持不变；`renderOptions` 仍服务前两者。新增 `.model-select-*` 样式，沿用 34px 高度、8px 圆角与浅色主题变量。
+
+验证：`npm run typecheck` 通过；`npm test` 11 个文件 94 项通过、1 项既存 skip；`npm run build` 通过。DOM / 键盘行为由 T005 的 CDP 验收覆盖。
+
+提交：
 
 # T005 CDP 验收脚本改造
 

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { BreakdownRow, Filters } from '../../shared/types.ts';
 import { PRESETS, hasActiveFilters } from '../filters.ts';
 import type { CustomRange, PresetKey } from '../filters.ts';
+import { ModelSelect } from './ModelSelect.tsx';
 
 interface FilterBarProps {
   preset: PresetKey;
@@ -111,14 +112,11 @@ export function FilterBar({
 
         <div className="filter-field">
           <label htmlFor="filter-model">模型</label>
-          <select
-            id="filter-model"
-            value={filters.model ?? ''}
-            onChange={(event) => onChange({ model: event.target.value || undefined })}
-          >
-            <option value="">全部模型</option>
-            {renderOptions(modelOptions, filters.model)}
-          </select>
+          <ModelSelect
+            rows={modelOptions}
+            value={filters.model}
+            onChange={(model) => onChange({ model })}
+          />
         </div>
 
         <button type="button" className="ghost-button" onClick={onReset} disabled={isDefault}>
