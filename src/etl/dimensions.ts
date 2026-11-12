@@ -182,6 +182,9 @@ export class DimensionWriter {
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
+      this.groupIds.clear();
+      this.sessionIds.clear();
+      this.modelIds.clear();
       throw error;
     }
   }

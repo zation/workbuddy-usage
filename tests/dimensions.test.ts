@@ -182,6 +182,22 @@ describe('维表 upsert', () => {
     ]);
   });
 
+  it('外部同步回滚后清空缓存，后续写入不复用已回滚的行', () => {
+    const { db, writer } = setup();
+    const invalid = new Map<string, SessionMeta>([
+      ['bad', meta({ sessionKey: null as unknown as string, cwd: '/rollback' })],
+    ]);
+
+    expect(() => writer.syncExternalSessions(invalid)).toThrow();
+    expect(rows<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM groups')).toEqual([{ n: 0 }]);
+
+    const id = writer.ensureGroup('/rollback');
+    const row = db.prepare('SELECT COUNT(*) AS n FROM groups WHERE id = ?').get(id) as {
+      n: number;
+    };
+    expect(row.n).toBe(1);
+  });
+
   it('来源文件按路径更新 stat，id 保持稳定', () => {
     const { db, writer } = setup();
     const file: SourceFileRef = {
