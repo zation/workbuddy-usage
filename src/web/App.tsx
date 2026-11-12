@@ -12,7 +12,7 @@ import { FilterBar } from './components/FilterBar.tsx';
 import { MetricCards } from './components/MetricCards.tsx';
 import type { MetricItem } from './components/MetricCards.tsx';
 import { ModuleSection } from './components/ModuleSection.tsx';
-import { ModuleTabs } from './components/ModuleTabs.tsx';
+import { ModuleTabs, modulePanelId, moduleTabId } from './components/ModuleTabs.tsx';
 import { RequestTable } from './components/RequestTable.tsx';
 import type { SortState } from './components/RequestTable.tsx';
 import { TrendChart } from './components/TrendChart.tsx';
@@ -267,138 +267,150 @@ export function App() {
 
       <ModuleTabs activeTab={activeTab} onChange={setActiveTab} />
 
-      {activeTab === 'token' ? (
-        <ModuleSection
-          id="token-module"
-          accent="token"
-          title="Token 用量"
-          description="按请求取累计值最大的一条，输入 / 输出 / 缓存命中与合计同源。"
-        >
-          <div className="module-block">
-            <MetricCards items={tokenItems} />
-          </div>
-          <div className="module-block">
-            <TrendChart
-              title="按天 Token 趋势"
-              metric="tokens"
-              data={visibleTimeseries}
-              loading={timeseries.loading}
-              error={timeseries.error}
-            />
-          </div>
-          <div className="panel-grid module-block">
-            <BreakdownList
-              title="按分组"
-              metric="tokens"
-              rows={groupRows.data?.rows ?? []}
-              loading={groupRows.loading}
-              error={groupRows.error}
-              emptyText="当前筛选下没有分组数据"
-              onSelect={(key) => patchFilters({ group: key })}
-            />
-            <BreakdownList
-              title="按对话"
-              metric="tokens"
-              rows={sessionRows.data?.rows ?? []}
-              loading={sessionRows.loading}
-              error={sessionRows.error}
-              emptyText="当前筛选下没有对话数据"
-              onSelect={(key) => patchFilters({ session: key })}
-            />
-            <BreakdownList
-              title="按模型"
-              metric="tokens"
-              rows={visibleModelRows}
-              loading={modelRows.loading}
-              error={modelRows.error}
-              emptyText="当前筛选下没有模型数据"
-              onSelect={(key) => patchFilters({ model: key })}
-            />
-          </div>
-          <div className="module-block">
-            <RequestTable
-              title="Token 请求明细"
-              rows={tokenRequests.data?.rows ?? []}
-              loading={tokenRequests.loading}
-              error={tokenRequests.error}
-              open={tokenDetailOpen}
-              onToggle={() => setTokenDetailOpen((previous) => !previous)}
-              sort={tokenSort}
-              onSort={(field, order) => setTokenSort({ field, order })}
-              emptyText="当前筛选下没有请求"
-            />
-          </div>
-        </ModuleSection>
-      ) : null}
+      <div
+        id={modulePanelId('token')}
+        role="tabpanel"
+        aria-labelledby={moduleTabId('token')}
+        hidden={activeTab !== 'token'}
+      >
+        {activeTab === 'token' ? (
+          <ModuleSection
+            accent="token"
+            title="Token 用量"
+            description="按请求取累计值最大的一条，输入 / 输出 / 缓存命中与合计同源。"
+          >
+            <div className="module-block">
+              <MetricCards items={tokenItems} />
+            </div>
+            <div className="module-block">
+              <TrendChart
+                title="按天 Token 趋势"
+                metric="tokens"
+                data={visibleTimeseries}
+                loading={timeseries.loading}
+                error={timeseries.error}
+              />
+            </div>
+            <div className="panel-grid module-block">
+              <BreakdownList
+                title="按分组"
+                metric="tokens"
+                rows={groupRows.data?.rows ?? []}
+                loading={groupRows.loading}
+                error={groupRows.error}
+                emptyText="当前筛选下没有分组数据"
+                onSelect={(key) => patchFilters({ group: key })}
+              />
+              <BreakdownList
+                title="按对话"
+                metric="tokens"
+                rows={sessionRows.data?.rows ?? []}
+                loading={sessionRows.loading}
+                error={sessionRows.error}
+                emptyText="当前筛选下没有对话数据"
+                onSelect={(key) => patchFilters({ session: key })}
+              />
+              <BreakdownList
+                title="按模型"
+                metric="tokens"
+                rows={visibleModelRows}
+                loading={modelRows.loading}
+                error={modelRows.error}
+                emptyText="当前筛选下没有模型数据"
+                onSelect={(key) => patchFilters({ model: key })}
+              />
+            </div>
+            <div className="module-block">
+              <RequestTable
+                title="Token 请求明细"
+                rows={tokenRequests.data?.rows ?? []}
+                loading={tokenRequests.loading}
+                error={tokenRequests.error}
+                open={tokenDetailOpen}
+                onToggle={() => setTokenDetailOpen((previous) => !previous)}
+                sort={tokenSort}
+                onSort={(field, order) => setTokenSort({ field, order })}
+                emptyText="当前筛选下没有请求"
+              />
+            </div>
+          </ModuleSection>
+        ) : null}
+      </div>
 
-      {activeTab === 'credit' ? (
-        <ModuleSection
-          id="credit-module"
-          accent="credit"
-          title="积分消耗"
-          description="请求级积分与覆盖率；无本地记账按 0 计，不补齐、不追溯。"
-        >
-          <p className="module-note">
-            覆盖率 {creditMetrics ? formatPercent(creditMetrics.coverage) : '—'} · 有积分记录{' '}
-            {creditMetrics ? formatInteger(creditMetrics.creditedRequestCount) : '—'} /{' '}
-            {creditMetrics ? formatInteger(creditMetrics.requestCount) : '—'} 请求 · 子代理请求无本地积分记录
-          </p>
-          <div className="module-block">
-            <MetricCards items={creditItems} />
-          </div>
-          <div className="module-block">
-            <TrendChart
-              title="按天积分趋势"
-              metric="credit"
-              data={visibleTimeseries}
-              loading={timeseries.loading}
-              error={timeseries.error}
-            />
-          </div>
-          <div className="panel-grid module-block">
-            <BreakdownList
-              title="按分组"
-              metric="credit"
-              rows={groupRows.data?.rows ?? []}
-              loading={groupRows.loading}
-              error={groupRows.error}
-              emptyText="当前筛选下没有分组数据"
-              onSelect={(key) => patchFilters({ group: key })}
-            />
-            <BreakdownList
-              title="按对话"
-              metric="credit"
-              rows={sessionRows.data?.rows ?? []}
-              loading={sessionRows.loading}
-              error={sessionRows.error}
-              emptyText="当前筛选下没有对话数据"
-              onSelect={(key) => patchFilters({ session: key })}
-            />
-            <BreakdownList
-              title="按模型"
-              metric="credit"
-              rows={visibleModelRows}
-              loading={modelRows.loading}
-              error={modelRows.error}
-              emptyText="当前筛选下没有模型数据"
-              onSelect={(key) => patchFilters({ model: key })}
-            />
-          </div>
-          <div className="module-block">
-            <RequestTable
-              title="积分请求明细"
-              rows={creditRequests.data?.rows ?? []}
-              loading={creditRequests.loading}
-              error={creditRequests.error}
-              open={creditDetailOpen}
-              onToggle={() => setCreditDetailOpen((previous) => !previous)}
-              sort={creditSort}
-              onSort={(field, order) => setCreditSort({ field, order })}
-              emptyText="当前筛选下没有请求"
-            />
-          </div>
-        </ModuleSection>
-      ) : null}
+      <div
+        id={modulePanelId('credit')}
+        role="tabpanel"
+        aria-labelledby={moduleTabId('credit')}
+        hidden={activeTab !== 'credit'}
+      >
+        {activeTab === 'credit' ? (
+          <ModuleSection
+            accent="credit"
+            title="积分消耗"
+            description="请求级积分与覆盖率；无本地记账按 0 计，不补齐、不追溯。"
+          >
+            <p className="module-note">
+              覆盖率 {creditMetrics ? formatPercent(creditMetrics.coverage) : '—'} · 有积分记录{' '}
+              {creditMetrics ? formatInteger(creditMetrics.creditedRequestCount) : '—'} /{' '}
+              {creditMetrics ? formatInteger(creditMetrics.requestCount) : '—'} 请求 · 子代理请求无本地积分记录
+            </p>
+            <div className="module-block">
+              <MetricCards items={creditItems} />
+            </div>
+            <div className="module-block">
+              <TrendChart
+                title="按天积分趋势"
+                metric="credit"
+                data={visibleTimeseries}
+                loading={timeseries.loading}
+                error={timeseries.error}
+              />
+            </div>
+            <div className="panel-grid module-block">
+              <BreakdownList
+                title="按分组"
+                metric="credit"
+                rows={groupRows.data?.rows ?? []}
+                loading={groupRows.loading}
+                error={groupRows.error}
+                emptyText="当前筛选下没有分组数据"
+                onSelect={(key) => patchFilters({ group: key })}
+              />
+              <BreakdownList
+                title="按对话"
+                metric="credit"
+                rows={sessionRows.data?.rows ?? []}
+                loading={sessionRows.loading}
+                error={sessionRows.error}
+                emptyText="当前筛选下没有对话数据"
+                onSelect={(key) => patchFilters({ session: key })}
+              />
+              <BreakdownList
+                title="按模型"
+                metric="credit"
+                rows={visibleModelRows}
+                loading={modelRows.loading}
+                error={modelRows.error}
+                emptyText="当前筛选下没有模型数据"
+                onSelect={(key) => patchFilters({ model: key })}
+              />
+            </div>
+            <div className="module-block">
+              <RequestTable
+                title="积分请求明细"
+                rows={creditRequests.data?.rows ?? []}
+                loading={creditRequests.loading}
+                error={creditRequests.error}
+                open={creditDetailOpen}
+                onToggle={() => setCreditDetailOpen((previous) => !previous)}
+                sort={creditSort}
+                onSort={(field, order) => setCreditSort({ field, order })}
+                emptyText="当前筛选下没有请求"
+              />
+            </div>
+          </ModuleSection>
+        ) : null}
+      </div>
     </div>
   );
 }
