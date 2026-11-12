@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { RequestRow, RequestSortField, SortOrder } from '../../shared/types.ts';
 import { formatCredit, formatDateTime, formatInteger } from '../format.ts';
 
@@ -11,6 +12,8 @@ interface RequestTableProps {
   rows: RequestRow[];
   loading: boolean;
   error: string | null;
+  open: boolean;
+  onToggle: () => void;
   sort: SortState;
   onSort: (field: RequestSortField, order: SortOrder) => void;
   emptyText: string;
@@ -35,10 +38,14 @@ export function RequestTable({
   rows,
   loading,
   error,
+  open,
+  onToggle,
   sort,
   onSort,
   emptyText,
 }: RequestTableProps) {
+  const panelId = useId();
+
   const toggle = (field: RequestSortField) => {
     const order: SortOrder = sort.field === field && sort.order === 'desc' ? 'asc' : 'desc';
     onSort(field, order);
@@ -60,72 +67,102 @@ export function RequestTable({
 
   return (
     <div className="panel table-panel">
-      <div className="panel-head">
-        <h3>{title}</h3>
-        <span className="panel-meta">{rows.length} 条</span>
-      </div>
+      <h3 className="table-heading">
+        <button
+          type="button"
+          className="table-toggle"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={onToggle}
+        >
+          <span className="table-toggle-title">{title}</span>
+          <span className="table-toggle-meta">
+            <span className="panel-meta">{open ? `${rows.length} 条` : '点击展开'}</span>
+            <span className="table-toggle-chevron" aria-hidden="true">
+              {open ? '▾' : '▸'}
+            </span>
+          </span>
+        </button>
+      </h3>
 
-      {error ? <p className="panel-error">{error}</p> : null}
-      {!error && !loading && rows.length === 0 ? <p className="panel-empty">{emptyText}</p> : null}
-
-      {rows.length > 0 ? (
-        <div className={`table-wrap${loading ? ' is-loading' : ''}`}>
-          <table>
-            <thead>
-              <tr>
-                <th aria-sort={ariaSort('startedAt')}>
-                  <button type="button" className="sort-button" onClick={() => toggle('startedAt')}>
-                    时间<span className="sort-indicator">{sortIndicator('startedAt')}</span>
-                  </button>
-                </th>
-                <th>分组</th>
-                <th>会话标题</th>
-                <th>模型</th>
-                {NUMERIC_COLUMNS.map((column) => (
-                  <th key={column.field} className="numeric" aria-sort={ariaSort(column.field)}>
-                    <button
-                      type="button"
-                      className="sort-button"
-                      onClick={() => toggle(column.field)}
-                    >
-                      {column.label}
-                      <span className="sort-indicator">{sortIndicator(column.field)}</span>
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.requestId}>
-                  <td className="nowrap">{formatDateTime(row.startedAt)}</td>
-                  <td className="truncate" title={row.group}>
-                    {row.groupName}
-                  </td>
-                  <td className="truncate" title={row.session}>
-                    <span className="session-name">{row.sessionName}</span>
-                    {row.isSubagent ? <span className="badge-subagent">子代理</span> : null}
-                  </td>
-                  <td className="truncate" title={row.model}>
-                    {row.modelName}
-                  </td>
-                  {NUMERIC_COLUMNS.map((column) => (
-                    <td key={column.field} className="numeric">
-                      {column.field === 'credit' ? (
-                        row.hasCredit ? (
-                          formatCredit(row.credit)
-                        ) : (
-                          <span className="cell-muted">无记录</span>
-                        )
-                      ) : (
-                        formatInteger(column.value(row))
-                      )}
-                    </td>
-                  ))}
-                </tr>
+      {open ? (
+        <div id={panelId} className="table-body">
+          {error ? <p className="panel-error">{error}</p> : null}
+          {!error && loading && rows.length === 0 ? (
+            <div className="skeleton-list" aria-label="载入中">
+              {Array.from({ length: 5 }, (_, index) => (
+                <div key={index} className="skeleton-line" />
               ))}
-            </tbody>
-          </table>
+            </div>
+          ) : null}
+          {!error && !loading && rows.length === 0 ? (
+            <p className="panel-empty">{emptyText}</p>
+          ) : null}
+
+          {rows.length > 0 ? (
+            <div className={`table-wrap${loading ? ' is-loading' : ''}`}>
+              <table>
+                <thead>
+                  <tr>
+                    <th aria-sort={ariaSort('startedAt')}>
+                      <button
+                        type="button"
+                        className="sort-button"
+                        onClick={() => toggle('startedAt')}
+                      >
+                        时间<span className="sort-indicator">{sortIndicator('startedAt')}</span>
+                      </button>
+                    </th>
+                    <th>分组</th>
+                    <th>会话标题</th>
+                    <th>模型</th>
+                    {NUMERIC_COLUMNS.map((column) => (
+                      <th key={column.field} className="numeric" aria-sort={ariaSort(column.field)}>
+                        <button
+                          type="button"
+                          className="sort-button"
+                          onClick={() => toggle(column.field)}
+                        >
+                          {column.label}
+                          <span className="sort-indicator">{sortIndicator(column.field)}</span>
+                        </button>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.requestId}>
+                      <td className="nowrap">{formatDateTime(row.startedAt)}</td>
+                      <td className="truncate" title={row.group}>
+                        {row.groupName}
+                      </td>
+                      <td className="truncate" title={row.session}>
+                        <span className="session-name">{row.sessionName}</span>
+                        {row.isSubagent ? <span className="badge-subagent">子代理</span> : null}
+                      </td>
+                      <td className="truncate" title={row.model}>
+                        {row.modelName}
+                      </td>
+                      {NUMERIC_COLUMNS.map((column) => (
+                        <td key={column.field} className="numeric">
+                          {column.field === 'credit' ? (
+                            row.hasCredit ? (
+                              formatCredit(row.credit)
+                            ) : (
+                              <span className="cell-muted">无记录</span>
+                            )
+                          ) : (
+                            formatInteger(column.value(row))
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -7,15 +7,22 @@ export interface QueryState<T> {
   error: string | null;
 }
 
-/** 按 URL 拉取一次 API 数据；path 变化或 deps 变化时重新请求。 */
-export function useQuery<T>(path: string, deps: readonly unknown[] = []): QueryState<T> {
-  const [state, setState] = useState<QueryState<T>>({
-    data: null,
-    loading: true,
-    error: null,
-  });
+const IDLE = { data: null, loading: false, error: null } as const;
+
+/**
+ * 按 URL 拉取一次 API 数据；path 变化或 deps 变化时重新请求。
+ * path 为 null 表示当前不需要数据（如明细折叠），不发请求且不保留旧结果。
+ */
+export function useQuery<T>(path: string | null, deps: readonly unknown[] = []): QueryState<T> {
+  const [state, setState] = useState<QueryState<T>>(() =>
+    path === null ? { ...IDLE } : { data: null, loading: true, error: null },
+  );
 
   useEffect(() => {
+    if (path === null) {
+      setState({ ...IDLE });
+      return;
+    }
     let active = true;
     setState((previous) => ({ data: previous.data, loading: true, error: null }));
     fetchJson<T>(path)

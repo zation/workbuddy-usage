@@ -425,6 +425,52 @@ button {
   padding: 14px 16px 12px;
 }
 
+.table-heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.table-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.table-toggle:hover .table-toggle-title {
+  color: var(--accent);
+}
+
+.table-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.table-toggle-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.table-toggle-chevron {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.table-body {
+  margin-top: 10px;
+}
+
 .table-wrap {
   max-height: 440px;
   overflow: auto;

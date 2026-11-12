@@ -35,8 +35,10 @@ export function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshInfo, setRefreshInfo] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
-  const [tokenSort, setTokenSort] = useState<SortState>({ field: 'totalTokens', order: 'desc' });
-  const [creditSort, setCreditSort] = useState<SortState>({ field: 'credit', order: 'desc' });
+  const [tokenDetailOpen, setTokenDetailOpen] = useState(false);
+  const [creditDetailOpen, setCreditDetailOpen] = useState(false);
+  const [tokenSort, setTokenSort] = useState<SortState>({ field: 'startedAt', order: 'desc' });
+  const [creditSort, setCreditSort] = useState<SortState>({ field: 'startedAt', order: 'desc' });
 
   const query = filterParams(filters);
   const deps = [version];
@@ -48,11 +50,15 @@ export function App() {
   const modelRows = useQuery<BreakdownResponse>(`/api/breakdown?dim=model&${query}`, deps);
 
   const tokenRequests = useQuery<RequestsResponse>(
-    `/api/requests?${filterParams(filters, { sort: tokenSort.field, order: tokenSort.order })}`,
+    tokenDetailOpen
+      ? `/api/requests?${filterParams(filters, { sort: tokenSort.field, order: tokenSort.order })}`
+      : null,
     deps,
   );
   const creditRequests = useQuery<RequestsResponse>(
-    `/api/requests?${filterParams(filters, { sort: creditSort.field, order: creditSort.order })}`,
+    creditDetailOpen
+      ? `/api/requests?${filterParams(filters, { sort: creditSort.field, order: creditSort.order })}`
+      : null,
     deps,
   );
 
@@ -263,6 +269,8 @@ export function App() {
               rows={tokenRequests.data?.rows ?? []}
               loading={tokenRequests.loading}
               error={tokenRequests.error}
+              open={tokenDetailOpen}
+              onToggle={() => setTokenDetailOpen((previous) => !previous)}
               sort={tokenSort}
               onSort={(field, order) => setTokenSort({ field, order })}
               emptyText="当前筛选下没有请求"
@@ -330,6 +338,8 @@ export function App() {
               rows={creditRequests.data?.rows ?? []}
               loading={creditRequests.loading}
               error={creditRequests.error}
+              open={creditDetailOpen}
+              onToggle={() => setCreditDetailOpen((previous) => !previous)}
               sort={creditSort}
               onSort={(field, order) => setCreditSort({ field, order })}
               emptyText="当前筛选下没有请求"
