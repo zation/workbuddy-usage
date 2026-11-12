@@ -23,6 +23,28 @@ export function visibleBreakdownRows(rows: BreakdownRow[], limit: number): Break
   return rows.slice(0, Math.max(0, limit));
 }
 
+/**
+ * 趋势图配色索引：按展示名排序的模型序列固定色位，与当前 tab 的可见集合无关，
+ * 同一模型在 Token / 积分 tab 使用同一颜色。展示名相同则按业务键兜底排序。
+ */
+export function modelColorIndex(rows: BreakdownRow[]): Record<string, number> {
+  const ordered = [...rows].sort((left, right) => {
+    const byName = left.name.localeCompare(right.name, 'zh-CN');
+    if (byName !== 0) {
+      return byName;
+    }
+    return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
+  });
+
+  const index: Record<string, number> = {};
+  for (const row of ordered) {
+    if (index[row.key] === undefined) {
+      index[row.key] = Object.keys(index).length;
+    }
+  }
+  return index;
+}
+
 /** R6：缓存命中比率以 inputTokens 为分母，分母为 0 时无定义。 */
 export function cacheHitRate(
   inputTokens: number,

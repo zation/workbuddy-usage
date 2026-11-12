@@ -13,13 +13,14 @@ interface TrendChartProps {
   data: TimeseriesResponse | null;
   loading: boolean;
   error: string | null;
+  colorIndex?: Record<string, number>;
 }
 
 function axisValue(value: number, metric: 'tokens' | 'credit'): string {
   return metric === 'credit' ? formatInteger(value) : formatTokens(value);
 }
 
-export function TrendChart({ title, metric, data, loading, error }: TrendChartProps) {
+export function TrendChart({ title, metric, data, loading, error, colorIndex }: TrendChartProps) {
   const option = useMemo<EChartsOption>(() => {
     const days = data?.days ?? [];
     const rows = data?.rows ?? [];
@@ -40,12 +41,13 @@ export function TrendChart({ title, metric, data, loading, error }: TrendChartPr
           values.set(row.date, metric === 'tokens' ? row.totalTokens : row.credit);
         }
       }
+      const colorSlot = colorIndex?.[modelKey] ?? index;
       return {
         name: models.get(modelKey) ?? modelKey,
         type: 'bar' as const,
         stack: 'models',
         barMaxWidth: 28,
-        itemStyle: { color: PALETTE[index % PALETTE.length] },
+        itemStyle: { color: PALETTE[colorSlot % PALETTE.length] },
         emphasis: { focus: 'series' as const },
         data: days.map((day) => values.get(day) ?? 0),
       };
@@ -91,7 +93,7 @@ export function TrendChart({ title, metric, data, loading, error }: TrendChartPr
       },
       series,
     };
-  }, [data, metric]);
+  }, [data, metric, colorIndex]);
 
   return (
     <div className="panel trend-panel">

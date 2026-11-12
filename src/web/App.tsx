@@ -18,7 +18,7 @@ import type { SortState } from './components/RequestTable.tsx';
 import { TrendChart } from './components/TrendChart.tsx';
 import { applyPresetRange, rangeForPreset, todayKey } from './filters.ts';
 import type { CustomRange, PresetKey } from './filters.ts';
-import { cacheHitRate, visibleModelKeys } from './display.ts';
+import { cacheHitRate, modelColorIndex, visibleModelKeys } from './display.ts';
 import type { ModuleTab } from './display.ts';
 import {
   formatCredit,
@@ -111,6 +111,8 @@ export function App() {
       rows: timeseries.data.rows.filter((row) => visibleModels.has(row.model)),
     };
   }, [timeseries.data, modelOptions.data, visibleModels]);
+
+  const modelColors = useMemo(() => modelColorIndex(modelChoiceRows), [modelChoiceRows]);
 
   const optionGroups = groupOptions.data?.rows ?? [];
   const optionSessions = sessionOptions.data?.rows ?? [];
@@ -289,6 +291,7 @@ export function App() {
                 data={visibleTimeseries}
                 loading={timeseries.loading}
                 error={timeseries.error}
+                colorIndex={modelColors}
               />
             </div>
             <div className="panel-grid module-block">
@@ -364,6 +367,7 @@ export function App() {
                 data={visibleTimeseries}
                 loading={timeseries.loading}
                 error={timeseries.error}
+                colorIndex={modelColors}
               />
             </div>
             <div className="panel-grid module-block">
