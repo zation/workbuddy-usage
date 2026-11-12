@@ -68,7 +68,7 @@
 
 修改范围：`src/web/App.tsx`、`src/web/components/ModuleTabs.tsx`、`src/web/components/ModuleSection.tsx`、`src/web/styles.css`、`vite.config.ts`（dev 代理前缀）。
 
-实施结果：新增 `ModuleTabs`（tablist / tab / `aria-selected` / `aria-controls`，支持左右方向键并做焦点跟随）；`ModuleSection` 改为 `tabpanel`，tab id、`aria-controls` 与 `aria-labelledby` 都由 `ModuleTabs` 导出的同一组函数生成；面板 id 仍由 `App` 传入字面量（`token-module` / `credit-module`），`modulePanelId` 只用于 `aria-controls`，两处尚未打通，存在漂移风险（记入 backlog）。`activeTab` 默认 `token`，两个模块只在激活时挂载，`useQuery` 全部保留在组件顶层。附带修复 `vite.config.ts` 的 dev 代理前缀（`/api` → `^/api/`）：此前前端模块 `/api.ts` 被转发到 API 服务，`npm run dev` 下整页白屏，属本任务之前已存在的问题，不修无法做交互验收。
+实施结果：新增 `ModuleTabs`（tablist / tab / `aria-selected` / `aria-controls`，支持左右方向键并做焦点跟随）；`ModuleSection` 改为 `tabpanel`，tab id、`aria-controls` 与 `aria-labelledby` 都由 `ModuleTabs` 导出的同一组函数生成；面板 id 当时仍由 `App` 传入字面量（`token-module` / `credit-module`），`modulePanelId` 只用于 `aria-controls`，两处尚未打通，存在漂移风险（已由 T015 修复）。`activeTab` 默认 `token`，模块内容只在激活时挂载（T015 后外层两个 `tabpanel` 容器常驻，未激活的一个以 `hidden` 隐藏），`useQuery` 全部保留在组件顶层。附带修复 `vite.config.ts` 的 dev 代理前缀（`/api` → `^/api/`）：此前前端模块 `/api.ts` 被转发到 API 服务，`npm run dev` 下整页白屏，属本任务之前已存在的问题，不修无法做交互验收。
 
 验证：`npm run typecheck`、`npm run build` 通过；dev 服务下核对两个 tab 的 `aria-selected` 与面板挂载、默认激活 Token、切换后分组筛选与时间预设保持不变、两个 tab 图表首次激活宽度均为 1232px。
 
@@ -174,7 +174,7 @@
 - `devops.md`：开发与生产入口分开（dev 为 5173、生产为 4620），补 Vite proxy 只转发 `^/api/` 的约束与原因，并注明项目未配置 lint。
 - `docs/backlog/subagent-credit-reconciliation.md` 与本交付无关，未改动；`integration.md` 本交付不涉及。
 
-验证（AC1–AC11，`npm run dev` + 无头 Chrome 经 CDP 驱动本地页面与 API 逐条核对；驱动脚本为一次性临时工具，未入库，截图输出到临时目录、同样不入库，断言项与结果如下）：
+验证（AC1–AC11，`npm run dev` + 无头 Chrome 经 CDP 驱动本地页面与 API 逐条核对；当时的驱动脚本为一次性临时工具、未入库，截图输出到临时目录、同样不入库；脚本已由 T018 整理为 `scripts/panel-acceptance.mjs`，可由 `npm run acceptance` 复跑，断言项与结果如下）：
 
 - **AC1 通过**：界面无 `.chip` / `.detail-banner`；列表点击与下拉框选择写入同一份筛选，两者发出的 `/api/summary` 查询串完全一致；重置按钮在筛选后启用，重置回到初始状态。
 - **AC2 通过**：默认激活 Token；设置时间预设、模型筛选、展开明细并改排序后切到积分再切回，预设 / 筛选 / 折叠 / 排序全部保留；两个 tab 首次激活时图表宽度均 1232px。
@@ -204,6 +204,17 @@
 - T005 原称「tab 与面板 id 由同一组函数生成」只对了一半：面板 id 仍由 `App` 传入字面量，已按实情改写。
 - 长期文档：`technical-architecture.md` 的分层原则与 AD-4 补「缓存命中率是唯一的前端求值项」；`product-brief.md` 核心问题删去与「非目标」冲突的「命中率是否随使用改善」；`devops.md` 修正 dev / 生产入口并补代理前缀约束与无 lint 的事实；`data-model.md` 补「新增字典序更小的同组标识会让原首项改名」的已知行为。
 - 复核发现的代码与验收细节问题（模型下拉塌缩、非激活 tab 的 `aria-controls` 悬空、面板 id 未与 `modulePanelId` 打通、配色随 tab 漂移、`visibleModelKeys` 用 `> 0` 与 R7 的 `=== 0` 表述差异、两处测试名实不符、`formatTokens(999_999)` 输出 `1000.0K`、验收脚本未入库）不新增文档，改为在本流程追加 T012–T018 逐项修复（均已完成，见各任务记录）；此前临时创建的 backlog 条目已删除。
+
+### 二次复核修订（2026-11-12）
+
+二次复核确认 T012–T018 的实现与验证记录属实，同时发现修复引入的新矛盾与仍待同步的表述，按实情修订，不改变需求范围与验收标准：
+
+- Spec R2 与 Plan「状态与组件结构」仍写「未激活 tab 不挂载 DOM」「只挂载激活 tab 的 DOM」，Plan 关键取舍与风险表也写「只挂载激活 tab」，与 T015 的「两个 tabpanel 容器常驻、未激活用 `hidden` 隐藏、模块内容只在激活时挂载」不符；已统一改写。
+- Plan「纯函数下沉」的 `visibleModelKeys` 仍是 `> 0`，与 T013 的 `!== 0` 不符；测试策略、关键取舍与风险表仍按「无自动化交互验收」描述，与 T018 入库的验收脚本不符；影响范围补记 `scripts/panel-acceptance.mjs` 与 `package.json` 的 `acceptance` 入口。均已同步。
+- T005 实施结果中「记入 backlog」指向已删除的临时条目，T011 验证段「脚本未入库」也已过时，均补上后续修复指向；历史数值与提交记录保持原样。
+- Spec R5 补 `≥10¹²` 时 B 为最大单位、显示 `1000.0B` 的上界；「已确认决策」补色位按不带筛选的全量模型集合固定。
+- 流程说明：`7680f6f` 曾新建 `docs/backlog/panel-display-fixes.md`，`09a98d7` 在 T012 的提交中一并删除（该提交正文未单列此项）；`7680f6f` 关联已完成的 T011 并回改了 T011 的验证与收尾记录；`e97c94a` 与 `7680f6f` 对已确认 Spec / Plan 的澄清均为事实勘误，未在文档内留下独立审批记录。历史提交不改写，此处只作如实补充；本轮修订由开发者授权，在同一交付内以 T019–T021 完成，归档前如需独立审批节点由开发者补记。
+- 归档仍未进行：三份交付文档留在 `docs/delivery/` 顶层，无版本 tag，`package.json` 仍为 1.0.0；待开发者确认发布后按 AGENTS.md 第 7 节归档。
 
 # T012 K/M/B 进位边界
 
@@ -304,3 +315,45 @@
 验证：`npm run typecheck`、`npm test`、`npm run build` 通过；`npm run acceptance` 7/7 PASS（tab 与 ARIA、拆分列表、明细折叠、单位、命中率、筛选两入口、0 值隐藏与下拉可切换）。
 
 提交：c725b46
+
+# T019 文档同步与口径勘误
+
+状态：done
+
+目标与完成条件：修正 T015 / T018 之后 Spec 与 Plan 中「未激活 tab 不挂载 DOM」「只挂载激活 tab」「可见集合 `> 0`」「交互验收依赖人工」等过时表述；Spec R5 补 `≥10¹²` 上界、「已确认决策」补配色稳定口径；Plan 影响范围补验收脚本与 `acceptance` 入口；T005 / T011 的过期记录补上后续修复指向；如实补充二次复核的流程说明。不改变需求范围与验收标准，不改写历史提交。
+
+修改范围：`docs/delivery/usage-panel-polish-spec.md`、`docs/delivery/usage-panel-polish-plan.md`、`docs/delivery/usage-panel-polish-tasks.md`。
+
+实施结果：Spec R2 改为「两个 tabpanel 容器常驻、未激活 `hidden` 空壳、模块内容与 ECharts 只在激活时挂载」；Plan 的关键取舍、风险表、测试策略、影响范围与「状态与组件结构」同步；`visibleModelKeys` 改为 `!== 0`；新增「配色稳定」技术方案小节说明全量模型集合与 0 值判定集合互不混用。T005 去掉指向已删除 backlog 的「记入 backlog」并补 T015 修复结果，T011 验证段补 T018 入库说明；新增「二次复核修订」节记录临时 backlog 的新建 / 删除、T011 记录回改与 Spec / Plan 事后澄清缺少独立审批记录，以及归档仍待开发者确认发布。
+
+验证：`npm run typecheck`、`npm test`（11 文件 91 项）、`npm run build` 通过；`npm run acceptance` 7/7 PASS；逐条核对 Spec 与 Plan 的正面表述已按实情更新（Tasks 中保留的旧措辞仅为修订说明中的引用）。
+
+提交：
+
+# T020 配色跨筛选稳定
+
+状态：done
+
+目标与完成条件：色位按不带筛选的全量模型集合固定，切换 tab、0 值隐藏与改变时间 / 分组 / 对话筛选都不改变同一模型的颜色；不改统计口径、不改 API 契约、不新增依赖；Spec 与 Plan 同步该口径。对应二次复核意见「筛选改变模型成员时色位重编号导致换色」。
+
+修改范围：`src/web/App.tsx`、`docs/delivery/usage-panel-polish-spec.md`、`docs/delivery/usage-panel-polish-plan.md`。
+
+实施结果：新增一次不带筛选的 `GET /api/breakdown?dim=model` 查询（路径固定，只随 `version` 重取），`modelColors` 改由该全量集合计算；`modelColorIndex` 纯函数与 `TrendChart` 不变。0 值隐藏的判定集合仍是带时间 / 分组 / 对话筛选的 `modelOptions`，两者互不混用；全量集合返回前图表沿用可见集合顺序，返回后色位固定。
+
+验证：`npm run acceptance` 7/7 PASS（AC7 新增「全部时间 → 今天」前后同名模型颜色一致比对）；`npm run typecheck`、`npm test`（11 文件 91 项）、`npm run build` 通过。
+
+提交：
+
+# T021 验收脚本断言补全
+
+状态：done
+
+目标与完成条件：AC2 断言 canvas 数为 1、非激活面板恰有一个且 id 对应未激活 tab 的 `aria-controls`；AC5 补趋势图 y 轴刻度与 tooltip 的「万 / 亿」检查并让 token 数值正则允许整数千分位；AC7 补积分轴无 `k` 与配色跨筛选稳定；`devops.md` 同步覆盖范围。对应二次复核意见「验收脚本断言缺口」。
+
+修改范围：`scripts/panel-acceptance.mjs`、`docs/devops.md`。
+
+实施结果：新增 `readChart`，从页面已加载的 ECharts 实例读取 y 轴 formatter、tooltip formatter 与 series 颜色（无新依赖、不改产品代码）；AC2 补 canvas 数与 hidden 面板对应关系，AC5 补刻度与 tooltip 并放宽正则，AC7 补积分刻度与配色跨筛选比对；仍为 7 项 check，逐项 PASS/FAIL 与退出码行为不变。
+
+验证：`npm run acceptance` 7/7 PASS；`npm run typecheck`、`npm test`、`npm run build` 通过。
+
+提交：

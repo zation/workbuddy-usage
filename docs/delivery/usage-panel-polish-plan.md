@@ -21,14 +21,14 @@
 
 新增 `src/web/components/ModuleTabs.tsx` 渲染两个 tab（`role="tablist"` / `role="tab"` / `aria-selected` / `aria-controls`），放在 `FilterBar` 与模块内容之间。`FilterBar` 删除 `chips`、`ActiveChip`、`onClear`、`DIMENSION_LABELS`；`isDefault` 改为判断 `preset === 'today'` 且三个维度筛选都为空。`renderOptions` 中「当前值不在选项里时补一个 option」的兜底**保留**，用于 0 值隐藏后不丢失已选中的筛选值。
 
-两个 `ModuleSection` 改为条件渲染（只挂载激活 tab 的 DOM）。**所有 `useQuery` 仍在组件顶层无条件调用**，React Hooks 不能条件执行；数据请求总数不变，只是渲染条件化。切换 tab 不重置任何状态，`activeTab` 变化只触发一次重新渲染，未挂载的模块重新出现时 `EChart` 由 `ResizeObserver` 按容器尺寸渲染。
+两个 `tabpanel` 容器常驻 DOM，未激活的用 `hidden` 隐藏并保持为空壳，使 `aria-controls` 始终指向存在的面板；两个 `ModuleSection` 仍条件渲染，只挂载激活 tab 的模块内容。**所有 `useQuery` 仍在组件顶层无条件调用**，React Hooks 不能条件执行；tab 条件渲染本身不增加数据请求，切换 tab 不重置任何状态，`activeTab` 变化只触发一次重新渲染，未挂载的模块重新出现时 `EChart` 由 `ResizeObserver` 按容器尺寸渲染。配色另需一次不带筛选的模型拆分查询（见「配色稳定」）。
 
 ### 纯函数下沉
 
 把可复算的展示逻辑抽成 `src/web/` 下的纯函数并单测覆盖，组件保持薄：
 
 - `format.ts` 新增 `formatTokens(value)`（K / M / B，1 位小数）与 `formatRefreshTime(ts)`（本地 `HH:mm`）；`formatInteger` 行为不变，仍用于计数与趋势图积分刻度，`formatCredit` / `formatPercent` 不变。
-- `visibleModelKeys(rows, activeTab)`：Token tab 取 `totalTokens > 0`，积分 tab 取 `credit > 0`，返回业务键集合。
+- `visibleModelKeys(rows, activeTab)`：Token tab 取 `totalTokens !== 0`，积分 tab 取 `credit !== 0`，返回业务键集合；只隐藏恰好为 0 的项，负值可见。
 - `cacheHitRate(inputTokens, cacheReadTokens)`：分母为 0 时返回 `null`。
 - `visibleBreakdownRows(rows, limit)`：截取前 N 行，`limit` 固定 8；排序仍由 `BreakdownList` 按当前指标完成后传入，函数不重复排序。
 
@@ -55,6 +55,10 @@
 App 按 `activeTab` 计算 `visibleModelKeys`，统一作用于三处：按模型拆分列表的 rows、传给 `TrendChart` 的 `timeseries.rows`、模型筛选下拉的 `modelOptions`。趋势图组件本身不改，由 App 构造一份过滤后的 `TimeseriesResponse`（`days` 原样保留）。按分组 / 按对话列表与请求明细不过滤。服务层聚合 SQL 不变，因此 R13 与 AC10 在 API 层天然成立；被隐藏行的指标为 0，前端展示的拆分之和仍等于总览。
 
 下拉框保留 `renderOptions` 的兜底：若 `filters.model` 指向一个在当前 tab 被隐藏的模型，仍显示该选项，避免筛选值与下拉状态矛盾。
+
+### 配色稳定
+
+`modelColorIndex(rows)` 按展示名（同名按业务键）排序分配固定色位，结果只取决于传入的模型序列。若传当前筛选下的集合，筛选导致模型成员变化时序列会重排、同一模型换色；因此 App 额外请求一次**不带任何筛选**的 `GET /api/breakdown?dim=model`，只用于计算色位，把同一份索引传给两个 `TrendChart`。该查询路径固定，只在 `version` 变化时重取，不影响任何聚合与筛选口径；0 值隐藏的判定集合仍是带时间 / 分组 / 对话筛选的 `modelOptions`，两者互不混用。全量集合返回前 `colorIndex` 为空，图表沿用可见集合顺序，返回后色位固定。
 
 ### 模型展示名冲突
 
@@ -84,7 +88,7 @@ App 按 `activeTab` 计算 `visibleModelKeys`，统一作用于三处：按模�
 
 | 选择 | 理由 | 代价 |
 | --- | --- | --- |
-| 只挂载激活 tab，但 hooks 全部保留在顶层 | ECharts 零尺寸容器问题最干净的解法；`ResizeObserver` 已具备；状态天然保留 | 未激活 tab 的数据仍会请求，但不渲染，成本可忽略 |
+| 只挂载激活 tab 的模块内容，tabpanel 容器常驻并 `hidden` | ECharts 零尺寸容器问题最干净的解法，`aria-controls` 不再悬空；`ResizeObserver` 已具备；状态天然保留 | 未激活 tab 的数据仍会请求，但不渲染；页面多两个空壳容器，成本可忽略 |
 | `useQuery` 支持 `path: null` 而非引入查询库 | 不增删依赖、不改 API 契约、改动最小 | 折叠 / 展开切换会重新请求一次（数据量千行级，可接受） |
 | API 默认排序不改，前端显式传 `startedAt desc` | 保持 API 契约与现有断言稳定，避免破坏其它调用方 | 面板首次展开时多带两个查询参数 |
 | 展示逻辑抽成纯函数 | 前端无 DOM 测试框架，纯逻辑可单测，组件保持薄 | 多一个 `display.ts` 文件 |
@@ -92,15 +96,15 @@ App 按 `activeTab` 计算 `visibleModelKeys`，统一作用于三处：按模�
 | 0 值隐藏放在前端展示层 | 不改聚合 SQL，R13 / AC10 在服务层天然成立，风险最低 | 两个 tab 的下拉选项会不同（Spec 已确认） |
 | 命中率用 `MetricItem.suffix` 而非新卡片 | 不动指标卡布局，改动局限于一个可选渲染分支 | 大数值旁多一段小字 |
 | 冲突处理依赖 `schema_version` 全量重建 | 现有 `upsertModel` 不覆盖已规范化名字，靠重建一次性得到正确结果最稳 | 升级后首次启动触发一次全量重建（实测几十秒） |
-| 不引入 DOM 测试框架 | 项目范围小、避免依赖增删；纯逻辑单测 + 本地端到端手工验收已覆盖风险 | 交互类 AC 依赖手工验收记录 |
+| 不引入 DOM 测试框架 | 项目范围小、避免依赖增删；纯逻辑单测 + CDP 交互断言已覆盖风险 | 交互类 AC 需先启动带调试端口的 Chrome，运行方式见 `devops.md` |
 
 ## 影响范围
 
-**新增**：`src/web/components/ModuleTabs.tsx`、`src/web/display.ts`（展示纯函数）、`tests/display.test.ts`（格式化与展示纯函数单测）。
+**新增**：`src/web/components/ModuleTabs.tsx`、`src/web/display.ts`（展示纯函数）、`tests/display.test.ts`（格式化与展示纯函数单测）、`scripts/panel-acceptance.mjs`（CDP 交互验收，T018 追加）。
 
-**修改**：`src/web/App.tsx`、`src/web/components/FilterBar.tsx`、`BreakdownList.tsx`、`RequestTable.tsx`、`MetricCards.tsx`、`ModuleSection.tsx`、`TrendChart.tsx`、`src/web/format.ts`、`src/web/useQuery.ts`、`src/web/styles.css`、`src/shared/types.ts`、`server/query.ts`、`src/etl/dimensions.ts`、`src/etl/index-db.ts`（`SCHEMA_VERSION`）、`tests/shared.test.ts`、`tests/api.test.ts`、`tests/dimensions.test.ts`、`tests/refresh.test.ts`、`vite.config.ts`（仅 dev 代理前缀，见下）。
+**修改**：`src/web/App.tsx`、`src/web/components/FilterBar.tsx`、`BreakdownList.tsx`、`RequestTable.tsx`、`MetricCards.tsx`、`ModuleSection.tsx`、`TrendChart.tsx`、`src/web/format.ts`、`src/web/useQuery.ts`、`src/web/styles.css`、`src/shared/types.ts`、`server/query.ts`、`src/etl/dimensions.ts`、`src/etl/index-db.ts`（`SCHEMA_VERSION`）、`tests/shared.test.ts`、`tests/api.test.ts`、`tests/dimensions.test.ts`、`tests/refresh.test.ts`、`vite.config.ts`（仅 dev 代理前缀，见下）、`package.json`（T018 增加 `acceptance` 脚本入口）。
 
-**文档**：`product-brief.md`（范围段、成功标准措辞）、`technical-architecture.md`（面板层描述、`/api/summary` 接口表、Hono 依赖行措辞）、`data-model.md`（C12 增加冲突处理、结构版本）、`devops.md`（dev 入口与代理前缀）。`integration.md` 本交付不涉及，不改。
+**文档**：`product-brief.md`（范围段、成功标准措辞）、`technical-architecture.md`（面板层描述、`/api/summary` 接口表、Hono 依赖行措辞）、`data-model.md`（C12 增加冲突处理、结构版本）、`devops.md`（dev 入口、代理前缀、交互验收步骤）。`integration.md` 本交付不涉及，不改。
 
 **不改**：`~/.workbuddy` 下任何文件、`requests` 与 `groups` 表结构、五个 API 端点的路径与参数、`getRequests` 默认排序、刷新流程与积分挂接口径、依赖清单、构建产物配置。唯一例外是 `vite.config.ts` 的 dev 代理前缀：原 `/api` 会把前端模块 `api.ts` 也转发到 API 服务，导致 `npm run dev` 白屏，实施时收窄为 `^/api/`（提交 `e73fa1c`），不影响生产构建。
 
@@ -131,7 +135,7 @@ App 按 `activeTab` 计算 `visibleModelKeys`，统一作用于三处：按模�
   - `tests/shared.test.ts`：`SummaryResponse` 字面量补齐 `lastRefreshAt`。
   - `tests/acceptance.test.ts`：v1 AC1–AC10 继续通过，重点确认 0 值隐藏不改 API 返回值、维度拆分之和仍等于总览（AC10）。
 - **构建**：`npm run build`（含 `tsc -p tsconfig.build.json` 与 `vite build`）。
-- **前端交互验收**：项目没有 DOM 测试框架，本交付不引入。AC1–AC9 中涉及 DOM 与 ECharts 的部分，用 `npm run dev` 启动后按验收标准逐条手工核对，记录在 Tasks 的验证字段；可复算逻辑全部由上面的纯函数单测覆盖。
+- **前端交互验收**：项目没有 DOM 测试框架，本交付不引入。AC1–AC9 中涉及 DOM 与 ECharts 的部分，由 `scripts/panel-acceptance.mjs` 经 CDP 驱动本机 Chrome 逐项断言（`npm run acceptance`，启动步骤见 `devops.md`），结果打印 PASS/FAIL 并以退出码反映；首轮逐条核对记录留在 Tasks 的验证字段，后续改动以脚本复跑为准。可复算逻辑全部由上面的纯函数单测覆盖。
 - **只读验证**：刷新前后 `workbuddy.db` 只读边界不变，无需重复比对 mtime（v1 Plan 已说明该方式不可归因）。
 
 ## 风险与回滚
@@ -139,14 +143,14 @@ App 按 `activeTab` 计算 `visibleModelKeys`，统一作用于三处：按模�
 | 风险 | 影响 | 缓解 / 回滚 |
 | --- | --- | --- |
 | 条件渲染让 `useQuery` 被条件调用 | React Hooks 报错、状态错乱 | 顺序约束第 4 条；所有 hooks 固定顶层，`npm run typecheck` 与构建兜底 |
-| ECharts 在隐藏 / 新挂载容器尺寸为 0 | 图表空白或宽度异常 | 只挂载激活 tab；`EChart` 已有 `ResizeObserver`；手工验收首次激活两种 tab |
+| ECharts 在隐藏 / 新挂载容器尺寸为 0 | 图表空白或宽度异常 | 只挂载激活 tab 的模块内容，tabpanel 空壳常驻；`EChart` 已有 `ResizeObserver`；验收脚本核对两个 tab 的图表与 canvas 数 |
 | 增量刷新把 `Hy4 (hy4-free)` 回退成 `Hy4` | 重名问题复现 | 依赖 `upsertModel` 的幂等保护 + 新增回归测试；必要时删库重建 |
 | `schema_version` 与后续分组归一化交付冲突 | 旧索引不触发重建，展示名 / 分组结果错误 | Plan 明确 1→2→3 与实施顺序；两份交付分别验收重建 |
-| 0 值隐藏后已选模型不在下拉项里 | 筛选值看似丢失 | 保留 `renderOptions` 的当前值兜底；手工验收筛选后切 tab |
+| 0 值隐藏后已选模型不在下拉项里 | 筛选值看似丢失 | 保留 `renderOptions` 的当前值兜底；判定集合改用不含模型筛选的结果；验收脚本核对选中后仍可切换 |
 | 折叠 / 展开反复请求导致 loading 闪烁 | 体验抖动 | `path: null` 时强制 `loading: false`；折叠态不渲染表格与骨架 |
 | K / M / B 丢失精度 | 无法读到精确 token 数 | Spec 已确认不需要精确值；API 仍返回原始数值，随时可恢复 |
 | `lastRefreshAt` 读取 `meta` 时表缺失 | `/api/summary` 500 | 单行查询用 `number()` 兜底，缺失返回 `null`；夹具已确认 `meta` 存在 |
-| 前端交互无自动化测试 | 回归依赖人工 | 纯函数单测 + 本地端到端逐条验收记录；不引入新依赖 |
+| 交互验收依赖外部浏览器 | 未启动调试 Chrome 时脚本无法运行 | 验收脚本入库、逐项 PASS/FAIL 与退出码；纯函数单测覆盖可复算逻辑；不引入新依赖 |
 | 文档与实现不同步 | 长期事实失真 | 功能验收通过后统一更新三份长期文档，收尾检查逐项核对 |
 
 **回滚方式**：`git revert` 本交付提交 → 删除 `.data/index.db` → 重启触发全量重建 → `npm run typecheck && npm test && npm run build` 验证。无外部状态需要清理。
