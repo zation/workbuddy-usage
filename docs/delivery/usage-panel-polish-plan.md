@@ -2,7 +2,7 @@
 
 ## 现状分析
 
-- 本交付的 Spec 已确认（`usage-panel-polish-spec.md`），业务规则 R1–R10 与验收标准 AC1–AC11 不在此重复。方案文档已由 `3f541da` 提交。
+- 本交付的 Spec 已确认（`usage-panel-polish-spec.md`），业务规则 R1–R10 与验收标准 AC1–AC11 不在此重复；Spec 与 Plan 均已确认并入库。
 - 代码现状：单一 `App.tsx` 持有 `filters`、`preset`、`custom`、`detailSession`、`version`、两套排序状态，顶层无条件调用 10 个 `useQuery`（总览、时序、三个拆分、三个下拉、两张明细），两个 `ModuleSection` 上下平铺并各自渲染一套卡片 / 图表 / 拆分 / 明细。
 - 「下钻」相关代码集中在 `App.tsx` 的 `drill()`、`detailSession`、`labelOf()`、`chips` 与 `scrollIntoView`，以及 `FilterBar.tsx` 的 `ActiveChip` / `chips` / `onClear` 和 `styles.css` 的 `.filter-chips` / `.chip-*` / `.detail-banner`。这部分是纯删除，不涉及后端。
 - `EChart.tsx` 已内置 `ResizeObserver`，只渲染激活 tab 时无需改造图表组件本身。
@@ -27,12 +27,12 @@
 
 把可复算的展示逻辑抽成 `src/web/` 下的纯函数并单测覆盖，组件保持薄：
 
-- `format.ts` 新增 `formatTokens(value)`（K / M / B，1 位小数）与 `formatRefreshTime(ts)`（本地 `HH:mm`）；`formatInteger` 保留给计数，`formatCredit` / `formatPercent` 不变。
+- `format.ts` 新增 `formatTokens(value)`（K / M / B，1 位小数）与 `formatRefreshTime(ts)`（本地 `HH:mm`）；`formatInteger` 行为不变，仍用于计数与趋势图积分刻度，`formatCredit` / `formatPercent` 不变。
 - `visibleModelKeys(rows, activeTab)`：Token tab 取 `totalTokens > 0`，积分 tab 取 `credit > 0`，返回业务键集合。
 - `cacheHitRate(inputTokens, cacheReadTokens)`：分母为 0 时返回 `null`。
 - `visibleBreakdownRows(rows, limit)`：排序后截取前 N 行，`limit` 固定 8。
 
-这几个函数集中放在 `src/web/display.ts`（或按用途并入 `format.ts` / `filters.ts`），避免在组件里散落判断。面板仍只渲染 API 返回值，不自行求和换算（AD-4）：占比、合计全部沿用服务层结果。
+其中 `formatTokens` / `formatRefreshTime` 放 `src/web/format.ts`，其余三个放新增的 `src/web/display.ts`；组件只调用、不内联判断。面板仍只渲染 API 返回值，不自行求和换算（AD-4）：占比、合计全部沿用服务层结果。
 
 ### 明细折叠与懒加载
 
@@ -62,7 +62,7 @@ App 按 `activeTab` 计算 `visibleModelKeys`，统一作用于三处：按模�
 
 `SCHEMA_VERSION` 由 1 递增到 2，启动时删库全量重建，使首次结果基于完整候选集合。后续增量刷新只解析部分文件时，`upsertModel` 的「只在 `display_name = model` 时覆盖」保证已规范化的名字不回退，因此不需要每次刷新重算全库冲突。补一条回归测试覆盖该场景。
 
-**与后续交付的顺序约束**：`group-normalization` 交付也要递增 `schema_version`，必须从 2 递增到 3，不能写死 2；两份交付都修改 `server/query.ts` 与 `FilterBar.tsx`，按本交付先、分组归一化后的顺序实施。
+**与后续交付的顺序约束**：`group-normalization` 交付也要递增 `schema_version`，必须从 2 递增到 3，不能写死 2；两份交付都修改 `server/query.ts`（本交付改 `getSummary`，分组交付改 `getBreakdown` / `buildWhere` / `getRequests`），`FilterBar.tsx` 只由本交付修改，分组交付通过服务层聚合间接影响下拉选项；按本交付先、分组归一化后的顺序实施。
 
 ### 刷新完成时间
 
@@ -96,7 +96,7 @@ App 按 `activeTab` 计算 `visibleModelKeys`，统一作用于三处：按模�
 
 ## 影响范围
 
-**新增**：`src/web/components/ModuleTabs.tsx`、`src/web/display.ts`（纯函数）、`tests/format.test.ts`（或 `tests/display.test.ts`）。
+**新增**：`src/web/components/ModuleTabs.tsx`、`src/web/display.ts`（展示纯函数）、`tests/display.test.ts`（格式化与展示纯函数单测）。
 
 **修改**：`src/web/App.tsx`、`src/web/components/FilterBar.tsx`、`BreakdownList.tsx`、`RequestTable.tsx`、`MetricCards.tsx`、`TrendChart.tsx`、`src/web/format.ts`、`src/web/useQuery.ts`、`src/web/styles.css`、`src/shared/types.ts`、`server/query.ts`、`src/etl/dimensions.ts`、`src/etl/index-db.ts`（`SCHEMA_VERSION`）、`tests/shared.test.ts`、`tests/api.test.ts`、`tests/dimensions.test.ts`、`tests/refresh.test.ts`。
 

@@ -10,7 +10,7 @@
 
 本 Spec 的需求**直接覆盖** v1.0.0 `usage-stats-spec.md` 中 R5 的分组展示与聚合方式（业务键仍取 `sessions.cwd`，不改变归属），以及 `product-brief.md` 关键术语「分组」、`data-model.md` 的 C7 / C11 分组快照说明、`integration.md` 的关联键与兼容性风险表。归档的 v1.0.0 三份文档不改写；长期文档按本 Spec 更新：`product-brief.md`、`technical-architecture.md`（接口表 `group` 参数的虚拟键说明）、`data-model.md`（`groups` 表结构与新增约束）、`integration.md`（字段全 NULL 的实测事实、路径判据与兼容性风险）。
 
-本交付与 `usage-panel-polish-spec.md` 都会修改 `server/query.ts` 与 `src/web/components/FilterBar.tsx`，按面板可读性优化 → 分组口径归一化的顺序实施，避免同文件冲突；分组口径需独立验收维度一致性。
+本交付与 `usage-panel-polish-spec.md` 都会修改 `server/query.ts`（本交付改 `getBreakdown` / `buildWhere` / `getRequests`，面板交付改 `getSummary`），按面板可读性优化 → 分组口径归一化的顺序实施，避免同文件冲突。分组筛选下拉的变化由服务层聚合结果驱动，`FilterBar.tsx` 只由面板交付修改；分组口径需独立验收维度一致性。
 
 ## 范围与非目标
 
@@ -51,7 +51,7 @@
 判定在解析层 `ensureGroup` 写入维表时完成，结果存 `groups.is_auto`；服务层与面板不重复实现路径规则。维表仍是快照（C7 / C11）：外部会话被清理后保留原行。已存在的分组行在每次刷新时按当前 `cwd` 更新 `is_auto`，`display_name` 与 `group_path` 不变，保证增量刷新后判定与当前外部数据一致。
 
 **R3 表结构与版本**
-`groups` 增加 `is_auto INTEGER NOT NULL DEFAULT 0`；`SCHEMA_VERSION` 从 1 递增到 2，启动时版本不匹配即删库重建（沿用现有机制，不写迁移脚本）。重建后内部 `id` 重新分配，API 仍一律使用业务键字符串（C14）。
+`groups` 增加 `is_auto INTEGER NOT NULL DEFAULT 0`；`SCHEMA_VERSION` 在当时的当前版本基础上递增 1（本交付排在面板可读性优化之后实施，预期为 2 → 3，不写死目标值），启动时版本不匹配即删库重建（沿用现有机制，不写迁移脚本）。重建后内部 `id` 重新分配，API 仍一律使用业务键字符串（C14）。
 
 **R4 按分组聚合**
 `getBreakdown` 的 group 维度，`key` 与 `name` 对自动分组统一取常量「默认」，其余保持 `group_path` / `display_name`；`GROUP BY` 改用与 `key` 相同的表达式，使全部自动分组合成一行。`COUNT(DISTINCT r.session_id)`、`tokenShare` / `creditShare` 的计算方式不变。维表缺失行仍兜底为「未知分组」（C13）。
@@ -99,7 +99,7 @@
 - **AC8 结构重建**：`SCHEMA_VERSION` 递增后旧派生库自动删库重建；连续两次全量重建的分组聚合结果一致，与文件遍历顺序无关。
 - **AC9 只读边界**：`workbuddy.db` 仍以只读打开，刷新前后外部文件大小与 mtime 不因本项目变化；不产生网络请求。
 - **AC10 回归与检查**：v1.0.0 的 AC1–AC10 中除分组展示项外全部继续通过；`npm run typecheck`、`npm test`、`npm run build` 通过。
-- **AC11 文档同步**：`product-brief.md`、`technical-architecture.md`、`data-model.md`、`integration.md` 中分组相关描述与本 Spec 一致，不再把 `group_id` / `group_title` / `project_id` 当作可用类型来源。
+- **AC11 文档同步**：`product-brief.md`、`technical-architecture.md`、`data-model.md`、`integration.md` 中分组相关描述与本 Spec 一致；`integration.md` 明确记录 `group_id` / `group_title` / `project_id` 全为 NULL 的实测事实，以及路径判据与目录格式变化风险。
 
 ## 已确认决策
 
