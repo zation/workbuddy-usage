@@ -35,6 +35,23 @@ function externalDb(home: string): DatabaseSync {
   return new DatabaseSync(join(home, 'workbuddy.db'));
 }
 
+function openFixture(home: string): AcceptanceFixture {
+  const config: EtlConfig = {
+    workbuddyHome: home,
+    indexPath: join(home, '.data', 'index.db'),
+  };
+  const { db } = openIndex(config.indexPath);
+  const fixture: AcceptanceFixture = {
+    home,
+    config,
+    db,
+    refresh: createRefresher(db, config).refresh,
+    close: () => closeIndex(db),
+  };
+  opened.push(fixture);
+  return fixture;
+}
+
 function createFixture(): AcceptanceFixture {
   const home = makeTempDir();
   createWorkbuddyDb(
@@ -76,20 +93,7 @@ function createFixture(): AcceptanceFixture {
     stepLine({ requestId: 'r3', timestamp: day12 + 2000, input: 240, output: 160 }),
   ]);
 
-  const config: EtlConfig = {
-    workbuddyHome: home,
-    indexPath: join(home, '.data', 'index.db'),
-  };
-  const { db } = openIndex(config.indexPath);
-  const fixture: AcceptanceFixture = {
-    home,
-    config,
-    db,
-    refresh: createRefresher(db, config).refresh,
-    close: () => closeIndex(db),
-  };
-  opened.push(fixture);
-  return fixture;
+  return openFixture(home);
 }
 
 function findRow(rows: RequestRow[], requestId: string): RequestRow {
@@ -158,6 +162,39 @@ describe('AC2 去重生效', () => {
     expect(summary.token.requestCount).toBe(7);
     expect(summary.token.sessionCount).toBe(5);
   });
+
+  it('80 步骤的长链路请求只计一次，步骤累加被放大 30 倍以上', async () => {
+    const home = makeTempDir();
+    createWorkbuddyDb(home, [], []);
+    const stepCount = 80;
+    const lines: string[] = [];
+    for (let index = 1; index <= stepCount; index += 1) {
+      lines.push(
+        stepLine({
+          requestId: 'long-request',
+          timestamp: day11 + index * 1000,
+          input: index * 6,
+          output: index * 4,
+          total: index * 10,
+        }),
+      );
+    }
+    writeProject(home, 'enc-long/long.jsonl', lines);
+
+    const fixture = openFixture(home);
+    const result = await fixture.refresh();
+    expect(result.upsertedRequests).toBe(1);
+
+    const summary = getSummary(fixture.db, {});
+    expect(summary.token).toMatchObject({
+      totalTokens: 800,
+      inputTokens: 480,
+      outputTokens: 320,
+      requestCount: 1,
+    });
+    const stepSum = ((stepCount * (stepCount + 1)) / 2) * 10;
+    expect(stepSum / summary.token.totalTokens).toBeGreaterThan(30);
+  });
 });
 
 describe('AC3 维度一致', () => {
@@ -218,6 +255,39 @@ describe('AC5 全量重建', () => {
     expect(rebuilt.upsertedRequests).toBe(7);
     expect(getSummary(reopened.db, {}).token.totalTokens).toBe(2765);
     closeIndex(reopened.db);
+  });
+
+  it('120 个文件 / 960 个请求的全量解析在 30 秒内完成', async () => {
+    const home = makeTempDir();
+    createWorkbuddyDb(home, [], []);
+    const fileCount = 120;
+    const requestsPerFile = 8;
+    for (let fileIndex = 0; fileIndex < fileCount; fileIndex += 1) {
+      const lines: string[] = [];
+      for (let requestIndex = 0; requestIndex < requestsPerFile; requestIndex += 1) {
+        const requestId = `f${fileIndex}-r${requestIndex}`;
+        const timestamp = day11 + requestIndex * 2000;
+        lines.push(stepLine({ requestId, timestamp, input: 5, output: 5, total: 10 }));
+        lines.push(
+          stepLine({ requestId, timestamp: timestamp + 1000, input: 10, output: 10, total: 20 }),
+        );
+      }
+      writeProject(home, `enc${fileIndex}/s${fileIndex}.jsonl`, lines);
+    }
+
+    const fixture = openFixture(home);
+    const result = await fixture.refresh();
+    expect(result.scannedFiles).toBe(fileCount);
+    expect(result.upsertedRequests).toBe(fileCount * requestsPerFile);
+    expect(result.durationMs).toBeLessThan(30_000);
+    expect(getSummary(fixture.db, {}).token).toMatchObject({
+      totalTokens: fileCount * requestsPerFile * 20,
+      requestCount: fileCount * requestsPerFile,
+    });
+
+    const second = await fixture.refresh();
+    expect(second.changedFiles).toBe(0);
+    expect(second.durationMs).toBeLessThan(1000);
   });
 });
 
