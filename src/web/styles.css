@@ -257,83 +257,6 @@ button {
   font-size: 12px;
 }
 
-.filter-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border);
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 320px;
-  padding: 4px 10px;
-  border: 1px solid #dbe3ef;
-  border-radius: 999px;
-  background: var(--token-soft);
-  color: #1e3a8a;
-  font-size: 12px;
-}
-
-.chip-dimension {
-  color: #64748b;
-}
-
-.chip-label {
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chip-close {
-  font-size: 14px;
-  line-height: 1;
-  opacity: 0.6;
-}
-
-.chip:hover .chip-close {
-  opacity: 1;
-}
-
-.detail-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
-  padding: 14px 18px;
-  border: 1px solid #dbe3ef;
-  border-radius: var(--radius);
-  background: linear-gradient(90deg, #eff6ff, #ffffff);
-}
-
-.detail-banner > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.detail-eyebrow {
-  color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.detail-banner strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 15px;
-  font-weight: 600;
-}
-
 .module {
   --accent: var(--token);
   position: relative;
@@ -745,10 +668,5 @@ th[aria-sort='ascending'] .sort-button {
 
   .filter-field {
     min-width: 140px;
-  }
-
-  .detail-banner {
-    flex-direction: column;
-    align-items: flex-start;
   }
 }

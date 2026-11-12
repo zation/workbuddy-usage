@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import type {
   BreakdownResponse,
-  BreakdownRow,
   Filters,
   RequestsResponse,
   SummaryResponse,
@@ -10,7 +9,6 @@ import type {
 import { filterParams, postRefresh } from './api.ts';
 import { BreakdownList } from './components/BreakdownList.tsx';
 import { FilterBar } from './components/FilterBar.tsx';
-import type { ActiveChip } from './components/FilterBar.tsx';
 import { MetricCards } from './components/MetricCards.tsx';
 import type { MetricItem } from './components/MetricCards.tsx';
 import { ModuleSection } from './components/ModuleSection.tsx';
@@ -22,12 +20,6 @@ import type { CustomRange, PresetKey } from './filters.ts';
 import { formatCredit, formatInteger, formatPercent } from './format.ts';
 import { useQuery } from './useQuery.ts';
 
-type DrillDimension = 'group' | 'session' | 'model';
-
-function labelOf(rows: BreakdownRow[], key: string): string {
-  return rows.find((row) => row.key === key)?.name ?? key;
-}
-
 export function App() {
   const today = useMemo(() => todayKey(), []);
   const [preset, setPreset] = useState<PresetKey>('today');
@@ -36,7 +28,6 @@ export function App() {
     rangeForPreset('today', today, { from: today, to: today }),
   );
   const [rangeError, setRangeError] = useState<string | null>(null);
-  const [detailSession, setDetailSession] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshInfo, setRefreshInfo] = useState<string | null>(null);
@@ -79,25 +70,7 @@ export function App() {
   const optionSessions = sessionOptions.data?.rows ?? [];
   const optionModels = modelOptions.data?.rows ?? [];
 
-  const chips: ActiveChip[] = [];
-  if (filters.group) {
-    chips.push({ dimension: 'group', key: filters.group, label: labelOf(optionGroups, filters.group) });
-  }
-  if (filters.session) {
-    chips.push({
-      dimension: 'session',
-      key: filters.session,
-      label: labelOf(optionSessions, filters.session),
-    });
-  }
-  if (filters.model) {
-    chips.push({ dimension: 'model', key: filters.model, label: labelOf(optionModels, filters.model) });
-  }
-
   const patchFilters = (patch: Partial<Filters>) => {
-    if ('session' in patch && !patch.session) {
-      setDetailSession(null);
-    }
     setFilters((previous) => ({ ...previous, ...patch }));
   };
 
@@ -126,7 +99,6 @@ export function App() {
     setPreset('today');
     setCustom({ from: today, to: today });
     setRangeError(null);
-    setDetailSession(null);
     setFilters(rangeForPreset('today', today, { from: today, to: today }));
   };
 
@@ -148,19 +120,6 @@ export function App() {
       setRefreshing(false);
     }
   };
-
-  const drill = (dimension: DrillDimension, key: string, moduleId: string) => {
-    setFilters((previous) => ({ ...previous, [dimension]: key }));
-    if (dimension === 'session') {
-      setDetailSession(key);
-      return;
-    }
-    document.getElementById(moduleId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  const detailName = detailSession
-    ? labelOf(sessionRows.data?.rows ?? optionSessions, detailSession)
-    : null;
 
   const tokenMetrics = summary.data?.token;
   const creditMetrics = summary.data?.credit;
@@ -238,30 +197,12 @@ export function App() {
         groupOptions={optionGroups}
         sessionOptions={optionSessions}
         modelOptions={optionModels}
-        chips={chips}
         rangeError={rangeError}
         onChange={patchFilters}
         onPreset={handlePreset}
         onCustom={handleCustom}
-        onClear={(dimension) => patchFilters({ [dimension]: undefined })}
         onReset={handleReset}
       />
-
-      {detailSession ? (
-        <div className="detail-banner" id="detail-panel">
-          <div>
-            <span className="detail-eyebrow">会话明细</span>
-            <strong>{detailName}</strong>
-          </div>
-          <button
-            type="button"
-            className="ghost-button"
-            onClick={() => patchFilters({ session: undefined })}
-          >
-            退出会话明细
-          </button>
-        </div>
-      ) : null}
 
       <ModuleSection
         id="token-module"
@@ -289,7 +230,7 @@ export function App() {
             loading={groupRows.loading}
             error={groupRows.error}
             emptyText="当前筛选下没有分组数据"
-            onSelect={(key) => drill('group', key, 'token-module')}
+            onSelect={(key) => patchFilters({ group: key })}
           />
           <BreakdownList
             title="按对话"
@@ -298,7 +239,7 @@ export function App() {
             loading={sessionRows.loading}
             error={sessionRows.error}
             emptyText="当前筛选下没有对话数据"
-            onSelect={(key) => drill('session', key, 'token-module')}
+            onSelect={(key) => patchFilters({ session: key })}
           />
           <BreakdownList
             title="按模型"
@@ -307,7 +248,7 @@ export function App() {
             loading={modelRows.loading}
             error={modelRows.error}
             emptyText="当前筛选下没有模型数据"
-            onSelect={(key) => drill('model', key, 'token-module')}
+            onSelect={(key) => patchFilters({ model: key })}
           />
         </div>
         <div className="module-block">
@@ -354,7 +295,7 @@ export function App() {
             loading={groupRows.loading}
             error={groupRows.error}
             emptyText="当前筛选下没有分组数据"
-            onSelect={(key) => drill('group', key, 'credit-module')}
+            onSelect={(key) => patchFilters({ group: key })}
           />
           <BreakdownList
             title="按对话"
@@ -363,7 +304,7 @@ export function App() {
             loading={sessionRows.loading}
             error={sessionRows.error}
             emptyText="当前筛选下没有对话数据"
-            onSelect={(key) => drill('session', key, 'credit-module')}
+            onSelect={(key) => patchFilters({ session: key })}
           />
           <BreakdownList
             title="按模型"
@@ -372,7 +313,7 @@ export function App() {
             loading={modelRows.loading}
             error={modelRows.error}
             emptyText="当前筛选下没有模型数据"
-            onSelect={(key) => drill('model', key, 'credit-module')}
+            onSelect={(key) => patchFilters({ model: key })}
           />
         </div>
         <div className="module-block">
