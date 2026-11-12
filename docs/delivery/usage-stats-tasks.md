@@ -80,7 +80,7 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 
 # T005 逐行解析与按请求归并
 
-状态：pending
+状态：done
 
 目标：把 jsonl 事件流归并为请求级记录，落实 C2–C5 口径。
 
@@ -89,6 +89,12 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 依赖：T004。
 
 修改范围：`src/etl/`（解析与归并）。
+
+实施结果：`src/etl/fields.ts` 集中外部字段映射，只认 `providerData.conversationRequestId` / `model` / `requestModelName` 与 `message.usage` 的四个 token 字段，空对象与缺字段分别处理，未知键忽略。`src/etl/parse.ts` 用 `readline` 流式逐行解析，按请求归并：`total_tokens` 缺失或为 0 时用 `input + output` 兜底，取最大值那条的四项同源字段，`started_at` / `ended_at` 取全部步骤边界，`date_key` 由最早的 `started_at` 按本地时区派生；模型按请求 → 会话 → `未知模型` 三级回退，分组取会话 `cwd`，子代理标记 `is_subagent` 并归入父会话。C3 / C4 校验只告警、保留原值。
+
+验证：`npm run typecheck` 通过；`npm test` 21 个用例通过，覆盖时间末条小于最大值的非单调反例（取 250 而非 180）、四项同源、缺 `total_tokens` 兜底、缓存缺失记 0、C3 / C4 / 零值告警、非法 JSON 与非法时间戳跳过、未知字段与未知事件类型不中断、模型三级回退、子代理归属、重复解析稳定。真实数据解析 265 个文件用时 2.3 秒：30,914 条用量步骤归并为 934 条文件级请求记录，0 个 C3 / C4 违规，2,995 条零 token 步骤，2 行非法 JSON；全局去重（同一 `request_id` 出现在两个文件，数值相同）留待写入层处理。
+
+提交：
 
 # T006 维表 upsert 与业务键换 id
 
