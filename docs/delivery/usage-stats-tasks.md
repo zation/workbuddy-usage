@@ -62,7 +62,7 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 
 # T004 外部数据只读访问与扫描
 
-状态：pending
+状态：done
 
 目标：只读打开 `workbuddy.db`，扫描 jsonl 并产出待解析集合，字段映射集中一处。
 
@@ -71,6 +71,12 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 依赖：T001、T002。
 
 修改范围：`src/etl/`（外部数据源访问与扫描）。
+
+实施结果：`src/etl/external.ts` 以 `readOnly: true` 打开 `workbuddy.db`，集中映射 `sessions`（id / cwd / title / custom_title / model）与 `session_usage.credit_json`，空串归一为 NULL，非法 JSON、非数字积分与重复键分别计数告警；库不存在时返回 `available=false` 的空快照，库存在但读取失败时抛出由刷新层中止。`src/etl/scan.ts` 递归扫描 `projects/**/*.jsonl`，只认 `<编码cwd>/<sessionId>.jsonl` 与 `<编码cwd>/<sessionId>/subagents/<agentId>.jsonl` 两种布局，其余 `.jsonl` 计入 `unrecognizedFiles`；扩展名判断天然排除 `.ndjson`，结果按路径排序，`sizeBytes` / `mtimeMs` 在返回前逐文件 stat（C9）。
+
+验证：`npm run typecheck` 通过；`npm test` 14 个用例通过，覆盖主/子代理判定、排除 `.ndjson` 与 `.txt`、深层无关 `.jsonl` 计数、stat 取值、projects 缺失、会话与积分映射、三类积分告警、库不存在降级、只读连接拒绝 `DELETE` / `INSERT` / `CREATE TABLE`。真实数据扫描：265 个 jsonl（218 主会话 + 47 子代理）、0 个无法归属；读取 251 个会话、477 条积分，无告警。
+
+提交：
 
 # T005 逐行解析与按请求归并
 

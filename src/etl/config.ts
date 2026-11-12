@@ -16,10 +16,10 @@ export function resolveEtlConfig(env: NodeJS.ProcessEnv = process.env): EtlConfi
 }
 
 /** 外部 sqlite 与 projects 目录的固定相对位置。 */
-export function externalDbPath(config: EtlConfig): string {
-  return resolve(config.workbuddyHome, 'workbuddy.db');
+export function externalDbPath(workbuddyHome: string): string {
+  return resolve(workbuddyHome, 'workbuddy.db');
 }
 
-export function projectsRoot(config: EtlConfig): string {
-  return resolve(config.workbuddyHome, 'projects');
+export function projectsRoot(workbuddyHome: string): string {
+  return resolve(workbuddyHome, 'projects');
 }
