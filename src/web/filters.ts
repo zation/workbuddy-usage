@@ -45,3 +45,13 @@ export function rangeForPreset(
 export function hasActiveFilters(filters: Filters): boolean {
   return Boolean(filters.group || filters.session || filters.model);
 }
+
+/** 切换时间预设只替换 from / to，保留已选的分组、对话与模型。 */
+export function applyPresetRange(range: Filters, current: Filters): Filters {
+  return {
+    ...range,
+    group: current.group,
+    session: current.session,
+    model: current.model,
+  };
+}

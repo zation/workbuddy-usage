@@ -17,7 +17,7 @@ import { ModuleSection } from './components/ModuleSection.tsx';
 import { RequestTable } from './components/RequestTable.tsx';
 import type { SortState } from './components/RequestTable.tsx';
 import { TrendChart } from './components/TrendChart.tsx';
-import { rangeForPreset, todayKey } from './filters.ts';
+import { applyPresetRange, rangeForPreset, todayKey } from './filters.ts';
 import type { CustomRange, PresetKey } from './filters.ts';
 import { formatCredit, formatInteger, formatPercent } from './format.ts';
 import { useQuery } from './useQuery.ts';
@@ -104,7 +104,9 @@ export function App() {
   const handlePreset = (next: PresetKey) => {
     setPreset(next);
     setRangeError(null);
-    setFilters(rangeForPreset(next, today, custom));
+    setFilters((previous) =>
+      applyPresetRange(rangeForPreset(next, today, custom), previous),
+    );
   };
 
   const handleCustom = (range: CustomRange) => {
