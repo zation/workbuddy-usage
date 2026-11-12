@@ -411,8 +411,8 @@ describe('AC10 文件原子替换', () => {
   });
 });
 
-describe('AC11 界面结构', () => {
-  it('数据口径具备首屏所需的全部聚合结果（界面结构见人工核对记录）', async () => {
+describe('AC11 首屏数据完整性', () => {
+  it('首屏所需的服务层聚合结果齐全（界面结构由 usage-panel-polish 验收记录覆盖）', async () => {
     const fixture = createFixture();
     await fixture.refresh();
     const summary = getSummary(fixture.db, {});
