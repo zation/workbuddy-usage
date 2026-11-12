@@ -8,7 +8,7 @@ v1.0.0 已交付，面板把 Token 与积分上下平铺为两个模块。实测
 
 ## 与初始需求的关系
 
-本 Spec 的需求**直接覆盖** v1.0.0 `usage-stats-spec.md` 中的行为 1（两模块结构）、行为 6（列表点击的独立状态）、行为 7（明细默认排序）与 AC11（界面结构）；行为 5（图表堆叠着色）与 R13 维度一致性沿用不改。同时涉及 `product-brief.md` 范围段和成功标准中「逐层查看」那条的措辞。归档的 v1.0.0 三份文档不改写；长期文档按本 Spec 更新：`product-brief.md`（范围与成功标准）、`technical-architecture.md`（面板层描述、`/api/summary` 接口表、关键依赖表中「端点随…增加」的措辞）、`data-model.md`（模型展示名规则 C12、`schema_version`）、`devops.md` 无需改动。
+本 Spec 的需求**直接覆盖** v1.0.0 `usage-stats-spec.md` 中的行为 1（两模块结构）、行为 6（列表点击的独立状态）、行为 7（明细默认排序）与 AC11（界面结构）；行为 5（图表堆叠着色）与 R13 维度一致性沿用不改。同时涉及 `product-brief.md` 范围段和成功标准中与逐层查看相关的措辞（现为「首屏可读」与「筛选即视图」两条）。归档的 v1.0.0 三份文档不改写；长期文档按本 Spec 更新：`product-brief.md`（范围与成功标准）、`technical-architecture.md`（面板层描述、`/api/summary` 接口表、关键依赖表中「端点随…增加」的措辞）、`data-model.md`（模型展示名规则 C12、`schema_version`）、`devops.md`（dev 入口与代理前缀）。
 
 ## 范围与非目标
 
@@ -57,7 +57,7 @@ v1.0.0 已交付，面板把 Token 与积分上下平铺为两个模块。实测
 默认激活 Token。tab 切换不得重置 `filters`、`preset`、`custom`、两张表的折叠状态与排序状态。未激活 tab 不挂载 DOM，避免 ECharts 在零尺寸容器中初始化；现有 `EChart` 的 `ResizeObserver` 保持不变，挂载时按容器尺寸渲染。筛选为两个 tab 共用，切换后所有视图按同一 `filters` 呈现。
 
 **R3 固定行数**
-三个拆分列表统一最多 8 行，行高固定，容器高度按 `8 × 行高` 计算；移除 `.breakdown-list` 的 `max-height` 与 `overflow: auto`。排序仍在服务端完成，前端只截取前 8 行。`tokenShare` / `creditShare` 与「N 项」均按全量结果计算，不随截断改变。被截断的项仍可通过筛选下拉选中。
+三个拆分列表统一最多 8 行，行高固定，容器高度按 `8 × 行高` 计算；移除 `.breakdown-list` 的 `max-height` 与 `overflow: auto`。排序沿用既有行为：服务端按合计 token 降序返回，面板再按当前模块指标（Token 看 `totalTokens`、积分看 `credit`）重排后截取前 8 行，本交付不新增排序规则。`tokenShare` / `creditShare` 与「N 项」均按全量结果计算，不随截断改变。被截断的项仍可通过筛选下拉选中。
 
 **R4 明细折叠、排序与懒加载**
 两张表各持一份折叠状态，默认折叠。默认排序为 `startedAt` 降序（覆盖 v1 行为 7 的「各模块按主指标降序」）。展开 / 收起控件位于面板标题栏，需带 `aria-expanded`。折叠时明细请求路径为 `null`，`useQuery` 不发起请求；展开后按当前排序请求一次，表头切换排序沿用现有 API 排序。展开后表格保留 440px 内部滚动区，避免长表格把页面撑得过长。
@@ -126,4 +126,4 @@ v1.0.0 已交付，面板把 Token 与积分上下平铺为两个模块。实测
 
 ## 待确认问题
 
-无。上述细节已在需求确认阶段逐条确定，本 Spec 等待开发者确认后进入 Plan。
+无。本 Spec 已确认并进入实施，实施与验收记录见 `usage-panel-polish-tasks.md`。

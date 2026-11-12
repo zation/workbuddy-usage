@@ -30,7 +30,7 @@
 - `format.ts` 新增 `formatTokens(value)`（K / M / B，1 位小数）与 `formatRefreshTime(ts)`（本地 `HH:mm`）；`formatInteger` 行为不变，仍用于计数与趋势图积分刻度，`formatCredit` / `formatPercent` 不变。
 - `visibleModelKeys(rows, activeTab)`：Token tab 取 `totalTokens > 0`，积分 tab 取 `credit > 0`，返回业务键集合。
 - `cacheHitRate(inputTokens, cacheReadTokens)`：分母为 0 时返回 `null`。
-- `visibleBreakdownRows(rows, limit)`：排序后截取前 N 行，`limit` 固定 8。
+- `visibleBreakdownRows(rows, limit)`：截取前 N 行，`limit` 固定 8；排序仍由 `BreakdownList` 按当前指标完成后传入，函数不重复排序。
 
 其中 `formatTokens` / `formatRefreshTime` 放 `src/web/format.ts`，其余三个放新增的 `src/web/display.ts`；组件只调用、不内联判断。面板仍只渲染 API 返回值，不自行求和换算（AD-4）：占比、合计全部沿用服务层结果。
 
@@ -98,11 +98,11 @@ App 按 `activeTab` 计算 `visibleModelKeys`，统一作用于三处：按模�
 
 **新增**：`src/web/components/ModuleTabs.tsx`、`src/web/display.ts`（展示纯函数）、`tests/display.test.ts`（格式化与展示纯函数单测）。
 
-**修改**：`src/web/App.tsx`、`src/web/components/FilterBar.tsx`、`BreakdownList.tsx`、`RequestTable.tsx`、`MetricCards.tsx`、`TrendChart.tsx`、`src/web/format.ts`、`src/web/useQuery.ts`、`src/web/styles.css`、`src/shared/types.ts`、`server/query.ts`、`src/etl/dimensions.ts`、`src/etl/index-db.ts`（`SCHEMA_VERSION`）、`tests/shared.test.ts`、`tests/api.test.ts`、`tests/dimensions.test.ts`、`tests/refresh.test.ts`。
+**修改**：`src/web/App.tsx`、`src/web/components/FilterBar.tsx`、`BreakdownList.tsx`、`RequestTable.tsx`、`MetricCards.tsx`、`ModuleSection.tsx`、`TrendChart.tsx`、`src/web/format.ts`、`src/web/useQuery.ts`、`src/web/styles.css`、`src/shared/types.ts`、`server/query.ts`、`src/etl/dimensions.ts`、`src/etl/index-db.ts`（`SCHEMA_VERSION`）、`tests/shared.test.ts`、`tests/api.test.ts`、`tests/dimensions.test.ts`、`tests/refresh.test.ts`、`vite.config.ts`（仅 dev 代理前缀，见下）。
 
-**文档**：`product-brief.md`（范围段、成功标准措辞）、`technical-architecture.md`（面板层描述、`/api/summary` 接口表、Hono 依赖行措辞）、`data-model.md`（C12 增加冲突处理、结构版本）。`integration.md` 与 `devops.md` 本交付不涉及，不改。
+**文档**：`product-brief.md`（范围段、成功标准措辞）、`technical-architecture.md`（面板层描述、`/api/summary` 接口表、Hono 依赖行措辞）、`data-model.md`（C12 增加冲突处理、结构版本）、`devops.md`（dev 入口与代理前缀）。`integration.md` 本交付不涉及，不改。
 
-**不改**：`~/.workbuddy` 下任何文件、`requests` 与 `groups` 表结构、五个 API 端点的路径与参数、`getRequests` 默认排序、刷新流程与积分挂接口径、依赖清单、构建配置。
+**不改**：`~/.workbuddy` 下任何文件、`requests` 与 `groups` 表结构、五个 API 端点的路径与参数、`getRequests` 默认排序、刷新流程与积分挂接口径、依赖清单、构建产物配置。唯一例外是 `vite.config.ts` 的 dev 代理前缀：原 `/api` 会把前端模块 `api.ts` 也转发到 API 服务，导致 `npm run dev` 白屏，实施时收窄为 `^/api/`（提交 `e73fa1c`），不影响生产构建。
 
 ## 数据与接口变化
 

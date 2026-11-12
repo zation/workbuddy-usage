@@ -20,7 +20,7 @@
 
 修改范围：`src/web/format.ts`、`src/web/display.ts`、`tests/display.test.ts`。
 
-实施结果：`formatTokens` 按 10³ / 10⁶ / 10⁹ 切 K / M / B，`999_999` 落在 <10⁶ 区间输出 `1000.0K`，为 Spec 阈值规则的直接结果，已在单测中固化；`formatRefreshTime` 输出本地 `HH:mm`；`display.ts` 提供 `visibleModelKeys` / `visibleBreakdownRows` / `cacheHitRate`。`visibleBreakdownRows(rows, limit)` 只做截取，排序仍由 `BreakdownList` 按当前指标完成（Spec R3「排序仍在服务端完成，前端只截取」），故函数签名不带 metric。
+实施结果：`formatTokens` 按 10³ / 10⁶ / 10⁹ 切 K / M / B，`999_999` 落在 <10⁶ 区间输出 `1000.0K`，为 Spec 阈值规则的直接结果，已在单测中固化；`formatRefreshTime` 输出本地 `HH:mm`；`display.ts` 提供 `visibleModelKeys` / `visibleBreakdownRows` / `cacheHitRate`。`visibleBreakdownRows(rows, limit)` 只做截取，排序仍由 `BreakdownList` 按当前指标完成（服务端按合计 token 降序返回，积分模块在前端按 credit 重排，Spec R3 已按此实情修订），故函数签名不带 metric。
 
 验证：`npm run typecheck` 通过；`npx vitest run tests/display.test.ts` 12 项通过（含 0 / 999 / 1 000 / 999 999 / 10⁶ / 10⁹ 临界值、两 tab 判定、截取与全量计数分离、分母为 0）。
 
@@ -66,13 +66,13 @@
 
 必要依赖：T004。
 
-修改范围：`src/web/App.tsx`、`src/web/components/ModuleTabs.tsx`、`src/web/styles.css`。
+修改范围：`src/web/App.tsx`、`src/web/components/ModuleTabs.tsx`、`src/web/components/ModuleSection.tsx`、`src/web/styles.css`、`vite.config.ts`（dev 代理前缀）。
 
-实施结果：新增 `ModuleTabs`（tablist / tab / `aria-selected` / `aria-controls`，支持左右方向键并做焦点跟随）；`ModuleSection` 改为 `tabpanel`，tab 与面板 id 由 `ModuleTabs` 导出的同一组函数生成，避免两处约定漂移；`activeTab` 默认 `token`，两个模块只在激活时挂载，`useQuery` 全部保留在组件顶层。附带修复 `vite.config.ts` 的 dev 代理前缀（`/api` → `^/api/`）：此前前端模块 `/api.ts` 被转发到 API 服务，`npm run dev` 下整页白屏，属本任务之前已存在的问题，不修无法做交互验收。
+实施结果：新增 `ModuleTabs`（tablist / tab / `aria-selected` / `aria-controls`，支持左右方向键并做焦点跟随）；`ModuleSection` 改为 `tabpanel`，tab id、`aria-controls` 与 `aria-labelledby` 都由 `ModuleTabs` 导出的同一组函数生成；面板 id 仍由 `App` 传入字面量（`token-module` / `credit-module`），`modulePanelId` 只用于 `aria-controls`，两处尚未打通，存在漂移风险（记入 backlog）。`activeTab` 默认 `token`，两个模块只在激活时挂载，`useQuery` 全部保留在组件顶层。附带修复 `vite.config.ts` 的 dev 代理前缀（`/api` → `^/api/`）：此前前端模块 `/api.ts` 被转发到 API 服务，`npm run dev` 下整页白屏，属本任务之前已存在的问题，不修无法做交互验收。
 
 验证：`npm run typecheck`、`npm run build` 通过；dev 服务下核对两个 tab 的 `aria-selected` 与面板挂载、默认激活 Token、切换后分组筛选与时间预设保持不变、两个 tab 图表首次激活宽度均为 1232px。
 
-提交：f1caa3a、e73fa1c
+提交：e73fa1c、f1caa3a
 
 # T006 拆分列表固定行数
 
@@ -98,7 +98,7 @@
 
 必要依赖：T001、T005。
 
-修改范围：`src/web/useQuery.ts`、`src/web/components/RequestTable.tsx`、`src/web/App.tsx`。
+修改范围：`src/web/useQuery.ts`、`src/web/components/RequestTable.tsx`、`src/web/App.tsx`、`src/web/styles.css`。
 
 实施结果：`useQuery` 支持 `null` 路径，折叠时不发请求且清空旧结果；`RequestTable` 标题栏改为整行 `<button aria-expanded aria-controls>`（`useId` 生成面板 id），折叠只渲染标题栏并以「点击展开」提示，展开后显示行数；两张表各持一份折叠状态，排序默认 `startedAt desc` 由前端显式传参，`getRequests` 默认排序未改。
 
@@ -114,7 +114,7 @@
 
 必要依赖：T002、T006、T007。
 
-修改范围：`src/web/App.tsx`、`src/web/components/BreakdownList.tsx`、`RequestTable.tsx`、`MetricCards.tsx`、`TrendChart.tsx`。
+修改范围：`src/web/App.tsx`、`src/web/components/BreakdownList.tsx`、`RequestTable.tsx`、`MetricCards.tsx`、`TrendChart.tsx`、`src/web/styles.css`。
 
 实施结果：token 全链路改用 `formatTokens`（含 tooltip 与 y 轴），积分与计数格式不变；积分 y 轴改 `formatInteger`；`MetricItem.suffix` 渲染为数值后的 `.metric-suffix`，「缓存命中」卡传入 `cacheHitRate` 结果，`inputTokens = 0` 时传 `—`。
 
@@ -136,6 +136,8 @@
 
 验证：`npm run typecheck`、`npm test`、`npm run build` 通过；全部时间下 Token tab 模型下拉 10 项（缺 `hy4-preview-f`）、积分 tab 8 项（缺 `step-5-preview` / `hy3` / `glm-5.2`），两侧项数与 0 值模型数之和均为 11；选中 `hy3` 后切到积分 tab，下拉仍显示 `Hy3`；被隐藏后对应视图显示空态而非报错；页面无任何隐藏提示文案。
 
+已知缺口（复核补充）：可见集合取自含模型筛选的 `modelRows`，却用于过滤去掉模型筛选的 `modelOptions`，实测选中某个模型后下拉只剩该模型与「全部模型」，无法直接切换；本次验收只覆盖了「已选模型仍显示」，未覆盖「选中后仍可切换」，记入 `docs/backlog/panel-display-fixes.md`。
+
 提交：2919b93、35da5ff
 
 # T010 刷新完成时间显示
@@ -146,7 +148,7 @@
 
 必要依赖：T001、T002、T005。
 
-修改范围：`src/web/App.tsx`。
+修改范围：`src/web/App.tsx`、`src/web/styles.css`。
 
 实施结果：页头在「本地数据」与刷新按钮之间显示「上次刷新 HH:mm」，无记录时显示「尚未刷新」，首屏加载中不显示占位（避免把加载态误报为未刷新）；未新增端点与状态。
 
@@ -169,9 +171,10 @@
 - `product-brief.md`：范围段改为「Token 与积分分成两个 tab + 四个共用筛选 + 明细默认折叠按时间降序」；成功标准把「一次下钻到位」替换为「首屏可读」与「筛选即视图」两条。
 - `technical-architecture.md`：面板层改为「两个 tab、共用一组筛选栏」；分层原则补「0 值隐藏与列表截断只影响展示」；Hono 依赖行去掉「端点会随下钻增加」；`/api/summary` 接口表补 `lastRefreshAt`；开发部署说明补代理前缀 `^/api/` 的原因。
 - `data-model.md`：`models` 表说明补规范化后的重名冲突规则（组内按标识字典序，首项保留，其余 `规范化名 (标识)`）；C12 补冲突处理；版本管理补「展示名这类派生规则变化也需递增，本次 1 → 2」。
-- `docs/backlog/subagent-credit-reconciliation.md` 与本交付无关，未改动；`integration.md`、`devops.md` 按 Plan 不涉及。
+- `devops.md`：开发与生产入口分开（dev 为 5173、生产为 4620），补 Vite proxy 只转发 `^/api/` 的约束与原因，并注明项目未配置 lint。
+- `docs/backlog/subagent-credit-reconciliation.md` 与本交付无关，未改动；`integration.md` 本交付不涉及。
 
-验证（AC1–AC11，`npm run dev` + 无头 Chrome 驱动本地页面与 API 逐条核对）：
+验证（AC1–AC11，`npm run dev` + 无头 Chrome 经 CDP 驱动本地页面与 API 逐条核对；驱动脚本为一次性临时工具，未入库，截图输出到临时目录、同样不入库，断言项与结果如下）：
 
 - **AC1 通过**：界面无 `.chip` / `.detail-banner`；列表点击与下拉框选择写入同一份筛选，两者发出的 `/api/summary` 查询串完全一致；重置按钮在筛选后启用，重置回到初始状态。
 - **AC2 通过**：默认激活 Token；设置时间预设、模型筛选、展开明细并改排序后切到积分再切回，预设 / 筛选 / 折叠 / 排序全部保留；两个 tab 首次激活时图表宽度均 1232px。
@@ -179,12 +182,25 @@
 - **AC4 通过**：两张表默认折叠且状态独立；折叠时无 `/api/requests` 请求；展开后按 `startedAt desc` 请求并可点表头切换排序；表格保留 440px 内部滚动。
 - **AC5 通过**：token 数值（卡片 / 拆分 / 明细 / tooltip / y 轴）均为 K/M/B，页面文本无「万」「亿」；积分与计数格式不变，积分轴无 `k`；无任何数值型 `title`，不存在精确值 hover。
 - **AC6 通过**：页面「缓存命中」卡 `5.0M 97.4%`，与 `cacheReadTokens / inputTokens = 5 035 584 / 5 167 808` 手算一致；无请求时显示 `0 —`；积分模块无该后缀、无按天趋势。
-- **AC7 通过**：Token tab 隐藏 `totalTokens = 0` 的 `hy4-preview-f`，积分 tab 隐藏 `credit = 0` 的 `step-5-preview` / `hy3` / `glm-5.2`，而 `hy4-preview-f` 因有积分在积分 tab 保留；下拉与拆分项同步过滤；无任何提示文案。
+- **AC7 通过（有缺口）**：Token tab 隐藏 `totalTokens = 0` 的 `hy4-preview-f`，积分 tab 隐藏 `credit = 0` 的 `step-5-preview` / `hy3` / `glm-5.2`，而 `hy4-preview-f` 因有积分在积分 tab 保留；下拉与拆分项同步过滤；无任何提示文案。缺口：选中某个模型后下拉只剩该模型，无法直接切换，属可见集合口径问题，记入 T009 与 `docs/backlog/panel-display-fixes.md`。
 - **AC8 通过**：`hy4` 与 `hy4-free` 仍为两个业务键，展示名为 `Hy4` 与 `Hy4 (hy4-free)`；连续两次删库全量重建结果逐字节一致；增量刷新不回退由单测覆盖。
 - **AC9 通过**：首屏显示 `上次刷新 18:30` 与服务端一致；触发刷新后服务端时间戳前进、页面更新为 `上次刷新 18:31`；无刷新记录显示「尚未刷新」（代码路径 + 接口单测覆盖）。
 - **AC10 通过**：全部时间无筛选下，分组 / 模型 / 对话三个维度的 token 与积分之和均等于总览（token 174 089 537、积分 5 783.62）；被隐藏的 0 值模型贡献为 0，展示截断不改变合计。
 - **AC11 通过**：v1 的 AC1–AC10 由 `tests/acceptance.test.ts` 继续覆盖并通过；v1 AC11 的界面结构由本 Spec 覆盖。
 
-全量检查：`npm run typecheck` 通过；`npm test` 11 个文件 86 项通过；`npm run build` 通过（服务端 `tsc` + 前端 `vite build`）。
+全量检查：`npm run typecheck` 通过；`npm test` 11 个文件 86 项通过；`npm run build` 通过（服务端 `tsc` + 前端 `vite build`）。项目无 lint 脚本，未执行 lint（原因见 `devops.md`）。
 
-收尾检查（AGENTS.md 第 5 节）：Spec 验收标准已逐条满足；Tasks 状态与实施记录已更新，T001–T010 提交字段已回填；测试与类型检查通过；三份长期文档已按实现更新且与代码无矛盾；`docs/backlog/` 中与本交付相关的条目无（子代理积分对账仍未进入开发，保持原状）。
+收尾检查（AGENTS.md 第 5 节）：Spec 验收标准已逐条满足；Tasks 状态与实施记录已更新，T001–T010 提交字段已回填；测试与类型检查通过；三份长期文档已按实现更新且与代码无矛盾；`docs/backlog/` 已新增 `panel-display-fixes.md` 记录本交付遗留的展示与验收细节问题，`subagent-credit-reconciliation.md` 与本交付无关、保持原状。
+
+## 复核后修订（2026-11-12）
+
+交付复核指出若干文档问题，经逐条核对属实后修订，均不改变需求范围与验收标准：
+
+- Spec R3 原写「排序仍在服务端完成，前端只截取前 8 行」，与实现不符：服务端只按 `total_tokens` 降序返回，积分模块在前端按 `credit` 重排。已按实情改写；Plan「纯函数下沉」中 `visibleBreakdownRows` 的排序表述同步修正。
+- Spec、Plan 与 `group-normalization-spec.md` 曾在 `e97c94a`（Tasks 提交）中一并做过复核澄清（结构版本链、v1 R8 编号、AC11 口径等），该提交正文有说明，但文档内没有确认记录。本次修订同样只做事实澄清，不改需求与验收范围。
+- Spec「待确认问题」仍留「等待开发者确认后进入 Plan」的过期句子，改为指向本 Tasks 文档。
+- Plan「影响范围」原写「不改构建配置」，与实际修改 `vite.config.ts`（dev 代理前缀）矛盾；已补入修改清单并说明原因，「不改」范围改为构建产物配置。Plan 与 Spec 的文档影响范围同时补上 `devops.md`。
+- Tasks 修改范围补记漏项：T005 补 `ModuleSection.tsx` / `vite.config.ts`，T007 / T008 / T010 补 `styles.css`；T005 的两个提交按时间顺序改为 `e73fa1c`、`f1caa3a`。
+- T005 原称「tab 与面板 id 由同一组函数生成」只对了一半：面板 id 仍由 `App` 传入字面量，已按实情改写。
+- 长期文档：`technical-architecture.md` 的分层原则与 AD-4 补「缓存命中率是唯一的前端求值项」；`product-brief.md` 核心问题删去与「非目标」冲突的「命中率是否随使用改善」；`devops.md` 修正 dev / 生产入口并补代理前缀约束与无 lint 的事实；`data-model.md` 补「新增字典序更小的同组标识会让原首项改名」的已知行为。
+- 本交付遗留的代码与验收细节问题（模型下拉塌缩、非激活 tab 的 `aria-controls` 悬空、面板 id 未与 `modulePanelId` 打通、配色随 tab 漂移、`visibleModelKeys` 用 `> 0` 与 R7 的 `=== 0` 表述差异、两处测试名实不符、`formatTokens(999_999)` 输出 `1000.0K`、验收脚本未入库）未在本次修改，统一记入 `docs/backlog/panel-display-fixes.md`。

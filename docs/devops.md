@@ -7,7 +7,7 @@
 - **Node.js ≥ 24**（项目约定）。本机通过 nvm 安装 v24.21.0，位于 `~/.nvm/versions/node/v24.21.0/bin`。
   注意：PATH 首位是 WorkBuddy 托管的 v22.22.2（`~/.workbuddy/binaries/node/versions/`）。实测 22.22.2 也能直接加载 `node:sqlite`（22.13.0 起已取消 `--experimental-sqlite`），但会打印 `ExperimentalWarning`；项目仍要求 24，理由见 [technical-architecture.md](./technical-architecture.md)。若终端里 `node -v` 显示 22，用绝对路径调用，或把系统 Node 目录调到 PATH 前面。
 - 首次拉取后安装依赖：`npm install`。
-- 日常检查：`npm run typecheck`（独立类型检查）、`npm test`（Vitest）、`npm run build`（服务端 tsc + 前端 Vite）。
+- 日常检查：`npm run typecheck`（独立类型检查）、`npm test`（Vitest）、`npm run build`（服务端 tsc + 前端 Vite）。项目未配置 lint（无 ESLint / Prettier 依赖），因此没有 lint 检查项。
 - 无需数据库服务、无需 Docker、无需 Python。
 
 ## 密钥与配置
@@ -33,8 +33,10 @@
 首次运行：
 
 1. `npm install`
-2. `npm run dev`（开发，Vite 热更新 + API proxy）或 `npm run build && npm start`（日常使用，单端口）
-3. 打开 `http://127.0.0.1:4620`
+2. 开发用 `npm run dev`（Vite `5173` 热更新 + API `4620`），日常使用用 `npm run build && npm start`（单端口）
+3. 开发打开 `http://127.0.0.1:5173`；生产打开 `http://127.0.0.1:4620`
+
+dev 的 Vite proxy 只转发 `^/api/` 前缀。不要改回 `/api`：前端模块 `src/web/api.ts` 的请求路径以 `/api` 开头，会被一并转发到服务端并返回 HTML，导致整页白屏。
 
 首次启动会先执行一次刷新：全量解析全部 `*.jsonl`（265 个文件、约 444MB，实测约 2.4 秒；快照见 [integration.md](./integration.md)），之后按文件 mtime 与大小增量更新，通常 1 秒内完成；面板中的「刷新数据」触发同一流程。服务在首次刷新完成后才开始监听端口，刷新失败时仍会启动并保留原索引，可在面板中手动重试。
 
