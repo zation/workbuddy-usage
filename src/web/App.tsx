@@ -20,7 +20,13 @@ import { applyPresetRange, rangeForPreset, todayKey } from './filters.ts';
 import type { CustomRange, PresetKey } from './filters.ts';
 import { cacheHitRate, visibleModelKeys } from './display.ts';
 import type { ModuleTab } from './display.ts';
-import { formatCredit, formatInteger, formatPercent, formatTokens } from './format.ts';
+import {
+  formatCredit,
+  formatInteger,
+  formatPercent,
+  formatRefreshTime,
+  formatTokens,
+} from './format.ts';
 import { useQuery } from './useQuery.ts';
 
 export function App() {
@@ -155,6 +161,12 @@ export function App() {
     }
   };
 
+  const lastRefreshLabel = summary.data
+    ? summary.data.lastRefreshAt === null
+      ? '尚未刷新'
+      : `上次刷新 ${formatRefreshTime(summary.data.lastRefreshAt)}`
+    : '';
+
   const tokenMetrics = summary.data?.token;
   const creditMetrics = summary.data?.credit;
 
@@ -212,6 +224,7 @@ export function App() {
         </div>
         <div className="header-actions">
           <span className="source-badge">本地数据</span>
+          <span className="refresh-time">{lastRefreshLabel}</span>
           <button
             type="button"
             className="primary-button"

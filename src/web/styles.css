@@ -124,6 +124,13 @@ button {
   color: var(--danger);
 }
 
+.refresh-time {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .source-badge {
   display: inline-flex;
   align-items: center;
