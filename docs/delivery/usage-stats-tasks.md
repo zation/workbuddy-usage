@@ -98,7 +98,7 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 
 # T006 维表 upsert 与业务键换 id
 
-状态：pending
+状态：done
 
 目标：维护 `groups` / `sessions` / `models` / `source_files`，把业务键换成内部外键，落实 C7、C11–C14。
 
@@ -107,6 +107,12 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 依赖：T003、T005。
 
 修改范围：`src/etl/`（维表与关联）。
+
+实施结果：`src/etl/dimensions.ts` 提供 `DimensionWriter`，按业务键 upsert 并在一次刷新内缓存内部 id；分组展示名取路径末段并兼容 POSIX / Windows 分隔符，`未知分组` 独立成行；会话展示名按 `custom_title` → `title` → ID 前 8 位，外部同步只更新仍存在的行，请求侧先建兜底行、后续同步可升级；模型展示名由 `computeModelDisplayNames` 按「含大写且不等于标识、出现次数最多、并列字典序最小」全局计算，写入时只在当前仍是原始标识时升级，避免增量刷新回退；`source_files` 按路径更新扫描状态并返回稳定 id。外部会话同步单独事务提交，维表行不因外部清理而删除（C11）。`UNKNOWN_GROUP` / `UNKNOWN_MODEL` 常量移入 `src/shared/constants.ts` 供解析层与服务层共用。
+
+验证：`npm run typecheck` 通过；`npm test` 30 个用例通过，新增 9 个用例覆盖路径末段（含 Windows）、会话展示名三级优先级、模型高频与并列规则及顺序无关、次数优先于字典序、分组唯一与未知分组、外部会话同步与消失后保留、请求侧兜底行升级、模型展示名稳定与未知模型、来源文件 stat 更新与 id 稳定。
+
+提交：
 
 # T007 文件原子替换与刷新编排
 

@@ -1,7 +1,8 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { UNKNOWN_MODEL, parseSourceFile } from '../src/etl/parse.ts';
+import { parseSourceFile } from '../src/etl/parse.ts';
+import { UNKNOWN_MODEL } from '../src/shared/constants.ts';
 import type { SessionMeta, SourceFileRef } from '../src/shared/types.ts';
 import { cleanupTempDirs, makeTempDir } from './helpers/temp.ts';
 

@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { toDateKey } from '../shared/dates.ts';
+import { UNKNOWN_MODEL } from '../shared/constants.ts';
 import type {
   ModelNameCandidate,
   ParsedRequest,
@@ -10,9 +11,6 @@ import type {
 } from '../shared/types.ts';
 import { emptyWarnings } from '../shared/types.ts';
 import { readStep } from './fields.ts';
-
-export const UNKNOWN_GROUP = '未知分组';
-export const UNKNOWN_MODEL = '未知模型';
 
 export interface FileParseResult {
   requests: ParsedRequest[];
