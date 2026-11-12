@@ -82,35 +82,40 @@ export function App() {
     deps,
   );
 
-  const modelRowsData = modelRows.data?.rows ?? [];
+  const modelChoiceRows = modelOptions.data?.rows ?? [];
 
-  /** R7：按当前 tab 的主指标隐藏 0 值模型，只作用于展示，不改变聚合结果。 */
+  /**
+   * R7：按当前 tab 的主指标隐藏 0 值模型，只作用于展示，不改变聚合结果。
+   * 判定用「不含模型筛选」的模型集合，选中某个模型后下拉仍能切换；已选模型即使在
+   * 本 tab 被隐藏也保留下拉项，避免筛选值与下拉状态矛盾。
+   */
   const visibleModels = useMemo(
-    () => visibleModelKeys(modelRowsData, activeTab),
-    [modelRowsData, activeTab],
+    () => visibleModelKeys(modelChoiceRows, activeTab),
+    [modelChoiceRows, activeTab],
   );
 
-  const visibleModelRows = modelRowsData.filter((row) => visibleModels.has(row.key));
+  const visibleModelRows = (modelRows.data?.rows ?? []).filter((row) =>
+    visibleModels.has(row.key),
+  );
 
   const visibleTimeseries = useMemo(() => {
     if (!timeseries.data) {
       return null;
     }
-    // 模型维度尚未取到（首次加载或失败）时先不过滤，避免趋势图闪出空态
-    if (!modelRows.data) {
+    // 模型集合尚未取到（首次加载或失败）时先不过滤，避免趋势图闪出空态
+    if (!modelOptions.data) {
       return timeseries.data;
     }
     return {
       days: timeseries.data.days,
       rows: timeseries.data.rows.filter((row) => visibleModels.has(row.model)),
     };
-  }, [timeseries.data, modelRows.data, visibleModels]);
+  }, [timeseries.data, modelOptions.data, visibleModels]);
 
   const optionGroups = groupOptions.data?.rows ?? [];
   const optionSessions = sessionOptions.data?.rows ?? [];
 
-  // 已选模型即使在本 tab 被隐藏，也保留下拉项，避免筛选值与下拉状态矛盾
-  const optionModels = (modelOptions.data?.rows ?? []).filter(
+  const optionModels = modelChoiceRows.filter(
     (row) => visibleModels.has(row.key) || row.key === filters.model,
   );
 
