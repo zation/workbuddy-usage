@@ -24,6 +24,9 @@ export function sessionDisplayName(meta: {
 /**
  * C12：同一模型标识的展示名取「含大写且不等于标识本身」的候选中出现次数最多者，
  * 并列取字典序最小；没有候选则回退标识本身。结果只取决于候选集合。
+ *
+ * 规范化后仍可能重名（如 `hy4` 与 `hy4-free` 都是 `Hy4`）：按展示名分组，
+ * 组内按标识字典序保留首项，其余显示「规范化名 (标识)」，与遍历顺序无关。
  */
 export function computeModelDisplayNames(
   candidates: ModelNameCandidate[],
@@ -60,6 +63,27 @@ export function computeModelDisplayNames(
       displayNames.set(modelKey, bestName);
     }
   }
+
+  const conflicts = new Map<string, string[]>();
+  for (const [modelKey, displayName] of displayNames) {
+    const keys = conflicts.get(displayName);
+    if (keys) {
+      keys.push(modelKey);
+    } else {
+      conflicts.set(displayName, [modelKey]);
+    }
+  }
+
+  for (const [displayName, keys] of conflicts) {
+    if (keys.length < 2) {
+      continue;
+    }
+    const sorted = [...keys].sort();
+    for (const modelKey of sorted.slice(1)) {
+      displayNames.set(modelKey, `${displayName} (${modelKey})`);
+    }
+  }
+
   return displayNames;
 }
 

@@ -191,6 +191,68 @@ describe('刷新编排与文件原子替换', () => {
     ).toEqual([{ last_refresh_at: result.lastRefreshAt }]);
   });
 
+  it('增量刷新只解析部分文件时展示名不回退（R8）', async () => {
+    const fixture = setup();
+    writeProject(fixture.home, 'enc1/s1.jsonl', [
+      stepLine({
+        requestId: 'r1',
+        timestamp: base,
+        input: 10,
+        output: 5,
+        model: 'hy4',
+        modelName: 'Hy4',
+      }),
+    ]);
+    writeProject(fixture.home, 'enc2/s2.jsonl', [
+      stepLine({
+        requestId: 'r2',
+        timestamp: base + 1000,
+        input: 10,
+        output: 5,
+        model: 'hy4-free',
+        modelName: 'Hy4',
+      }),
+    ]);
+
+    await fixture.refresh();
+    const before = rows<{ model: string; display_name: string }>(
+      fixture.db,
+      'SELECT model, display_name FROM models ORDER BY model',
+    );
+    expect(before).toEqual([
+      { model: 'hy4', display_name: 'Hy4' },
+      { model: 'hy4-free', display_name: 'Hy4 (hy4-free)' },
+    ]);
+
+    writeProject(fixture.home, 'enc2/s2.jsonl', [
+      stepLine({
+        requestId: 'r2',
+        timestamp: base + 1000,
+        input: 10,
+        output: 5,
+        model: 'hy4-free',
+        modelName: 'Hy4',
+      }),
+      stepLine({
+        requestId: 'r3',
+        timestamp: base + 2000,
+        input: 10,
+        output: 5,
+        model: 'hy4-free',
+        modelName: 'Hy4',
+      }),
+    ]);
+
+    const second = await fixture.refresh();
+    expect(second.changedFiles).toBe(1);
+    expect(
+      rows<{ model: string; display_name: string }>(
+        fixture.db,
+        'SELECT model, display_name FROM models ORDER BY model',
+      ),
+    ).toEqual(before);
+  });
+
   it('数据无变化时跳过重解析与写入（AC4）', async () => {
     const fixture = setup();
     writeStandardFixture(fixture.home);

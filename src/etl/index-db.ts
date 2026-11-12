@@ -2,8 +2,10 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-/** 派生库结构版本：改表结构先递增该值，旧库会在下次启动时被删除重建。 */
-export const SCHEMA_VERSION = 1;
+/**
+ * 派生库结构版本：改表结构或维表展示名规则先递增该值，旧库会在下次启动时被删除重建。
+ */
+export const SCHEMA_VERSION = 2;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (

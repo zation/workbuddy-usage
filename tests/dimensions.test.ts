@@ -91,6 +91,48 @@ describe('展示名规则', () => {
     ]);
     expect(names.get('m')).toBe('Zeta-Model');
   });
+
+  it('规范化后重名时按标识字典序保留首项，其余追加标识后缀', () => {
+    const candidates: ModelNameCandidate[] = [
+      { modelKey: 'hy4-free', name: 'Hy4' },
+      { modelKey: 'hy4', name: 'Hy4' },
+      { modelKey: 'glm-5.2', name: 'GLM-5.2' },
+    ];
+    const names = computeModelDisplayNames(candidates);
+
+    expect(names.get('hy4')).toBe('Hy4');
+    expect(names.get('hy4-free')).toBe('Hy4 (hy4-free)');
+    expect(names.get('glm-5.2')).toBe('GLM-5.2');
+    expect(new Set(names.values()).size).toBe(names.size);
+  });
+
+  it('重名处理与候选顺序无关，候选重复出现不影响结果', () => {
+    const candidates: ModelNameCandidate[] = [
+      { modelKey: 'zz-model', name: 'Shared' },
+      { modelKey: 'aa-model', name: 'Shared' },
+      { modelKey: 'mm-model', name: 'Shared' },
+      { modelKey: 'zz-model', name: 'Shared' },
+      { modelKey: 'aa-model', name: 'Shared' },
+    ];
+    const expected = Object.fromEntries(computeModelDisplayNames(candidates));
+
+    expect(expected).toEqual({
+      'aa-model': 'Shared',
+      'mm-model': 'Shared (mm-model)',
+      'zz-model': 'Shared (zz-model)',
+    });
+    expect(
+      Object.fromEntries(computeModelDisplayNames([...candidates].reverse())),
+    ).toEqual(expected);
+    expect(
+      Object.fromEntries(
+        computeModelDisplayNames([
+          { modelKey: 'mm-model', name: 'Shared' },
+          { modelKey: 'zz-model', name: 'Shared' },
+        ]),
+      ),
+    ).toEqual({ 'mm-model': 'Shared', 'zz-model': 'Shared (zz-model)' });
+  });
 });
 
 describe('维表 upsert', () => {
