@@ -4,7 +4,7 @@
 
 - 仓库目前只有 `AGENTS.md` 与 `docs/` 下的长期文档、本交付的 Spec；**没有任何代码、依赖或构建配置**。
 - [usage-stats-spec.md](./usage-stats-spec.md) 已确认：业务规则 R1–R13、已确认决策、验收标准 AC1–AC11 可直接作为实现与验收依据，本 Plan 不重复其正文。
-- 外部数据格式、数据可得性与兼容性风险见 [integration.md](../integration.md)；派生库表结构与约束 C1–C14 见 [data-model.md](../data-model.md)；分层、接口与架构决策 AD-1–AD-8 见 [technical-architecture.md](../technical-architecture.md)；运行方式见 [devops.md](../devops.md)。
+- 外部数据格式、数据可得性与兼容性风险见 [integration.md](../../integration.md)；派生库表结构与约束 C1–C14 见 [data-model.md](../../data-model.md)；分层、接口与架构决策 AD-1–AD-8 见 [technical-architecture.md](../../technical-architecture.md)；运行方式见 [devops.md](../../devops.md)。
 - 实测基线：jsonl 约百余个、百 MB 级，归并后数百个请求，维度规模 9 个模型 / 65 个分组 / 98 个有请求的会话。全量解析约 5–15 秒，增量刷新是硬要求。
 - 已定边界：外部数据只读、不联网、派生索引可删重建；Node ≥ 24，依赖实验性的 `node:sqlite`；v1 不做字段别名表、不上 worker、不补 `/api/summary` 新鲜度元数据、不提供导出与鉴权。
 
@@ -25,7 +25,7 @@
 ### 索引层
 
 - 启动时建表（`CREATE TABLE IF NOT EXISTS`）与索引，写入 `meta` 单行；先读 `schema_version`，与当前版本不符则删除库文件全量重建。
-- 表：`requests`、`groups`、`sessions`、`models`、`source_files`、`meta`，列与约束严格按 [data-model.md](../data-model.md)；业务键 UNIQUE、内部 `id` 自增。
+- 表：`requests`、`groups`、`sessions`、`models`、`source_files`、`meta`，列与约束严格按 [data-model.md](../../data-model.md)；业务键 UNIQUE、内部 `id` 自增。
 - 派生库用默认 journal 模式（单进程读写）。`node:sqlite` 是同步 API，刷新期间同进程的 API 请求会排队；v1 接受，用进程内互斥锁 + 面板 loading 缓解。
 - 外部库始终 `new DatabaseSync(path, { readOnly: true })`；WAL 只读连接依赖 `-wal` / `-shm`。
 
@@ -41,7 +41,7 @@
 
 ### 服务层
 
-- 端点与参数按 [technical-architecture.md](../technical-architecture.md) 接口段：`/api/summary`、`/api/timeseries`、`/api/breakdown`、`/api/requests`、`/api/refresh`。
+- 端点与参数按 [technical-architecture.md](../../technical-architecture.md) 接口段：`/api/summary`、`/api/timeseries`、`/api/breakdown`、`/api/requests`、`/api/refresh`。
 - 入参一律业务键字符串：服务层用 LEFT JOIN 维表后按业务键过滤（不换成内部 `id`），`from` / `to` 映射为 `date_key` 范围（含首尾）；返回值也不含内部 `id`（C14）。
 - 聚合全部在 SQL：`SUM` 四项 token 与积分、`COUNT(DISTINCT session_id)`、`SUM(has_credit)` 算覆盖率；`breakdown` / `timeseries` 按维度 `GROUP BY`，LEFT JOIN 维表取业务键与展示名；明细排序在 SQL 完成。维表缺失行按 C13 兜底。
 - 生产模式由 `@hono/node-server` 提供静态资源；监听 `HOST=127.0.0.1`，不改为 `0.0.0.0`。
@@ -90,7 +90,7 @@
 
 ## 数据与接口变化
 
-- 派生库新增六张表（见 [data-model.md](../data-model.md)），全为可删重建的派生数据；`meta.schema_version` 控制重建。
+- 派生库新增六张表（见 [data-model.md](../../data-model.md)），全为可删重建的派生数据；`meta.schema_version` 控制重建。
 - 新增本地 HTTP API 五个端点（见架构文档接口段）；除 `POST /api/refresh` 写派生索引外全部只读。
 - API 参数与返回值只用业务键；内部 `id` 不出现在 URL、缓存或面板状态。
 - 不新增任何外部数据源，也不向 WorkBuddy 写入数据。
