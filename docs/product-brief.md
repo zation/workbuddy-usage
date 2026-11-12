@@ -27,7 +27,7 @@ WorkBuddy 在本地记录每次对话的用量：会话内容与 token 用量写
 
 - 解析本地 WorkBuddy 数据：会话 jsonl（token、模型、时间、所属分组）与 `workbuddy.db`（积分、会话元信息）。
 - 统计维度：日期、分组、对话（会话）、模型。
-- 统计指标：输入 token、输出 token、缓存命中 token、合计 token、积分。
+- 统计指标：输入 token、输出 token、缓存命中 token、合计 token、积分、请求数、会话数。
 - 交付形态：本地 Web 面板，**Token 与积分分成两个模块**，共用时间、分组、对话、模型四个筛选条件；默认展示今天，时间粒度只有天，图表堆叠只按模型着色。
 
 ## 非目标
@@ -47,7 +47,7 @@ WorkBuddy 在本地记录每次对话的用量：会话内容与 token 用量写
 - **分组（group）**：按工作目录划分的统计维度，取值来自 `sessions.cwd`，与 WorkBuddy 桌面端新版的"分组"命名一致；旧称"项目"。不使用 `sessions.group_id` / `group_title`。
 - **请求（request）**：一次用户输入触发的完整模型调用链，由 `conversationRequestId` 标识，内部包含多次工具调用步骤。积分的记录粒度就是请求。
 - **步骤（step）**：请求内的一次模型调用，对应 jsonl 中一条带 `usage` 的记录。
-- **累计用量**：同一请求内各步骤的 `usage` 是累计值而非增量，取 `total_tokens` 最大的那条代表该请求的总量；按时间排序的最后一条不一定是最大值那条。把各步骤相加会重复计算约 22 倍。
+- **累计用量**：同一请求内各步骤的 `usage` 是累计值而非增量，取 `total_tokens` 最大的那条代表该请求的总量；按时间排序的最后一条不一定是最大值那条。把各步骤相加会重复计算数十倍（本次实测约 40 倍，随请求步骤数变化）。
 - **积分（credit）**：WorkBuddy 记录的消耗单位，存于 `session_usage.credit_json`，键为 `conversationRequestId`。积分为 0 与没有积分记录是两回事。
 - **会话（session）**：一次连续对话，通常对应一个 jsonl 文件（续写时可能多个），同时对应 `sessions` 表中的一行；子代理会话归入父会话统计。
 
