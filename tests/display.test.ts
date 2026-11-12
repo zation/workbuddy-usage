@@ -95,6 +95,16 @@ describe('visibleModelKeys', () => {
     expect(tokenVisible.has('token-only')).toBe(true);
     expect(creditVisible.has('token-only')).toBe(false);
   });
+
+  it('只隐藏恰好为 0 的模型，负值视为可见', () => {
+    const signed = [
+      row({ key: 'positive', totalTokens: 10, credit: 1 }),
+      row({ key: 'zero', totalTokens: 0, credit: 0 }),
+      row({ key: 'negative', totalTokens: -5, credit: -2 }),
+    ];
+    expect([...visibleModelKeys(signed, 'token')]).toEqual(['positive', 'negative']);
+    expect([...visibleModelKeys(signed, 'credit')]).toEqual(['positive', 'negative']);
+  });
 });
 
 describe('visibleBreakdownRows', () => {

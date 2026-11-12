@@ -5,13 +5,13 @@ export type ModuleTab = 'token' | 'credit';
 
 /**
  * R7：按当前 tab 的主指标过滤模型，Token 看 totalTokens、积分看 credit。
- * 返回可见模型业务键集合，供趋势图、按模型拆分与模型下拉共用。
+ * 只隐藏恰好为 0 的模型，负值视为可见；返回的集合供趋势图、按模型拆分与模型下拉共用。
  */
 export function visibleModelKeys(rows: BreakdownRow[], tab: ModuleTab): Set<string> {
   const visible = new Set<string>();
   for (const row of rows) {
     const metric = tab === 'token' ? row.totalTokens : row.credit;
-    if (metric > 0) {
+    if (metric !== 0) {
       visible.add(row.key);
     }
   }
