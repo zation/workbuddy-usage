@@ -96,11 +96,15 @@ export function App() {
     if (!timeseries.data) {
       return null;
     }
+    // 模型维度尚未取到（首次加载或失败）时先不过滤，避免趋势图闪出空态
+    if (!modelRows.data) {
+      return timeseries.data;
+    }
     return {
       days: timeseries.data.days,
       rows: timeseries.data.rows.filter((row) => visibleModels.has(row.model)),
     };
-  }, [timeseries.data, visibleModels]);
+  }, [timeseries.data, modelRows.data, visibleModels]);
 
   const optionGroups = groupOptions.data?.rows ?? [];
   const optionSessions = sessionOptions.data?.rows ?? [];
