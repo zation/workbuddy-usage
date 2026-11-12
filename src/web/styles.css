@@ -257,6 +257,50 @@ button {
   font-size: 12px;
 }
 
+.module-tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 18px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.module-tab {
+  padding: 7px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.module-tab:hover {
+  color: var(--text);
+}
+
+.module-tab:focus-visible {
+  outline: 2px solid var(--token);
+  outline-offset: 2px;
+}
+
+.module-tab.is-active {
+  background: var(--token-soft);
+  color: var(--token);
+  font-weight: 600;
+}
+
+.module-tab[data-tab='credit'].is-active {
+  background: var(--credit-soft);
+  color: var(--credit);
+}
+
 .module {
   --accent: var(--token);
   position: relative;

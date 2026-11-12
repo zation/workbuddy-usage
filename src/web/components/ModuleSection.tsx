@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { moduleTabId } from './ModuleTabs.tsx';
 
 interface ModuleSectionProps {
   id: string;
@@ -10,11 +11,16 @@ interface ModuleSectionProps {
 
 export function ModuleSection({ id, accent, title, description, children }: ModuleSectionProps) {
   return (
-    <section id={id} className={`module module-${accent}`} aria-labelledby={`${id}-title`}>
+    <section
+      id={id}
+      className={`module module-${accent}`}
+      role="tabpanel"
+      aria-labelledby={moduleTabId(accent)}
+    >
       <header className="module-header">
         <div>
           <div className="module-eyebrow">{accent === 'token' ? 'TOKEN' : 'CREDIT'}</div>
-          <h2 id={`${id}-title`}>{title}</h2>
+          <h2>{title}</h2>
           <p>{description}</p>
         </div>
       </header>
