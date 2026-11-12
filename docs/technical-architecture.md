@@ -50,11 +50,11 @@
 
 | 端点 | 返回 |
 | --- | --- |
-| `GET /api/summary` | 区间合计：token 四项、积分、请求数、会话数；两个模块各取所需字段 |
+| `GET /api/summary` | 区间合计：token 四项、积分、积分覆盖率（有/无记录的请求数）、请求数、会话数；两个模块各取所需字段 |
 | `GET /api/timeseries` | 按天、按模型拆分的序列，支撑按模型着色的堆叠；粒度固定按天 |
 | `GET /api/breakdown?dim=group\|model\|session` | 按单一维度拆分的聚合与占比 |
 | `GET /api/requests` | 请求级明细，用于表格与排序 |
-| `POST /api/refresh` | 触发一次刷新，返回新增/跳过文件数与补挂积分条数 |
+| `POST /api/refresh` | 触发一次刷新，返回扫描文件数、新增或更新请求数、补挂积分条数、耗时 |
 
 所有返回值为聚合结果或请求级明细，不下发原始 jsonl 内容。
 
