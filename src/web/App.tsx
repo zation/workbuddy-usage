@@ -81,8 +81,10 @@ export function App() {
     `/api/breakdown?dim=model&${filterParams({ ...filters, model: undefined })}`,
     deps,
   );
+  const modelPalette = useQuery<BreakdownResponse>('/api/breakdown?dim=model', deps);
 
   const modelChoiceRows = modelOptions.data?.rows ?? [];
+  const modelPaletteRows = modelPalette.data?.rows ?? [];
 
   /**
    * R7：按当前 tab 的主指标隐藏 0 值模型，只作用于展示，不改变聚合结果。
@@ -112,7 +114,8 @@ export function App() {
     };
   }, [timeseries.data, modelOptions.data, visibleModels]);
 
-  const modelColors = useMemo(() => modelColorIndex(modelChoiceRows), [modelChoiceRows]);
+  // 色位取不带筛选的全量模型集合，避免筛选改变成员时序列重排导致同一模型换色。
+  const modelColors = useMemo(() => modelColorIndex(modelPaletteRows), [modelPaletteRows]);
 
   const optionGroups = groupOptions.data?.rows ?? [];
   const optionSessions = sessionOptions.data?.rows ?? [];
