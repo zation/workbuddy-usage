@@ -44,7 +44,7 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 
 # T003 派生索引 schema 与版本控制
 
-状态：pending
+状态：done
 
 目标：按 data-model 建立六张表、索引与 `meta` 单行，并实现 `schema_version` 不匹配即删库重建。
 
@@ -53,6 +53,12 @@ Plan「一次刷新的执行顺序」中的 7 条约束是硬依赖，尤其：�
 依赖：T001、T002。
 
 修改范围：`src/etl/`（schema 与连接管理）。
+
+实施结果：`src/etl/config.ts` 解析 `WORKBUDDY_HOME` 与固定索引路径，并提供外部库、projects 根目录定位；`src/etl/index-db.ts` 建立 `groups` / `sessions` / `models` / `source_files` / `requests` / `meta` 六张表、五个查询索引与业务键 UNIQUE，`meta` 以 `CHECK (id = 1)` 保证单行。打开时先探测 `schema_version`，不匹配或文件不可读则关闭连接、删除 `index.db` 及其 `-wal` / `-shm` / `-journal` 后重建，新库直接写入 `last_full_scan_at`。服务启动时打开索引并打印是否重建。
+
+验证：`npm run typecheck` 通过；`npm test` 9 个用例通过，其中索引测试覆盖六张表、`requests` 列顺序、五个索引、`meta` 单行与业务键唯一约束、默认 journal 模式、版本不匹配删库重建且内部 `id` 从 1 重新分配、版本一致时保留数据。手工启动服务生成 `.data/index.db`；用 `node:sqlite` 将 `schema_version` 改为 0 后重启，日志显示「已重建」，`meta.schema_version` 恢复为 1，服务正常监听。
+
+提交：
 
 # T004 外部数据只读访问与扫描
 

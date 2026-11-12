@@ -1,5 +1,7 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import { resolveEtlConfig } from '../src/etl/config.ts';
+import { openIndex } from '../src/etl/index-db.ts';
 
 const REQUIRED_NODE_MAJOR = 24;
 const nodeMajor = Number.parseInt(process.versions.node.split('.')[0] ?? '0', 10);
@@ -13,6 +15,10 @@ if (Number.isNaN(nodeMajor) || nodeMajor < REQUIRED_NODE_MAJOR) {
 }
 
 const app = new Hono();
+const config = resolveEtlConfig();
+const index = openIndex(config.indexPath);
+
+console.log(`派生索引就绪：${config.indexPath}${index.rebuilt ? '（已重建）' : ''}`);
 
 app.get('/api/health', (c) => c.json({ ok: true }));
 
