@@ -10,7 +10,7 @@
 
 验证：`npm run typecheck` 通过；`npx vitest run tests/model-colors.test.ts` 8 项通过（色值唯一与格式、同系列色相相近、跨系列基准色可辨、前缀最长匹配、兜底固化值、重复计算一致、哈希输出固化、组件不内联色值）。
 
-提交：
+提交：b12bb0d
 
 # T002 取色链路切换与旧代码清理
 
@@ -26,7 +26,7 @@
 
 验证：`npm run typecheck` 通过；`npx vitest run tests/display.test.ts tests/model-colors.test.ts` 22 项通过；`npm run build` 通过（Vite 仍有既存的 chunk 体积提示，非错误）。
 
-提交：
+提交：87f2f3f
 
 # T003 色点组件与列表、明细着色
 
@@ -42,7 +42,7 @@
 
 验证：`npm run typecheck` 通过；`npm test` 11 个文件 94 项通过、1 项既存 skip；`npm run build` 通过。
 
-提交：
+提交：d636c1e
 
 # T004 自定义模型下拉
 
@@ -58,7 +58,7 @@
 
 验证：`npm run typecheck` 通过；`npm test` 11 个文件 94 项通过、1 项既存 skip；`npm run build` 通过。DOM / 键盘行为由 T005 的 CDP 验收覆盖。
 
-提交：
+提交：07ff985
 
 # T005 CDP 验收脚本改造
 
@@ -74,7 +74,7 @@
 
 验证：`node --check scripts/panel-acceptance.mjs` 通过；`npm run typecheck` 通过；`npx vitest run tests/model-colors.test.ts tests/display.test.ts` 22 项通过；`npm run acceptance` 10 项全部 PASS。首轮 AC7 FAIL 的诊断：切 credit tab 前选中的模型 `credit = 0`，按 R7 被隐藏后积分趋势图走预期空态，导致读不到 y 轴；修复为在切 tab 前用「全部模型」清除模型筛选，未放宽任何断言。首轮与复跑的完整输出见本任务验证记录。
 
-提交：
+提交：2509ab1
 
 # T006 长期文档与一致性单测
 
@@ -90,14 +90,20 @@
 
 验证：`npm run typecheck` 通过；`npx vitest run tests/model-colors.test.ts` 9 项通过（含新增文档一致性用例）；`git diff --check` 通过。
 
-提交：
+提交：399dc44
 
 # T007 交付收尾检查
 
-状态：pending
+状态：done
 
 目标与完成条件：逐项核对 Spec 的 AC1–AC6 是否满足；核对各任务状态与实施记录准确完整，并一次性回填所有已实施任务的「提交」字段；确认 `product-brief.md`、`technical-architecture.md`、`docs/model-colors.md` 与实现一致、无已知矛盾；检查 `docs/backlog/` 中与本次交付相关的条目。全量运行 `npm run typecheck`、`npm test`、`npm run build`；`npm run acceptance` 执行结果或清晰记录未执行原因。收尾提交不填本字段。对应 AGENTS.md 第 5 节。
 
 必要依赖：T001–T006。
 
 修改范围：`docs/delivery/model-color-binding-tasks.md`。
+
+实施结果：逐项核对 Spec——AC1 稳定性由纯函数单测与 CDP「配色跨筛选稳定 / 首帧无变色」覆盖；AC2 确定性由色值唯一、同系列色相、跨系列可辨、哈希固化与前缀归属单测覆盖；AC3 首帧稳定由「无参数 dim=model 请求 0 次」与首帧颜色断言覆盖；AC4 跨视图一致由 CDP 色点比对覆盖；AC5 口径回归由全量单测、构建与既有交互验收项覆盖；AC6 文档由专题文档、架构 / 简报更新与一致性单测覆盖。T001–T006 状态与实施记录核对无误，提交 hash 已一次性回填。`docs/backlog/` 唯一条目「子代理积分对账」与配色无关，不改动。`technical-architecture.md`、`product-brief.md`、`docs/model-colors.md` 与实现无已知矛盾。
+
+剩余风险：同系列浅色档在白底偏淡、每系列仅 3 个保留档位（多个同系列新模型可能撞档同色），均为 Spec 与专题文档已记录的已知限制，按用户决定暂不扩容；Vite 的 chunk 体积提示与 `refresh.test.ts` 的 1 项 skip 为既存状态，与本次交付无关。
+
+验证：`npm run typecheck` 通过；`npm test` 11 个文件 95 项通过、1 项既存 skip；`npm run build` 通过；`npm run acceptance` 10 项全部 PASS（含新增 3 项配色断言）；`git diff --check` 通过。
