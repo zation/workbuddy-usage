@@ -1,25 +1,23 @@
 import type { BreakdownRow, Filters } from '../../shared/types.ts';
-import { PRESETS, hasActiveFilters } from '../filters.ts';
-import type { CustomRange, PresetKey } from '../filters.ts';
+import { DEFAULT_PRESET, QUICK_PRESETS, hasActiveFilters } from '../filters.ts';
+import type { PresetKey } from '../filters.ts';
 import { ModelDot } from './ModelDot.tsx';
 import { Select } from './Select.tsx';
 import type { SelectOption } from './Select.tsx';
 
 interface FilterBarProps {
-  preset: PresetKey;
-  custom: CustomRange;
+  /** 当前区间命中的快捷预设；自定义区间为 null，四个按钮都不高亮。 */
+  activePreset: PresetKey | null;
   filters: Filters;
   groupOptions: BreakdownRow[];
   sessionOptions: BreakdownRow[];
   modelOptions: BreakdownRow[];
   rangeError: string | null;
   onChange: (patch: Partial<Filters>) => void;
-  onPreset: (preset: PresetKey) => void;
-  onCustom: (range: CustomRange) => void;
+  onQuick: (preset: PresetKey) => void;
+  onRange: (from: string, to: string) => void;
   onReset: () => void;
 }
-
-const PRESET_OPTIONS: SelectOption[] = PRESETS.map((item) => ({ key: item.key, name: item.label }));
 
 function dimensionOptions(rows: BreakdownRow[], emptyLabel: string): SelectOption[] {
   return [
@@ -29,51 +27,65 @@ function dimensionOptions(rows: BreakdownRow[], emptyLabel: string): SelectOptio
 }
 
 export function FilterBar({
-  preset,
-  custom,
+  activePreset,
   filters,
   groupOptions,
   sessionOptions,
   modelOptions,
   rangeError,
   onChange,
-  onPreset,
-  onCustom,
+  onQuick,
+  onRange,
   onReset,
 }: FilterBarProps) {
-  const isDefault = preset === 'today' && !hasActiveFilters(filters);
+  const isDefault = activePreset === DEFAULT_PRESET && !hasActiveFilters(filters);
 
   return (
     <section className="filter-bar" aria-label="筛选条件">
       <div className="filter-row">
         <div className="filter-field filter-time">
-          <label htmlFor="filter-preset">时间</label>
-          <div className="filter-time-controls">
-            <Select
-              id="filter-preset"
-              className="select-compact"
-              label="时间范围"
-              options={PRESET_OPTIONS}
-              value={preset}
-              onChange={(value) => onPreset(value as PresetKey)}
-            />
-            {preset === 'custom' ? (
-              <div className="date-range">
-                <input
-                  type="date"
-                  aria-label="起始日期"
-                  value={custom.from}
-                  onChange={(event) => onCustom({ ...custom, from: event.target.value })}
-                />
-                <span className="date-separator">至</span>
-                <input
-                  type="date"
-                  aria-label="结束日期"
-                  value={custom.to}
-                  onChange={(event) => onCustom({ ...custom, to: event.target.value })}
-                />
-              </div>
-            ) : null}
+          <span className="filter-label">时间</span>
+          <div className="filter-time-controls" role="group" aria-label="时间范围">
+            {QUICK_PRESETS.map((preset) => (
+              <button
+                key={preset.key}
+                type="button"
+                className="quick-button"
+                data-quick={preset.key}
+                aria-pressed={activePreset === preset.key}
+                onClick={() => onQuick(preset.key)}
+              >
+                {preset.label}
+              </button>
+            ))}
+            <div className="date-range">
+              <input
+                type="date"
+                aria-label="起始日期"
+                value={filters.from ?? ''}
+                onChange={(event) => {
+                  // 清空即回弹到当前生效值：不写入筛选，也不留空值中间态
+                  if (!event.target.value) {
+                    event.target.value = filters.from ?? '';
+                    return;
+                  }
+                  onRange(event.target.value, filters.to ?? '');
+                }}
+              />
+              <span className="date-separator">至</span>
+              <input
+                type="date"
+                aria-label="结束日期"
+                value={filters.to ?? ''}
+                onChange={(event) => {
+                  if (!event.target.value) {
+                    event.target.value = filters.to ?? '';
+                    return;
+                  }
+                  onRange(filters.from ?? '', event.target.value);
+                }}
+              />
+            </div>
           </div>
         </div>
 

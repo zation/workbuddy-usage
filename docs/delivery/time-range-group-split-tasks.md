@@ -53,7 +53,7 @@
 
 # T004 时间预设纯函数
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R1 / R3 与 Plan「时间纯函数」把 `PresetKey` 收敛为四个预设（保留「今天」、新增「3 天」），提供 `QUICK_PRESETS` 与 `DEFAULT_PRESET = 'threeDays'`，`rangeForPreset` 去掉 `custom` 参数与 `month / all / custom` 分支，新增 `matchPreset` 做区间反向匹配；`applyPresetRange` 行为不变。完成条件含四个区间、`matchPreset` 命中与未命中、切换时间保留三个维度筛选，旧预设用例按新契约改写。
 
@@ -61,15 +61,27 @@
 
 修改范围：`src/web/filters.ts`、`tests/filters.test.ts`
 
+实施结果：`PresetKey` 收敛为 `today / threeDays / sevenDays / thirtyDays`，`PRESETS` 与 `CustomRange` 移除，改为 `QUICK_PRESETS`（标签「今天 / 3 天 / 7 天 / 30 天」）与 `DEFAULT_PRESET`；`rangeForPreset(preset, today)` 按含首尾天数回推，新增 `matchPreset()` 对四个预设区间做字符串精确比对；`applyPresetRange` / `hasActiveFilters` 未改。单测改写为五个用例：切换保留维度筛选、四个区间、按钮顺序与默认值、命中与未命中、端点只匹配一侧不算命中。
+
+验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/filters.test.ts` 5 项通过。
+
+必要的问题与决策：本任务与 T005 合并为一个提交。只改 `filters.ts` 会让 `App.tsx` / `FilterBar.tsx` 仍引用 `PRESETS`、`CustomRange` 与三参 `rangeForPreset`，中间状态必然 `typecheck` 失败，与 Plan「每个任务完成后单独跑 typecheck」冲突；两项同属「时间状态收敛为 `from / to`」这一原子变更，按 AGENTS.md 第 6 节合并提交并同时填写 T004、T005。
+
 # T005 时间控件与跨度拦截
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec 行为 1–5、R1 / R2 / R3 / R11、AC1–AC3 / AC9 与 Plan「App 与 FilterBar」把时间区改为四个快捷按钮 + 常驻起止框，删除 `preset / custom` 状态，以 `filters.from / to` 为唯一真相；`handleRange` 在空值、顺序颠倒、跨度超限时分别回弹或显示错误且不写入 `filters`；快捷按钮、重置、错误提示、`aria-pressed` 与三个维度筛选的保留行为符合 Spec。完成条件含默认与重置为近 3 天、按钮与日期双向联动、非法区间不产生有效查询。
 
 必要依赖：T001、T004
 
 修改范围：`src/web/App.tsx`、`src/web/components/FilterBar.tsx`、`src/web/styles.css`
+
+实施结果：`App` 删除 `preset` / `custom` 状态，`filters` 初始化为 `rangeForPreset(DEFAULT_PRESET, today)`；`handleQuick()` 走 `applyPresetRange` 保留三个维度筛选，`handleRange()` 对空值直接返回、`from > to` 与 `daySpan > MAX_RANGE_DAYS` 只设 `rangeError` 不写状态，`handleReset()` 回到近 3 天并清空维度筛选，`activePreset` 由 `matchPreset(filters.from, filters.to, today)` 派生。`FilterBar` 时间字段改为 `role="group"` 内的四个 `data-quick` 按钮（`aria-pressed` 表示选中）+ 常驻 `.date-range` 两个原生日期框，删除时间 `Select` 与 `label[for=filter-preset]`；日期框清空时同步把 DOM 值恢复为当前生效值。`styles.css` 新增 `.quick-button` 与其 `[aria-pressed='true']` 态、`.filter-label`，移除时间下拉专用规则。
+
+验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/filters.test.ts` 5 项通过。交互层断言留待 T009 的验收脚本与 T010 全量检查。
+
+必要的问题与决策：与 T004 合并为同一提交（理由见 T004）。未做 `min / max` 输入限制：跨度是区间属性而非单日属性，按 Plan 用校验加错误提示表达。
 
 # T006 日期轴职责归位
 

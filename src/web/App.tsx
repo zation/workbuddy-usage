@@ -16,8 +16,10 @@ import { ModuleTabs, modulePanelId, moduleTabId } from './components/ModuleTabs.
 import { RequestTable } from './components/RequestTable.tsx';
 import type { SortState } from './components/RequestTable.tsx';
 import { TrendChart } from './components/TrendChart.tsx';
-import { applyPresetRange, rangeForPreset, todayKey } from './filters.ts';
-import type { CustomRange, PresetKey } from './filters.ts';
+import { DEFAULT_PRESET, applyPresetRange, matchPreset, rangeForPreset, todayKey } from './filters.ts';
+import type { PresetKey } from './filters.ts';
+import { MAX_RANGE_DAYS } from '../shared/constants.ts';
+import { daySpan } from '../shared/dates.ts';
 import { cacheHitRate, visibleModelKeys } from './display.ts';
 import type { ModuleTab } from './display.ts';
 import {
@@ -31,11 +33,7 @@ import { useQuery } from './useQuery.ts';
 
 export function App() {
   const today = useMemo(() => todayKey(), []);
-  const [preset, setPreset] = useState<PresetKey>('today');
-  const [custom, setCustom] = useState<CustomRange>({ from: today, to: today });
-  const [filters, setFilters] = useState<Filters>(() =>
-    rangeForPreset('today', today, { from: today, to: today }),
-  );
+  const [filters, setFilters] = useState<Filters>(() => rangeForPreset(DEFAULT_PRESET, today));
   const [rangeError, setRangeError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ModuleTab>('token');
   const [version, setVersion] = useState(0);
@@ -123,33 +121,34 @@ export function App() {
     setFilters((previous) => ({ ...previous, ...patch }));
   };
 
-  const handlePreset = (next: PresetKey) => {
-    setPreset(next);
+  const handleQuick = (next: PresetKey) => {
     setRangeError(null);
-    setFilters((previous) =>
-      applyPresetRange(rangeForPreset(next, today, custom), previous),
-    );
+    setFilters((previous) => applyPresetRange(rangeForPreset(next, today), previous));
   };
 
-  const handleCustom = (range: CustomRange) => {
-    setCustom(range);
-    const invalid = Boolean(range.from && range.to && range.from > range.to);
-    setRangeError(invalid ? '起始日期不能晚于结束日期' : null);
-    if (preset === 'custom' && !invalid) {
-      setFilters((previous) => ({
-        ...previous,
-        from: range.from || undefined,
-        to: range.to || undefined,
-      }));
+  /** 日期改动即时生效；空值、顺序颠倒与跨度超限都不写入筛选，视图保持上一次有效区间。 */
+  const handleRange = (from: string, to: string) => {
+    if (!from || !to) {
+      return;
     }
+    if (from > to) {
+      setRangeError('起始日期不能晚于结束日期');
+      return;
+    }
+    if (daySpan(from, to) > MAX_RANGE_DAYS) {
+      setRangeError('时间跨度不能超过 100 天');
+      return;
+    }
+    setRangeError(null);
+    setFilters((previous) => ({ ...previous, from, to }));
   };
 
   const handleReset = () => {
-    setPreset('today');
-    setCustom({ from: today, to: today });
     setRangeError(null);
-    setFilters(rangeForPreset('today', today, { from: today, to: today }));
+    setFilters(rangeForPreset(DEFAULT_PRESET, today));
   };
+
+  const activePreset = matchPreset(filters.from ?? '', filters.to ?? '', today);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -240,16 +239,15 @@ export function App() {
       ) : null}
 
       <FilterBar
-        preset={preset}
-        custom={custom}
+        activePreset={activePreset}
         filters={filters}
         groupOptions={optionGroups}
         sessionOptions={optionSessions}
         modelOptions={optionModels}
         rangeError={rangeError}
         onChange={patchFilters}
-        onPreset={handlePreset}
-        onCustom={handleCustom}
+        onQuick={handleQuick}
+        onRange={handleRange}
         onReset={handleReset}
       />
 
