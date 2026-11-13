@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
 import type { BreakdownRow, Filters } from '../../shared/types.ts';
 import { PRESETS, hasActiveFilters } from '../filters.ts';
 import type { CustomRange, PresetKey } from '../filters.ts';
-import { ModelSelect } from './ModelSelect.tsx';
+import { ModelDot } from './ModelDot.tsx';
+import { Select } from './Select.tsx';
+import type { SelectOption } from './Select.tsx';
 
 interface FilterBarProps {
   preset: PresetKey;
@@ -18,20 +19,13 @@ interface FilterBarProps {
   onReset: () => void;
 }
 
-function renderOptions(rows: BreakdownRow[], current: string | undefined): ReactNode {
-  const options = rows.map((row) => (
-    <option key={row.key} value={row.key} title={row.key}>
-      {row.name}
-    </option>
-  ));
-  if (current && !rows.some((row) => row.key === current)) {
-    options.unshift(
-      <option key={current} value={current} title={current}>
-        {current}
-      </option>,
-    );
-  }
-  return options;
+const PRESET_OPTIONS: SelectOption[] = PRESETS.map((item) => ({ key: item.key, name: item.label }));
+
+function dimensionOptions(rows: BreakdownRow[], emptyLabel: string): SelectOption[] {
+  return [
+    { key: '', name: emptyLabel },
+    ...rows.map((row) => ({ key: row.key, name: row.name })),
+  ];
 }
 
 export function FilterBar({
@@ -55,17 +49,14 @@ export function FilterBar({
         <div className="filter-field filter-time">
           <label htmlFor="filter-preset">时间</label>
           <div className="filter-time-controls">
-            <select
+            <Select
               id="filter-preset"
+              className="select-compact"
+              label="时间范围"
+              options={PRESET_OPTIONS}
               value={preset}
-              onChange={(event) => onPreset(event.target.value as PresetKey)}
-            >
-              {PRESETS.map((item) => (
-                <option key={item.key} value={item.key}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => onPreset(value as PresetKey)}
+            />
             {preset === 'custom' ? (
               <div className="date-range">
                 <input
@@ -88,34 +79,35 @@ export function FilterBar({
 
         <div className="filter-field">
           <label htmlFor="filter-group">分组</label>
-          <select
+          <Select
             id="filter-group"
+            label="分组"
+            options={dimensionOptions(groupOptions, '全部分组')}
             value={filters.group ?? ''}
-            onChange={(event) => onChange({ group: event.target.value || undefined })}
-          >
-            <option value="">全部分组</option>
-            {renderOptions(groupOptions, filters.group)}
-          </select>
+            onChange={(value) => onChange({ group: value || undefined })}
+          />
         </div>
 
         <div className="filter-field">
           <label htmlFor="filter-session">对话</label>
-          <select
+          <Select
             id="filter-session"
+            label="对话"
+            options={dimensionOptions(sessionOptions, '全部对话')}
             value={filters.session ?? ''}
-            onChange={(event) => onChange({ session: event.target.value || undefined })}
-          >
-            <option value="">全部对话</option>
-            {renderOptions(sessionOptions, filters.session)}
-          </select>
+            onChange={(value) => onChange({ session: value || undefined })}
+          />
         </div>
 
         <div className="filter-field">
           <label htmlFor="filter-model">模型</label>
-          <ModelSelect
-            rows={modelOptions}
-            value={filters.model}
-            onChange={(model) => onChange({ model })}
+          <Select
+            id="filter-model"
+            label="模型"
+            options={dimensionOptions(modelOptions, '全部模型')}
+            value={filters.model ?? ''}
+            onChange={(value) => onChange({ model: value || undefined })}
+            renderLeading={(key) => <ModelDot modelKey={key} />}
           />
         </div>
 

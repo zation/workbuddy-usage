@@ -46,11 +46,17 @@
 
 # T004 通用下拉组件与 `FilterBar` 统一
 
-状态：pending
+状态：done
 
 目标与完成条件：新增 `src/web/components/Select.tsx`，把 `ModelSelect` 的 combobox 行为上移为通用组件（button + `role="listbox"` / `role="option"`、`aria-expanded` / `aria-controls` / `aria-activedescendant` / `aria-selected`、↑↓ / Enter / Space / Esc、点击外部关闭、`useId` 保证多实例唯一、当前值不在选项中时插兜底项）；键盘范围沿用现有模型下拉，**不新增 Tab 行为**。props 提供 `options` / `value` / `onChange` / `label` / 可选 `renderLeading` 与 `className`；`className` 加在容器 `.select` 上，紧凑宽度规则下钻到 `.select-trigger`。`FilterBar` 负责 `'' ↔ undefined` 映射（`onChange` 用 `value || undefined` 写回，取值用 `filters.group ?? ''`）。触发按钮与选项输出 `data-value` 业务键；`renderLeading` 保持现有视觉（非空键 `<ModelDot />`，选项空键空环，触发按钮空键不渲染图标）。`FilterBar` 的时间预设、分组、对话、模型四个下拉全部改用该组件，空值文案分别为「全部分组 / 全部对话 / 全部模型」，时间预设使用紧凑宽度类名，日期输入框保持原生。删除 `ModelSelect.tsx` 与 `renderOptions`；`.model-select*` 样式改名为 `.select*` 并补 `.select-compact`，`.filter-field select` 收窄为日期输入，`.filter-field select:focus` 迁到 `.select-trigger:focus-visible`，`.filter-time-controls select` 改为 `.filter-time-controls .select-compact .select-trigger`。对应 Spec R10、R12、AC12（键盘与 ARIA 断言由 T006 承担）。
 
 修改范围：`src/web/components/Select.tsx`、`src/web/components/ModelSelect.tsx`（删除）、`src/web/components/FilterBar.tsx`、`src/web/styles.css`。
+
+实施结果：`Select` 承接原 `ModelSelect` 的全部行为，`onChange` 统一回传字符串（空串表示不筛选），兜底项插在索引 1；`renderLeading` 仅在传入时渲染，空键选项渲染空环、触发按钮空键不渲染图标。`FilterBar` 内新增 `dimensionOptions` 与模块级 `PRESET_OPTIONS`，四处下拉分别传 `label`（时间范围 / 分组 / 对话 / 模型），模型传 `renderLeading`。样式除改名外，把日期输入的两段规则合并为一条并新增 `.select-compact { width: auto }`——容器若仍为 `width: 100%`，时间预设会占满整行、把日期框挤到下一行。
+
+验证：`npm run typecheck` 通过；`npm test` 全量 111 项通过、1 项平台条件跳过；`npm run build` 通过（Vite 仍有既存 chunk 体积提示）。下拉的键盘、ARIA 与紧凑宽度的实际表现由 T006 验收脚本承担。
+
+提交：
 
 # T005 趋势图 tooltip 过滤 0 值
 

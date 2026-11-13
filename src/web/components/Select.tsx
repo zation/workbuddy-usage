@@ -1,38 +1,51 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
-import type { BreakdownRow } from '../../shared/types.ts';
-import { ModelDot } from './ModelDot.tsx';
+import type { KeyboardEvent, ReactNode } from 'react';
 
-interface ModelSelectProps {
-  rows: BreakdownRow[];
-  value: string | undefined;
-  onChange: (value: string | undefined) => void;
-}
-
-interface ModelOption {
+export interface SelectOption {
   key: string;
   name: string;
 }
 
-export function ModelSelect({ rows, value, onChange }: ModelSelectProps) {
+interface SelectProps {
+  /** 触发按钮的 id，供外部 label 关联。 */
+  id?: string;
+  /** 追加在容器 `.select` 上；紧凑宽度用 `.select-compact`。 */
+  className?: string;
+  label: string;
+  /** 第一项由调用方提供空值文案（key 为空串表示不筛选）。 */
+  options: SelectOption[];
+  value: string;
+  onChange: (value: string) => void;
+  /** 仅模型维度传入色点，其余维度不渲染图标。 */
+  renderLeading?: (key: string) => ReactNode;
+}
+
+/** 通用下拉：button + listbox，键盘与 ARIA 行为沿用原模型下拉，不处理 Tab。 */
+export function Select({
+  id,
+  className,
+  label,
+  options,
+  value,
+  onChange,
+  renderLeading,
+}: SelectProps) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
 
-  const options = useMemo<ModelOption[]>(() => {
-    const items: ModelOption[] = [
-      { key: '', name: '全部模型' },
-      ...rows.map((row) => ({ key: row.key, name: row.name })),
-    ];
-    if (value && !rows.some((row) => row.key === value)) {
-      items.splice(1, 0, { key: value, name: value });
+  const items = useMemo<SelectOption[]>(() => {
+    if (value && !options.some((item) => item.key === value)) {
+      const withCurrent = [...options];
+      withCurrent.splice(1, 0, { key: value, name: value });
+      return withCurrent;
     }
-    return items;
-  }, [rows, value]);
+    return options;
+  }, [options, value]);
 
-  const selectedIndex = Math.max(0, options.findIndex((item) => item.key === (value ?? '')));
-  const selected = options[selectedIndex];
+  const selectedIndex = Math.max(0, items.findIndex((item) => item.key === value));
+  const selected = items[selectedIndex] ?? { key: '', name: '' };
 
   useEffect(() => {
     if (!open) {
@@ -48,11 +61,11 @@ export function ModelSelect({ rows, value, onChange }: ModelSelectProps) {
   }, [open]);
 
   const selectAt = (index: number) => {
-    const item = options[index];
+    const item = items[index];
     if (!item) {
       return;
     }
-    onChange(item.key || undefined);
+    onChange(item.key);
     setOpen(false);
   };
 
@@ -75,16 +88,16 @@ export function ModelSelect({ rows, value, onChange }: ModelSelectProps) {
       return;
     }
     const delta = event.key === 'ArrowDown' ? 1 : -1;
-    setActiveIndex((previous) => (previous + delta + options.length) % options.length);
+    setActiveIndex((previous) => (previous + delta + items.length) % items.length);
   };
 
   return (
-    <div className="model-select" ref={containerRef}>
+    <div className={className ? `select ${className}` : 'select'} ref={containerRef}>
       <button
         type="button"
-        id="filter-model"
-        className="model-select-trigger"
-        data-model={value ?? ''}
+        id={id}
+        className="select-trigger"
+        data-value={value}
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -96,36 +109,36 @@ export function ModelSelect({ rows, value, onChange }: ModelSelectProps) {
         }}
         onKeyDown={handleKeyDown}
       >
-        <span className="model-select-value">
-          {selected.key ? <ModelDot modelKey={selected.key} /> : null}
+        <span className="select-value">
+          {selected.key && renderLeading ? renderLeading(selected.key) : null}
           {selected.name}
         </span>
-        <span className="model-select-chevron" aria-hidden="true">▾</span>
+        <span className="select-chevron" aria-hidden="true">▾</span>
       </button>
       <ul
         id={listboxId}
         role="listbox"
-        aria-label="模型"
-        className="model-select-list"
+        aria-label={label}
+        className="select-list"
         hidden={!open}
       >
-        {options.map((item, index) => (
+        {items.map((item, index) => (
           <li
             key={item.key}
             id={`${listboxId}-${index}`}
-            data-model={item.key}
+            data-value={item.key}
             role="option"
-            aria-selected={item.key === (value ?? '')}
-            className={`model-select-option${index === activeIndex ? ' is-active' : ''}`}
+            aria-selected={item.key === value}
+            className={`select-option${index === activeIndex ? ' is-active' : ''}`}
             onMouseEnter={() => setActiveIndex(index)}
             onClick={() => selectAt(index)}
           >
             {item.key ? (
-              <ModelDot modelKey={item.key} />
-            ) : (
+              renderLeading?.(item.key)
+            ) : renderLeading ? (
               <span className="model-dot is-empty" aria-hidden="true" />
-            )}
-            <span className="model-select-option-name">{item.name}</span>
+            ) : null}
+            <span className="select-option-name">{item.name}</span>
           </li>
         ))}
       </ul>
