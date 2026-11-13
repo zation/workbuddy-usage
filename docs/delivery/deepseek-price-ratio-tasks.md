@@ -28,13 +28,21 @@
 
 # T002 闲时判定与节假日表
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R2 / R7 与 Plan AD-P2 新建闲时判定纯函数与法定节假日集合。判定按 `started_at`、与 `date_key` 共用 UTC+8 折算；规则为北京时间工作日且非法定节假日的 09:00–12:00、14:00–18:00 为高峰，其余空闲。完成条件：边界单测覆盖 09:00 / 11:59 / 12:00 / 14:00 / 17:59 / 18:00、周末、节假日、UTC 跨日，断言与官方中英文页一致；节假日表只录已公布安排，并显式给出已覆盖年份清单（判定函数只在覆盖年份内查表，空集合不等于「该年无节假日」），未覆盖年份按周一至周五判定；`npm run typecheck` 通过。
 
 必要依赖：T001
 
 修改范围：`src/shared/deepseek-offpeak.ts`（新）、`src/shared/china-holidays.ts`（新）、`tests/`
+
+实施结果：新建 `china-holidays.ts`，用 `HolidayCalendar { coveredYears, holidays }` 表达「已核对年份」与「节假日日期集合」，默认日历为空集合且显式标注无覆盖年份；空集合不表示「该年无节假日」。新建 `deepseek-offpeak.ts` 的 `isDeepseekOffpeak(startedAt, calendar?)`，与 `date_key` 共用 UTC+8 折算，周末直接判空闲，已覆盖年份内的节假日全天空闲，工作日按 09:00–12:00 / 14:00–18:00 左闭右开判高峰，边界 12:00 与 18:00 归入空闲。日历可注入，使「节假日生效」与「未覆盖年份不查表」都能测。新增 `tests/deepseek-offpeak.test.ts` 五组用例。
+
+验证：`npm run typecheck` 通过（0 错）；Node 24 直接导入 `.ts` 执行 17 条等价断言全部通过，覆盖高峰区间两端、四个边界时刻、周末、UTC 跨日、已覆盖年份节假日与未覆盖年份。沙箱内 `npm test` 仍受既有 runner 故障影响，正式回归以开发者本地 `npm test` 为准（见 `docs/backlog/vitest-runner-context.md`）。
+
+必要的问题与决策：Plan 写的是 `isDeepseekOffpeak(startedAt, holidays)`，实现改为可注入的 `HolidayCalendar`（把 `coveredYears` 与 `holidays` 打包），避免「空集合」与「未覆盖年份」两种语义散在两个参数里；ETL 调用仍用默认日历，接口行为不变。
+
+提交：
 
 # T003 价格表与比率纯函数
 
