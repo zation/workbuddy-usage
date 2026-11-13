@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   DimensionWriter,
   computeModelDisplayNames,
+  isAutoGroupPath,
   lastPathSegment,
   sessionDisplayName,
 } from '../src/etl/dimensions.ts';
@@ -132,6 +133,44 @@ describe('展示名规则', () => {
         ]),
       ),
     ).toEqual({ 'mm-model': 'Shared', 'zz-model': 'Shared (zz-model)' });
+  });
+});
+
+describe('自动分组判定', () => {
+  it('识别 WorkBuddy 下的时间戳目录，兼容两种分隔符与末尾分隔符', () => {
+    expect(isAutoGroupPath('/Users/liuyang/WorkBuddy/2026-10-17-21-46-27')).toBe(true);
+    expect(isAutoGroupPath('C:\\Users\\liuyang\\WorkBuddy\\2026-10-17-21-46-27')).toBe(true);
+    expect(isAutoGroupPath('C:/Users/liuyang/WorkBuddy/2026-10-17-21-46-27')).toBe(true);
+    expect(isAutoGroupPath('/Users/liuyang/WorkBuddy/2026-10-17-21-46-27/')).toBe(true);
+    expect(isAutoGroupPath('C:\\Users\\liuyang\\WorkBuddy\\2026-10-17-21-46-27\\')).toBe(true);
+  });
+
+  it('WorkBuddy 段大小写不敏感', () => {
+    expect(isAutoGroupPath('/Users/x/workbuddy/2026-10-17-21-46-27')).toBe(true);
+    expect(isAutoGroupPath('/Users/x/WORKBUDDY/2026-10-17-21-46-27')).toBe(true);
+    expect(isAutoGroupPath('/Users/x/WorkBuddy/2026-10-17-21-46-27')).toBe(true);
+  });
+
+  it('日期末段但父目录不是 WorkBuddy 时判为手动分组', () => {
+    expect(isAutoGroupPath('/Users/x/Projects/2026-10-17-21-46-27')).toBe(false);
+    expect(isAutoGroupPath('D:\\data\\2026-10-17-21-46-27')).toBe(false);
+    expect(isAutoGroupPath('/Users/x/WorkBuddy-backup/2026-10-17-21-46-27')).toBe(false);
+  });
+
+  it('WorkBuddy 下的非日期目录判为手动分组', () => {
+    expect(isAutoGroupPath('/Users/x/WorkBuddy/demo')).toBe(false);
+    expect(isAutoGroupPath('/Users/x/WorkBuddy/2026-10-17')).toBe(false);
+    expect(isAutoGroupPath('/Users/x/WorkBuddy/notes-2026-10-17-21-46-27')).toBe(false);
+    expect(isAutoGroupPath('/Users/x/WorkBuddy/2026-1-17-21-46-27')).toBe(false);
+    expect(isAutoGroupPath('/Users/x/WorkBuddy/2026-10-17-21-46-27-extra')).toBe(false);
+  });
+
+  it('空串、根路径与单段路径都不成立', () => {
+    expect(isAutoGroupPath('')).toBe(false);
+    expect(isAutoGroupPath('/')).toBe(false);
+    expect(isAutoGroupPath('\\')).toBe(false);
+    expect(isAutoGroupPath('WorkBuddy')).toBe(false);
+    expect(isAutoGroupPath('2026-10-17-21-46-27')).toBe(false);
   });
 });
 

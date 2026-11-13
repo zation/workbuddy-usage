@@ -3,6 +3,7 @@ import { UNKNOWN_GROUP, UNKNOWN_MODEL } from '../shared/constants.ts';
 import type { ModelNameCandidate, SessionMeta, SourceFileRef } from '../shared/types.ts';
 
 const UPPERCASE_LETTER = /[A-Z]/;
+const AUTO_GROUP_DIR = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$/;
 
 /** 取路径末段；同时兼容 POSIX 与 Windows 分隔符。 */
 export function lastPathSegment(value: string): string {
@@ -10,6 +11,20 @@ export function lastPathSegment(value: string): string {
   const index = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
   const segment = index >= 0 ? trimmed.slice(index + 1) : trimmed;
   return segment.length > 0 ? segment : value;
+}
+
+/**
+ * R1：`<...>/WorkBuddy/<yyyy-MM-dd-HH-mm-ss>` 形态即 WorkBuddy 按时间戳自动创建的工作目录。
+ * 只看路径形态，不读会话字段，也不校验日期是否合法；分隔符两种都接受，与 lastPathSegment 一致。
+ */
+export function isAutoGroupPath(value: string): boolean {
+  const segments = value.split(/[\\/]+/u).filter((segment) => segment.length > 0);
+  if (segments.length < 2) {
+    return false;
+  }
+  const last = segments[segments.length - 1] ?? '';
+  const parent = segments[segments.length - 2] ?? '';
+  return AUTO_GROUP_DIR.test(last) && parent.toLowerCase() === 'workbuddy';
 }
 
 /** R6：自定义标题 → 自动标题 → 会话 ID 前 8 位。 */

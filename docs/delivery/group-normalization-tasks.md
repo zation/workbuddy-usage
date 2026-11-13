@@ -1,10 +1,16 @@
 # T001 自动分组判定与单测
 
-状态：pending
+状态：done
 
 目标与完成条件：在 `src/etl/dimensions.ts` 新增并导出 `isAutoGroupPath(value: string): boolean`，紧邻 `lastPathSegment` 实现：按 `/[\\/]+/u` 切分并去掉空段，取末段与倒数第二段，末段匹配 `^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$`、倒数第二段忽略大小写等于 `workbuddy` 时返回 `true`。语义上 `true` 只表示 `cwd` 是 WorkBuddy 按时间戳自动创建的工作目录，不依据 `is_playground` / `conversation_origin` 等会话字段。不引入 `node:path`，不硬编码用户名、盘符或 home 目录，不做日期合法性校验。`tests/dimensions.test.ts` 补齐用例：macOS POSIX 路径、Windows 盘符与反斜杠路径、末尾分隔符、`WorkBuddy` 大小写差异、日期末段但父目录不同、`WorkBuddy` 下非日期目录、空串、根路径 `/`、单段路径、倒数第二段是 `workbuddy` 但末段不是日期。对应 Spec R1、AC1。
 
 修改范围：`src/etl/dimensions.ts`、`tests/dimensions.test.ts`。
+
+实施结果：`isAutoGroupPath` 与 `AUTO_GROUP_DIR` 紧跟 `lastPathSegment`，两种分隔符统一切分后取末两段，父段 `toLowerCase()` 比较，段数不足 2 直接返回 `false`——根路径、单段路径与空串由此覆盖，无需特判。用例按 5 组组织，补了混合分隔符、`WorkBuddy-backup` 父目录、位数不足的日期与本交付相关的非日期形态。
+
+验证：`npm run typecheck` 通过；`npx vitest run tests/dimensions.test.ts` 17 项通过（新增 5 项）。
+
+提交：
 
 # T002 维表 `is_auto` 与结构版本递增
 
