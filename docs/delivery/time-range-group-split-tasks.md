@@ -176,3 +176,14 @@
 实施结果：`product-brief.md` 交付形态段改为四个快捷区间 + 常驻起止框、默认近 3 天、不提供「本月 / 全部」、单次跨度不超过 100 天，成功标准补「按分组数值条色段」；`technical-architecture.md` 分层原则把连续日期轴与分段颜色 / 段宽列为展示派生、重写筛选栏段落、接口表改为 `/api/timeseries` 只返回 `rows` 与 `/api/breakdown` 的 `split=model` / `models`、补四个读取筛选端点的 400 分支；`model-colors.md` 补分组数值条段色与 1px 白线限制。校正 Spec / Plan 中「五个端点」的表述为「四个读取筛选的端点」（`/api/refresh` 不解析筛选），删除已落定的「待确认问题 / 待确认取舍」与「Plan 待确认」提示，修正 Plan 测试策略里 `tests/shared.test.ts` 的落点描述。`docs/backlog/` 只有 `subagent-credit-reconciliation.md`，与本交付无关，无需改动。已一次性回填 T001–T009 的提交字段（T004 / T005 合并为同一提交 `a96b460`）。
 
 验证：`npm run typecheck` 通过（0 错）；`npm test` 12 个文件、136 项通过（1 项跳过）；`npm run build` 通过（仅既有的 chunk 体积提示）；`npm run acceptance` 23 项全部通过。AC 对照：AC1 / AC2 / AC3 由验收脚本同名断言覆盖（另含 AC12 的时间区布局）；AC4 / AC5 由「分组条按模型分段」「hover 与 focus 浮出明细」两项覆盖；AC6 由 `tests/api.test.ts`、`tests/group-normalization.test.ts`、`tests/acceptance.test.ts` 与既有 AC1 / AC4 / AC7 / AC13 断言覆盖；AC7 即本条全量检查与文档同步；AC8 由「不含 days、近 7 天画满 7 格」覆盖；AC9 由「100 天可用 / 101 天一致拦截」与 API 单测覆盖。
+
+## 交付后调整（2026-11-13）
+
+开发者确认后的一次小范围调整，不改统计口径、接口与派生库；T001–T010 的实施记录保留原样。
+
+- **自定义日期框改为「更多」展开**：起止框默认 `hidden`，筛选栏收起时只占一行；展开后日期框换到时间字段第二行，`.filter-row` 改为 `align-items: flex-start`，右侧三个维度下拉与「重置」靠上对齐。「重置」外包一层与其它字段同构的标签占位容器，避免对齐引入硬编码偏移。日期框收起态仍留在 DOM 中，受控值与验收脚本的取数入口不变。改 `src/web/components/FilterBar.tsx`、`src/web/styles.css`。
+- **错误态下的「重置」**：`isDefault` 加入 `!rangeError`，跨度 / 顺序错误出现时重置保持可用，点击后清除错误并回到近 3 天，兑现 Spec R11「重置…会清除已有错误」。改 `src/web/components/FilterBar.tsx`。
+- **模块标题配色**：删除 `ModuleSection` 的英文 `TOKEN` / `CREDIT` 眉标，把 `--accent` 用到「Token 用量」/「积分消耗」标题上；移除 `.module-eyebrow` 样式。改 `src/web/components/ModuleSection.tsx`、`src/web/styles.css`。
+- **文档同步**：`product-brief.md`、`technical-architecture.md`、`devops.md` 与本次交付的 Spec / Plan 按上述形态更新；修正 Plan 中指向已删除「待确认取舍」章节的悬空引用，并把「顺序约束」第 1 条改为以本文件「执行顺序与依赖」为准（`days` 删除留到 T006 与所有消费方一起完成）。验收脚本的 AC1 断言名按新控件形态改写，断言数量不变。
+
+验证：`npm run typecheck` 通过（0 错）；`npm test` 12 个文件、136 项通过（1 项跳过）；`npm run build` 通过（仅既有的 chunk 体积提示）；`CDP_PORT=9222 npm run acceptance` 23 项全部通过。另用 CDP 实测：收起态筛选栏高 58px（一行），展开态日期框在第二行而右侧三个下拉与「重置」仍停在第一行；Token 标题 `rgb(37, 99, 235)`、积分标题 `rgb(180, 83, 9)`；101 天错误态下「重置」未禁用，点击后错误清除且区间回到 `[today-2, today]`。

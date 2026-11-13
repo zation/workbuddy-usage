@@ -1,6 +1,6 @@
 # 时间快捷切换与分组条模型分段 Plan
 
-本计划对应 [time-range-group-split-spec.md](./time-range-group-split-spec.md)。已确认决策：**按钮为四个「今天 / 3 天 / 7 天 / 30 天」，保留「今天」**；时间控件为快捷按钮 + 常驻起止框、双向联动；去掉「更多 / 本月 / 全部 / 自定义」；**默认与重置都落在「近 3 天」**；**区间跨度上限 100 天，超限由 API 报 400、前端显示错误，不做降级展示**；分段只作用于「按分组」；提示为整行浮出明细；交叉聚合由服务层提供，不改表与口径；**「一起做」——`/api/timeseries` 去掉 `days`，日期轴归位到面板层**。
+本计划对应 [time-range-group-split-spec.md](./time-range-group-split-spec.md)。已确认决策：**按钮为四个「今天 / 3 天 / 7 天 / 30 天」，保留「今天」**；时间控件为快捷按钮 + 由「更多」展开的起止框、双向联动；去掉「本月 / 全部 / 自定义」，起止框默认收起以让筛选栏保持一行、展开后右侧下拉靠上对齐；**默认与重置都落在「近 3 天」**；**区间跨度上限 100 天，超限由 API 报 400、前端显示错误，不做降级展示**；分段只作用于「按分组」；提示为整行浮出明细；交叉聚合由服务层提供，不改表与口径；**「一起做」——`/api/timeseries` 去掉 `days`，日期轴归位到面板层**。
 
 ## 现状分析
 
@@ -18,7 +18,7 @@
 - `server/query.ts` 的 `getTimeseries()` 除了 `GROUP BY r.date_key, m.id` 聚合出 `rows`，还单独算 `start = filters.from ?? dates[0]`、`end = filters.to ?? dates.at(-1)`，再调 `enumerateDays(start, end)` 生成 `days`，返回 `{ days, rows }`。
 - `src/web/App.tsx` 的 `visibleTimeseries` 把 `days` 原样透传、只按当前 tab 过滤 `rows`；`TrendChart` 用 `data.days` 做 `xAxis.data`，并按 `days.map(day => values.get(day) ?? 0)` 给每个 series 取值。
 - 这段 `days` 是**展示形状**，不参与任何聚合、不影响合计：`rows` 里没有的日期在轴上补 0。它放在服务层是历史顺手 —— 旧「全部」预设不传 `from / to`，服务层需要替前端推断数据边界，既然算出了 `start / end` 就顺手把轴也生成了。按 `technical-architecture.md` 的「口径只在解析层与服务层、面板层只渲染返回值」，这属于面板职责。
-- 更实际的问题是：轴与数据是两个独立数组，`days` 被截断时前端只能被动接收，`rows` 里的真实数值对不上轴位，静默全补 0（卡片与拆分列表都正常、只有趋势图空）。改造后日期框常驻、前端**始终知道 `from / to`**，服务层推断边界的理由消失，正是把轴挪回前端的时机。`enumerateDays` 在 `src/shared/dates.ts`，前后端共用，挪动调用位置不产生第二份实现。
+- 更实际的问题是：轴与数据是两个独立数组，`days` 被截断时前端只能被动接收，`rows` 里的真实数值对不上轴位，静默全补 0（卡片与拆分列表都正常、只有趋势图空）。改造后 `from / to` 始终有值、前端**始终知道区间**，服务层推断边界的理由消失，正是把轴挪回前端的时机。`enumerateDays` 在 `src/shared/dates.ts`，前后端共用，挪动调用位置不产生第二份实现。
 
 **长区间与跨度上限**
 
@@ -51,7 +51,7 @@
 - **按钮确认为四个**，保留「今天」并新增「3 天」：默认改成 3 天后若没有对应按钮，首屏四个按钮会全灭、看起来像自定义区间；删掉「今天」则是用户没要求的删减。四档都不超过 100 天上限。
 - **反向匹配用精确比对**，不做「按跨度天数猜预设」：`[today-2, today]` 与 `[yesterday-2, yesterday]` 跨度相同但语义不同，按天数猜会误高亮。
 
-### 2. App 与 FilterBar：常驻日期框
+### 2. App 与 FilterBar：快捷按钮与「更多」展开
 
 `src/web/App.tsx`：
 
@@ -64,8 +64,10 @@
 `src/web/components/FilterBar.tsx`：
 
 - props 用 `activePreset` / `onQuick` / `onRange` 替换 `preset` / `custom` / `onPreset` / `onCustom`；`filters` 仍是日期框的取值来源。
-- 时间字段 DOM：`[role="group" aria-label="时间范围"]` 内四个 `<button type="button" data-quick={key} aria-pressed={...}>` + 常驻 `.date-range` 两个 `input[type=date]`（`aria-label="起始日期" / "结束日期"`）。`label[for]` 改为普通字段标签，不再指向已不存在的 `#filter-preset`。
-- 「重置」的 `isDefault` 改为 `activePreset === DEFAULT_PRESET && !hasActiveFilters(filters)`；`.filter-error` 沿用，现在承载两类错误（顺序颠倒、跨度超限）。
+- 时间字段 DOM：`[role="group" aria-label="时间范围"]` 内四个 `<button type="button" data-quick={key} aria-pressed={...}>` + 一个 `data-more` 的「更多 / 收起」切换按钮（`aria-expanded` / `aria-controls`）+ 两个 `input[type=date]`（`aria-label="起始日期" / "结束日期"`）。日期框默认 `hidden`，点「更多」才展开；收起时筛选栏只占一行，展开后日期框换到时间字段第二行。`label[for]` 改为普通字段标签，不再指向已不存在的 `#filter-preset`。
+- `FilterBar` 自持一个纯展示用的展开状态，`filters.from / to` 仍是时间状态的唯一来源；日期框留在 DOM 中（收起时 `hidden`），展开即显示当前生效区间。
+- `.filter-row` 用 `align-items: flex-start`：展开后时间字段变高，右侧三个维度下拉与「重置」仍与第一行的快捷按钮齐平，不被拉到底部。「重置」外包一层与其它字段同构的标签占位，保证对齐且不引入硬编码偏移。
+- 「重置」的 `isDefault` 为 `!rangeError && activePreset === DEFAULT_PRESET && !hasActiveFilters(filters)`；错误态下重置保持可用，点击即可清除错误并回到近 3 天。`.filter-error` 沿用，承载两类错误（顺序颠倒、跨度超限）。
 - 分组 / 对话 / 模型三个 `Select` 与 `ModelDot` 完全不动。
 
 **取舍**
@@ -73,7 +75,8 @@
 - 原生 `input[type=date]`：项目不引入依赖，现有样式与键盘行为可沿用（Spec 非目标已排除日历组件）。不设 `min / max`：跨度是区间属性，不是单日属性，用校验而非输入限制表达更准确。
 - 空值回弹用「不 setState」实现，不加回退 state：受控 value 来自 `filters`，React 下一次渲染即恢复原值。
 - 不用 `onBlur` 或「应用」按钮：Spec 要求即时生效；非法态只显示错误、保留上一次有效区间。
-- 快捷按钮用 `aria-pressed` 而非 `role="tab"`：它们改的是筛选条件、不是切换面板，避免与下方 ModuleTabs 的 tab 语义混淆。
+- **自定义日期框收在「更多」后面**：常驻两个日期框会把筛选栏撑成两行，右侧下拉被拉到底部，看起来像没对齐。收起态只占一行，展开后靠顶对齐；日期框不卸载，受控值不丢，验收脚本的取数入口也保持稳定。
+- 快捷按钮用 `aria-pressed` 而非 `role="tab"`：它们改的是筛选条件、不是切换面板，避免与下方 ModuleTabs 的 tab 语义混淆；「更多」用 `aria-expanded` 表达展开态，与预设选中态区分。
 
 ### 3. 接口归位：`/api/timeseries` 只返回 rows
 
@@ -137,7 +140,7 @@ export function buildTimeseriesAxis(
 - **输入约束取代降级策略**：不再有 `truncated` 标志、`maxDays` 阈值、「只显示有数据日期」分支与 `panel-meta` 降级提示；`TrendChartData` 只需 `{ days, rows }`，`TrendChart` 的 `panel-meta` 保持原文案。
 - **不改 `enumerateDays` 的 3700 guard**：100 ≪ 3700，上限不可达；给它打补丁反而会把「输入约束」这件事散到两处。`src/shared/dates.ts` 只新增 `daySpan()`。
 - **不引入按周 / 月聚合**：`product-brief.md` 明确「时间粒度只有天」，改粒度属业务口径变更；超限直接报错比悄悄改粒度更可解释。
-- **两端都校验**，规则单一实现、文案一致：前端负责即时反馈与避免无效请求，API 负责契约与防绕过。若开发者希望完全由 API 兜底，见「待确认取舍」。
+- **两端都校验**，规则单一实现、文案一致：前端负责即时反馈与避免无效请求，API 负责契约与防绕过。
 - 轴是纯展示派生，不参与任何聚合；`enumerateDays` 仍是前后端共享函数，没有重复实现。
 
 ### 5. 服务层：附加交叉聚合
@@ -219,7 +222,7 @@ ORDER BY group_key ASC, total_tokens DESC, model ASC
 
 - `setPreset()` 拆成 `clickQuick(evaluate, key)`（点 `[data-quick="..."]`）与 `setRange(evaluate, from, to)`（用 native setter 改 `.date-range input[type=date]` 的 value 并派发事件，等 React 重渲染）。
 - **替代 `setPreset('all')`**：新增 `setWideRange(evaluate)`，起始取 `GET /api/timeseries`（不带日期参数）返回的 **`rows` 里最小 `date`**（`days` 已不存在）、结束取今天，并加断言确认该区间下 `/api/breakdown?dim=group` 行数与不带日期参数时一致。实测数据含首尾 47 天，仍是合法区间；不用固定早日期。
-- `#filter-preset` 的四个下拉断言改为「三个 `Select` + 一组快捷按钮」；布局断言改为「快捷按钮 4 个、常驻日期框 2 个、`.filter-time` 内无 `.select`」。
+- `#filter-preset` 的四个下拉断言改为「三个 `Select` + 一组快捷按钮」；布局断言改为「快捷按钮 4 个、日期框 2 个（由「更多」展开，收起态仍留在 DOM 中）、`.filter-time` 内无 `.select`」。
 - 新增断言：默认 / 重置为 3 天且 `aria-pressed` 正确；四个按钮回填区间与 `/api/summary` 查询串一致；手动改日期的反向匹配（命中与全灭）；起始晚于结束显示错误且查询串不变；清空日期框回弹。
 - 新增断言：`/api/timeseries` 响应不含 `days`；选近 7 天时 x 轴类目数为 7（即使中间无数据）；选 100 天区间生效、趋势图 100 个类目；改成 101 天时筛选栏显示「时间跨度不能超过 100 天」、页面查询串与视图保持上一次有效状态、不出现成功的 `/api/summary` 请求；直接 `fetch` 跨度 > 100 的接口返回 400 且错误文案一致；不传日期参数的请求仍返回全量；改回合法区间后错误清除。
 - 新增断言：两个 tab 的「按分组」段数 > 0、段色与趋势图系列色逐值一致、段宽之和 ≈ 原条宽、hover 与 focus 浮层内容与降序、0 值模型不出现在段与提示；「按对话 / 按模型」仍为单色。
@@ -254,7 +257,7 @@ ORDER BY group_key ASC, total_tokens DESC, model ASC
 
 ## 顺序约束
 
-1. 类型契约 + 共享规则（`TimeseriesResponse` 去 `days`、`MAX_RANGE_DAYS` / `daySpan`、`BreakdownSegment`）与 API 单测；同时完成 `readFilters` 跨度校验、`getTimeseries` 去轴、`getBreakdown` 加交叉聚合。
+1. 类型契约 + 共享规则（`MAX_RANGE_DAYS` / `daySpan`、`BreakdownSegment`）与 API 单测；同时完成 `readFilters` 跨度校验、`getBreakdown` 加交叉聚合。`TimeseriesResponse` 去 `days`、`getTimeseries` 去轴与所有 `days` 消费方一起留到面板补轴那一步（见 Tasks「执行顺序与依赖」），保证每个任务完成时 `npm run typecheck` 都能通过。
 2. 时间纯函数 + 单测（依赖 1 的共享规则）。
 3. App 状态与 FilterBar 时间控件（依赖 2；含前端拦截与 `.filter-error`）。
 4. 面板补轴纯函数 + `TrendChart` / `App` 接线（依赖 1、3）。
@@ -290,7 +293,7 @@ ORDER BY group_key ASC, total_tokens DESC, model ASC
 ## 文档同步
 
 - `product-brief.md`：范围段把「默认展示今天」改为「默认近 3 天，四个快捷区间 + 起止日期框，不提供本月 / 全部」，补「单次区间跨度不超过 100 天」；「图表堆叠只按模型着色」补「按分组数值条也按模型分段着色」。
-- `technical-architecture.md`：模块划分的面板层描述、筛选栏段落（时间不再是下拉、日期常驻、按钮与日期双向联动）、**接口表 `/api/timeseries` 改为只返回 `rows`、`/api/breakdown` 补 `split=model` 与分段返回值、补四个读取筛选的端点共用的跨度上限 400 分支**、分层原则补「连续日期轴与分段颜色 / 段宽同属展示派生，由面板层生成」；删除与 `days` 相关的旧表述。
+- `technical-architecture.md`：模块划分的面板层描述、筛选栏段落（时间不再是下拉、日期框由「更多」展开、按钮与日期双向联动）、**接口表 `/api/timeseries` 改为只返回 `rows`、`/api/breakdown` 补 `split=model` 与分段返回值、补四个读取筛选的端点共用的跨度上限 400 分支**、分层原则补「连续日期轴与分段颜色 / 段宽同属展示派生，由面板层生成」；删除与 `days` 相关的旧表述。
 - `docs/model-colors.md`：色标覆盖视图增加「按分组数值条色段」，已知限制补「色段靠 1px 白色分隔」。
 - `docs/devops.md`：交互验收覆盖范围补时间联动、日期轴归位、跨度上限与分段提示断言；说明 `setWideRange` 从 `rows` 取最早日期、数据跨度超过 100 天时如何调整、以及前后端需同次构建的原因。
 - `data-model.md` / `integration.md`：不改（表结构与外部数据均未变化）。
