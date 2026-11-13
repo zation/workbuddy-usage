@@ -50,7 +50,10 @@ export function App() {
 
   const summary = useQuery<SummaryResponse>(`/api/summary?${query}`, deps);
   const timeseries = useQuery<TimeseriesResponse>(`/api/timeseries?${query}`, deps);
-  const groupRows = useQuery<BreakdownResponse>(`/api/breakdown?dim=group&${query}`, deps);
+  const groupRows = useQuery<BreakdownResponse>(
+    `/api/breakdown?dim=group&split=model&${query}`,
+    deps,
+  );
   const sessionRows = useQuery<BreakdownResponse>(`/api/breakdown?dim=session&${query}`, deps);
   const modelRows = useQuery<BreakdownResponse>(`/api/breakdown?dim=model&${query}`, deps);
 
@@ -284,6 +287,8 @@ export function App() {
                 loading={groupRows.loading}
                 error={groupRows.error}
                 emptyText="当前筛选下没有分组数据"
+                stackByModel
+                visibleModels={visibleModels}
                 onSelect={(key) => patchFilters({ group: key })}
               />
               <BreakdownList
@@ -355,6 +360,8 @@ export function App() {
                 loading={groupRows.loading}
                 error={groupRows.error}
                 emptyText="当前筛选下没有分组数据"
+                stackByModel
+                visibleModels={visibleModels}
                 onSelect={(key) => patchFilters({ group: key })}
               />
               <BreakdownList

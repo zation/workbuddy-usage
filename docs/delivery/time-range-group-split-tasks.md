@@ -115,13 +115,19 @@
 
 # T008 分组条分段着色与明细提示
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec 行为 6–9、R5 / R6 / R8、AC4 / AC5 与 Plan「BreakdownList 分段与明细提示」给两个 tab 的「按分组」列表加按模型色段与整行浮出提示；`groupRows` 请求带 `split=model`，「按对话 / 按模型」保持单色；点击行仍是筛选，固定行高、8 行截断、「N 项」与占比不变。完成条件含段色与趋势图逐值一致、hover 与键盘 focus 都触发、提示内容与数值格式符合 Spec、分组原始路径改由浮层承载。
 
 必要依赖：T003、T006、T007
 
 修改范围：`src/web/components/BreakdownList.tsx`、新增 `src/web/components/BreakdownTooltip.tsx`、`src/web/App.tsx`、`src/web/styles.css`
+
+实施结果：`BreakdownList` 新增可选 `stackByModel` 与 `visibleModels`，仅「按分组」传入；分段时 `.breakdown-bar` 渲染多个 `.breakdown-segment`（`backgroundColor = modelColor(segment.model)`，段间 1px 白线，无 opacity 保证与趋势图逐值一致），无有效段时回退单色条。新增 `BreakdownTooltip`（`role="tooltip"`、`pointer-events: none`）：分组名 + 该行合计 + 原始业务键 + 逐模型「色点 / 展示名 / 数额」按降序，无段显示「无数据」，Token 用 `formatTokens`、积分用 `formatCredit`。行上绑定 `onMouseEnter / onMouseLeave / onFocus / onBlur`，按行在视口的位置决定向上或向下弹出；`stackByModel` 时移除原生 `title`，原始路径改由浮层承载，行高与列表高度计算未改。`App` 的 `groupRows` 请求改为 `dim=group&split=model`，两个 tab 的「按分组」传 `stackByModel` / `visibleModels`。
+
+验证：`npm run typecheck` 通过（0 错）；`npm run build` 通过（仅既有的 chunk 体积提示）。交互断言（hover / focus、段宽之和、浮层内容与定位）由 T009 的验收脚本与 T010 全量检查覆盖。
+
+必要的问题与决策：浮层不引入 portal，`.breakdown-list` 无内部滚动、`.panel` 未设 `overflow`，相对 `li` 定位即可；若验收发现被面板裁剪再评估 portal。
 
 # T009 交互验收脚本适配
 

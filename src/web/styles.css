@@ -814,6 +814,21 @@ th[aria-sort='ascending'] .sort-button {
   opacity: 0.72;
 }
 
+.breakdown-segments {
+  display: flex;
+  height: 100%;
+}
+
+.breakdown-segment {
+  height: 100%;
+  min-width: 0;
+}
+
+/* 相邻段用细白线分隔，色值本身不改，保证相近色可辨 */
+.breakdown-segment + .breakdown-segment {
+  border-left: 1px solid #ffffff;
+}
+
 .breakdown-share {
   width: 42px;
   flex-shrink: 0;
@@ -821,6 +836,94 @@ th[aria-sort='ascending'] .sort-button {
   font-size: 11px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.breakdown-list li {
+  position: relative;
+}
+
+.breakdown-tooltip {
+  position: absolute;
+  left: 0;
+  z-index: 20;
+  min-width: 200px;
+  max-width: min(320px, 100%);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px rgba(16, 24, 40, 0.14);
+  pointer-events: none;
+}
+
+/* 默认向上弹出，靠近面板顶部时向下，避免被视口裁掉 */
+.breakdown-tooltip.is-top {
+  bottom: calc(100% + 6px);
+}
+
+.breakdown-tooltip.is-bottom {
+  top: calc(100% + 6px);
+}
+
+.breakdown-tooltip-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.breakdown-tooltip-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.breakdown-tooltip-total {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.breakdown-tooltip-key {
+  margin: 2px 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.breakdown-tooltip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breakdown-tooltip-list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.breakdown-tooltip-model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakdown-tooltip-value {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.breakdown-tooltip-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .skeleton-list {
