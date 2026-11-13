@@ -24,7 +24,7 @@
 
 必要的问题与决策：沙箱内 `npm test` 故障为执行环境特有问题，开发者本地用同一套依赖与测试文件全部通过，判定不需要改动依赖、也不需要降低校验标准；沙箱内保留等价断言作为功能正确性证据，正式回归以开发者本地 `npm test` 结果为准。
 
-提交：
+提交：d310610
 
 # T002 闲时判定与节假日表
 
@@ -42,7 +42,7 @@
 
 必要的问题与决策：Plan 写的是 `isDeepseekOffpeak(startedAt, holidays)`，实现改为可注入的 `HolidayCalendar`（把 `coveredYears` 与 `holidays` 打包），避免「空集合」与「未覆盖年份」两种语义散在两个参数里；ETL 调用仍用默认日历，接口行为不变。
 
-提交：
+提交：601ebcf
 
 # T003 价格表与比率纯函数
 
@@ -58,7 +58,7 @@
 
 必要的问题与决策：价格表按官方模型名（`OfficialModel`）索引而非直接写死单一价格，使白名单与价目表分离；当前只有 `deepseek-flash` 一档，服务层用默认档位调用，不改变本次口径。
 
-提交：
+提交：d5fdbaa
 
 # T004 ETL 派生列与派生库结构
 
@@ -74,7 +74,7 @@
 
 验证：`npm run typecheck` 通过（0 错）；`npm run build` 通过；Node 24 等价脚本从源码提取 `SCHEMA_SQL` 与 `INSERT_REQUEST_SQL` 在内存 sqlite 中实际建表、编译并执行 INSERT，断言 `SCHEMA_VERSION === 4`、新列 NOT NULL DEFAULT 1、高峰请求写 0 / 空闲请求写 1，且派生值与 `isDeepseekOffpeak()` 一致。沙箱内 `npm test` 仍受既有 runner 故障影响，正式回归以开发者本地 `npm test` 为准。重建前后按天合计对照（AC3）未在沙箱触发，避免在验证阶段全量重扫外部日志；派生库下次启动按既有机制自动重建，该对照由开发者本地首次刷新时确认。
 
-提交：
+提交：085354f
 
 # T005 服务层比率聚合与 API 契约
 
@@ -90,7 +90,7 @@
 
 验证：`npm run typecheck` 通过（首次发现 `tests/price-ratio.test.ts` 漏传 `filters` 参数，已修复后复验 0 错）；`npm run build` 通过；Node 24 等价脚本直接调 `getTimeseries` 执行 11 条断言全部通过，覆盖两档合并积分不重复、分母 0 → `null`、分子 0 → 0、模型/日期筛选生效、非 DS 模型返回空数组、`rows` 形状不变。沙箱内 `npm test` 仍受既有 runner 故障影响，正式回归以开发者本地 `npm test` 为准。
 
-提交：
+提交：7a4612f
 
 # T006 前端折线、双 Y 轴与 tooltip 分流
 
@@ -108,7 +108,7 @@
 
 必要的问题与决策：为让双轴与 tooltip 分流可在沙箱内实证验证，把 option 构造从 `.tsx` 组件抽到独立的纯 `.ts` 模块（Node 24 的 type stripping 不处理 JSX）；组件行为不变，`useMemo` 依赖同步加 `ratios`。
 
-提交：
+提交：a3ae4d7
 
 # T007 交互验收断言与 devops 同步
 
@@ -126,14 +126,20 @@
 
 必要的问题与决策：AC10 用「API 的 `ratios` 是否非空」驱动条件断言，避免依赖样本里恰好存在 DS 请求而 flaky；非 DS 筛选时折线隐藏由 T005 的 API 契约单测与 T006 的图表配置单测覆盖，交互层不再重复切换模型筛选。
 
-提交：
+提交：bbe01c9
 
 # T008 交付收尾检查
 
-状态：pending
+状态：done
 
 目标与完成条件：按 AGENTS.md 第 5 节逐项确认：Spec 的 AC1–AC7 全部满足；各任务状态、实施结果与验证记录准确完整；各已实施任务的「提交」字段已回填对应 commit hash；`npm run typecheck`、`npm test`、`npm run build`、`npm run acceptance` 通过或未执行项已清楚记录原因；长期文档（`product-brief.md`、`technical-architecture.md`、`data-model.md`、`devops.md`、`deepseek-pricing.md`）与代码无已知矛盾；backlog 中与本次交付相关的条目已检查。完成后做收尾提交，收尾任务本身不填「提交」字段。
 
 必要依赖：T001、T002、T003、T004、T005、T006、T007
 
 修改范围：`docs/delivery/deepseek-price-ratio-tasks.md`、`docs/`
+
+实施结果：逐项核对 Spec 的 AC1–AC7 均已由对应任务实现并有验证记录——AC1（T001 三时区快照 + T005 服务层不读本地时区）、AC2（T002 边界/周末/节假日/未覆盖年份）、AC3（T004 schema、列默认值、INSERT 写入；重建前后对照需本地首次刷新）、AC4（T005 两档合并与 null/0 边界 + T003 真实数据 4.16× 对账）、AC5（T006 双轴/单折线/null/图例隔离/tooltip 分流 + T007 AC10）、AC6（T005 `rows` 形状不变、既有 `api.test.ts` 断言保留、T007 恢复 `valueFormatter` 保护既有验收项）、AC7（检查与文档）。一次性回填 T001–T007 的 commit hash。长期文档 `product-brief.md`（非目标）、`technical-architecture.md`（AD-6 与接口表）、`data-model.md`（列说明、C5、版本演进）、`devops.md`（AC10 与节假日表重建）、`deepseek-pricing.md`（价目表与口径）均按实际实现同步；搜索旧口径（`4100` / `7.1×` / `0.013659` / 「按本地时区」/ `SCHEMA_VERSION = 3`）只命中 `docs/delivery/v1.0.0/` 与 `time-range-group-split-plan.md` 等历史交付文档，按约定不改写。`docs/backlog/vitest-runner-context.md` 已从待确认事项转为环境差异结论记录；`subagent-credit-reconciliation.md` 的「不接入官方计量接口」决策保持有效，无需改动。
+
+验证：`npm run typecheck` 通过（0 错）；`npm run build` 通过（621 模块）；`node --check scripts/panel-acceptance.mjs` 通过。各任务另跑过 Node 24 等价断言：T001 18 条 + 三时区快照、T002 17 条、T003 14 条 + 254 请求真实数据对账、T004 schema/INSERT 动态执行、T005 11 条、T006 17 条、T007 6 条，全部通过。`npm test` 未通过：当前沙箱 vitest runner 故障，17 个测试文件全部在收集阶段失败（最小探针可复现，与代码无关）；开发者本地在 T001 阶段用同一依赖跑过 13 个文件 137 passed / 1 skipped。**`npm run acceptance` 未通过**：沙箱没有以 `--remote-debugging-port=9222` 启动的 Chrome，脚本报「未找到可调试页面」退出 1。两项都需在开发者本地按 `docs/devops.md` 补跑，未删除测试或降低标准。
+
+必要的问题与决策：剩余风险集中在两个尚未由沙箱完成的验收动作——本地补跑 `npm test`（17 个文件）与 `npm run acceptance`（含新增 AC10），以及派生库因 `SCHEMA_VERSION` 3→4 首次重建后按天合计对照。缓存等价性假设与价目表时点误差已写入 `docs/deepseek-pricing.md`，属已知且已确认的口径限制，不是本次遗留缺陷。
