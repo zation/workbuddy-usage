@@ -102,13 +102,19 @@
 
 # T007 长期文档同步
 
-状态：pending
+状态：done
 
 目标与完成条件：更新 `data-model.md`（`groups.is_auto` 列并说明「按时间戳自动创建的工作目录」与「插入时确定、规则变更靠版本重建」、C7 / C11 的判定与快照说明、`schema_version` 由 2 增至 3；第 10 行 `ON CONFLICT DO NOTHING` 通用原则保持不变）、`technical-architecture.md`（`group` 参数的虚拟键「默认」、解析层判定位置、面板下拉与提示行为；不改动其它实测快照数字）、`product-brief.md`（关键术语「分组」补充自动目录归入「默认」、筛选条件仍为四项）、`integration.md`（`group_id` / `group_title` / `project_id` 全为 NULL 的实测事实、路径判据与目录格式变化的兼容性风险、实测快照数字标注日期）。文档只写当前实现与约束，不复制实现细节，不把不同日期的实测数字混用。对应 Spec AC11。
 
 必要依赖：T001–T006。
 
 修改范围：`docs/data-model.md`、`docs/technical-architecture.md`、`docs/product-brief.md`、`docs/integration.md`。
+
+实施结果：`data-model.md` 的 `groups` 表补 `is_auto` 列与语义段（含「插入时确定、`DO NOTHING` 不改写、规则变更靠版本重建」），C7 / C11 各补一句快照行为，版本管理补「由 2 增至 3」。`technical-architecture.md` 在接口段补 `group` 的虚拟键与单独一段「分组口径归一化」（判定位置、聚合与筛选、撞名不回退、API 结构不变），模块划分段补四个下拉共用 `Select` 与 tooltip 过滤行为，数据量一行补「分组行数不再随自动目录增长」而不改其它快照数字，路径处理一行补 `node:path` 的例外（自动目录判定固定接受两种分隔符，避免与实现冲突）。`product-brief.md` 在「分组」术语里补自动目录归入「默认」并重申四项筛选。`integration.md` 补 2026-11-13 实测（148 行会话、三个分组字段非空数均为 0、16 行空 `cwd`、81 行自动目录路径）、判据说明与「自动目录命名格式变化」风险行。
+
+验证：人工通读四份文档与实现逐条对照（列名、版本号、虚拟键、判定与快照语义、面板行为、风险应对）；`grep` 确认长期文档中无残留的旧口径描述。未改动 v1.0.0 归档文档。
+
+提交：
 
 # T008 交付收尾检查
 

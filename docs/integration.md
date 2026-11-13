@@ -95,6 +95,10 @@
 
 **分组维度按工作目录划分，取值是 `sessions.cwd`**（旧称"项目"，与 WorkBuddy 桌面端新版的"分组"命名一致）。`sessions` 表里另有 `group_id` / `group_title` 与 `project_id` 列，它们是 WorkBuddy 自己的其它字段，**不是**本项目的分组维度来源，本项目不读取。
 
+2026-11-13 实测（只读查询）：`sessions` 表 148 行，`group_id` / `group_title` / `project_id` 的非空行数**均为 0**，即三者全部为 NULL——没有可用的分组类型字段，只能按路径形态判定。同一快照里 16 行 `cwd` 为空（归入「未知分组」），81 行 `cwd` 是 `<...>/WorkBuddy/yyyy-MM-dd-HH-mm-ss` 形态（归入「默认」）。
+
+判据只看路径末两段：末段匹配 `yyyy-MM-dd-HH-mm-ss`、父段忽略大小写等于 `WorkBuddy` 即视为自动目录，`/` 与 `\` 都接受，不校验日期是否合法。末段形似日期但父目录不是 `WorkBuddy` 的路径、以及 `WorkBuddy` 下的非日期目录，都按手动分组处理。该判定只在解析层写入派生库时执行一次，结果存 `groups.is_auto`；WorkBuddy 若改变自动目录的命名格式，判定会失效，需要更新规则并递增 `schema_version` 重建索引（见兼容性风险）。
+
 ## 本地库 `workbuddy.db`
 
 SQLite，由 WorkBuddy 管理。库内还有 `automations`、`automation_runs`、`workspaces` 等表，本项目只读取下列三张。
@@ -313,6 +317,7 @@ providerData: { conversationRequestId, credit, source, stageId, messageId }
 | 子代理目录结构变化 | 路径不再是 `subagents/agent-*.jsonl` | 扫描改为递归查找 `*.jsonl`，以路径特征判断归属 |
 | `credit_json` 结构变化 | 值由数字变为对象 | 解析时判型，非数字按无积分处理并记录告警 |
 | 会话被清理 | jsonl 或 db 行消失 | 索引按文件存在性与 `source_file` 对账，删除对应请求；积分随 `session_usage` 行消失，按无积分处理且不补齐 |
+| 自动目录命名格式变化 | 新的自动工作目录不再匹配 `.../WorkBuddy/yyyy-MM-dd-HH-mm-ss`，被判为手动分组，筛选下拉重新出现条目 | 更新解析层的形态规则并递增 `schema_version` 删库重建，不静默猜测，也不依赖增量刷新纠正存量行 |
 
 字段命名分两层：**内部字段**（TypeScript 类型、索引列名、API 返回）由本项目命名，可自由调整；**外部键名**（jsonl 与 `workbuddy.db` 的字段）由 WorkBuddy 决定，只能适配。当前实测字段固定为 `message.usage` 下的 `input_tokens` / `output_tokens` / `cache_read_input_tokens` / `total_tokens`，以及 `providerData` 下的 `conversationRequestId` / `model` / `requestModelName`；本项目只统计本机 WorkBuddy 单一来源，v1 不引入参考项目那套多来源别名表，字段映射集中在解析层。
 
