@@ -12,7 +12,6 @@ export function ModuleSection({ accent, title, description, children }: ModuleSe
     <section className={`module module-${accent}`}>
       <header className="module-header">
         <div>
-          <div className="module-eyebrow">{accent === 'token' ? 'TOKEN' : 'CREDIT'}</div>
           <h2>{title}</h2>
           <p>{description}</p>
         </div>

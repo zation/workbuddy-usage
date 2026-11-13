@@ -163,7 +163,7 @@ button {
 .filter-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 14px 18px;
 }
 
@@ -180,6 +180,11 @@ button {
   color: var(--muted);
   font-size: 12px;
   font-weight: 500;
+}
+
+.filter-reset {
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .filter-time {
@@ -238,10 +243,20 @@ button {
   font-weight: 600;
 }
 
+.quick-button[data-more][aria-expanded='true'] {
+  border-color: var(--token);
+  background: var(--token-soft);
+  color: var(--token);
+}
+
 .date-range {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.date-range[hidden] {
+  display: none;
 }
 
 .date-separator {
@@ -347,15 +362,9 @@ button {
   margin-bottom: 18px;
 }
 
-.module-eyebrow {
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-}
-
 .module-header h2 {
-  margin: 2px 0 4px;
+  margin: 0 0 4px;
+  color: var(--accent);
   font-size: 19px;
   font-weight: 650;
 }

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { BreakdownRow, Filters } from '../../shared/types.ts';
 import { DEFAULT_PRESET, QUICK_PRESETS, hasActiveFilters } from '../filters.ts';
 import type { PresetKey } from '../filters.ts';
@@ -38,7 +39,9 @@ export function FilterBar({
   onRange,
   onReset,
 }: FilterBarProps) {
-  const isDefault = activePreset === DEFAULT_PRESET && !hasActiveFilters(filters);
+  const [customOpen, setCustomOpen] = useState(false);
+  const isDefault =
+    !rangeError && activePreset === DEFAULT_PRESET && !hasActiveFilters(filters);
 
   return (
     <section className="filter-bar" aria-label="筛选条件">
@@ -58,7 +61,17 @@ export function FilterBar({
                 {preset.label}
               </button>
             ))}
-            <div className="date-range">
+            <button
+              type="button"
+              className="quick-button"
+              data-more=""
+              aria-expanded={customOpen}
+              aria-controls="custom-date-range"
+              onClick={() => setCustomOpen((open) => !open)}
+            >
+              {customOpen ? '收起' : '更多'}
+            </button>
+            <div className="date-range" id="custom-date-range" hidden={!customOpen}>
               <input
                 type="date"
                 aria-label="起始日期"
@@ -123,9 +136,14 @@ export function FilterBar({
           />
         </div>
 
-        <button type="button" className="ghost-button" onClick={onReset} disabled={isDefault}>
-          重置
-        </button>
+        <div className="filter-field filter-reset">
+          <span className="filter-label" aria-hidden="true">
+            &nbsp;
+          </span>
+          <button type="button" className="ghost-button" onClick={onReset} disabled={isDefault}>
+            重置
+          </button>
+        </div>
       </div>
 
       {rangeError ? <p className="filter-error">{rangeError}</p> : null}

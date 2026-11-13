@@ -885,7 +885,7 @@ async function main() {
   const threeStart = addDays(today, -2);
   const defaultTime = await readTimeState(evaluate);
   check(
-    'AC1 时间区为四个快捷按钮 + 常驻起止框，首屏默认近 3 天',
+    'AC1 时间区为四个快捷按钮 +「更多」展开的起止框，首屏默认近 3 天',
     defaultTime.buttons.join(',') === 'today,threeDays,sevenDays,thirtyDays' &&
       defaultTime.pressed.join(',') === 'threeDays' &&
       defaultTime.from === threeStart &&
