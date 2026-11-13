@@ -2,6 +2,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../server/app.ts';
+import { MAX_RANGE_DAYS } from '../src/shared/constants.ts';
+import { addDays } from '../src/shared/dates.ts';
 import type {
   BreakdownResponse,
   RequestsResponse,
@@ -11,6 +13,17 @@ import type {
 import { createStatsFixture } from './helpers/stats-fixture.ts';
 import type { StatsFixture } from './helpers/stats-fixture.ts';
 import { cleanupTempDirs, makeTempDir } from './helpers/temp.ts';
+
+const FILTERED_PATHS = [
+  '/api/summary',
+  '/api/timeseries',
+  '/api/breakdown?dim=group',
+  '/api/requests',
+];
+
+function withQuery(path: string, query: string): string {
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`;
+}
 
 const fixtures: StatsFixture[] = [];
 
@@ -182,6 +195,28 @@ describe('服务层聚合', () => {
     expect((await app.request('/api/requests?sort=unknown')).status).toBe(400);
     expect((await app.request('/api/requests?order=up')).status).toBe(400);
     expect((await app.request('/api/not-exist')).status).toBe(404);
+  });
+
+  it('区间跨度上限 100 天，四个筛选端点一致', async () => {
+    const { app } = await setup();
+    const from = '2026-01-01';
+    const day100 = addDays(from, MAX_RANGE_DAYS - 1);
+    const day101 = addDays(from, MAX_RANGE_DAYS);
+
+    for (const path of FILTERED_PATHS) {
+      const ok = await app.request(withQuery(path, `from=${from}&to=${day100}`));
+      expect(ok.status).toBe(200);
+
+      const tooLong = await app.request(withQuery(path, `from=${from}&to=${day101}`));
+      expect(tooLong.status).toBe(400);
+      expect(await tooLong.json()).toEqual({ error: '时间跨度不能超过 100 天' });
+    }
+
+    for (const path of FILTERED_PATHS) {
+      expect((await app.request(withQuery(path, `from=${from}`))).status).toBe(200);
+      expect((await app.request(withQuery(path, `to=${day101}`))).status).toBe(200);
+      expect((await app.request(path)).status).toBe(200);
+    }
   });
 });
 

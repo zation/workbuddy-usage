@@ -5,7 +5,8 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { serveStatic } from '@hono/node-server/serve-static';
 import type { Refresher } from '../src/etl/refresh.ts';
-import { isValidDateKey } from '../src/shared/dates.ts';
+import { MAX_RANGE_DAYS } from '../src/shared/constants.ts';
+import { daySpan, isValidDateKey } from '../src/shared/dates.ts';
 import type {
   Dimension,
   Filters,
@@ -48,6 +49,9 @@ function readFilters(c: Context): FilterResult {
   }
   if (from && to && from > to) {
     return { ok: false, error: 'from 不能晚于 to' };
+  }
+  if (from && to && daySpan(from, to) > MAX_RANGE_DAYS) {
+    return { ok: false, error: '时间跨度不能超过 100 天' };
   }
 
   return { ok: true, filters: { from, to, group, session, model } };

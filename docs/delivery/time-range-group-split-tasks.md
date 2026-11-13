@@ -23,13 +23,19 @@
 
 # T002 服务层跨度校验
 
-状态：pending
+状态：done
 
-目标与完成条件：按 Spec R11 与 Plan「API 契约兜底」在 `readFilters` 增加校验：`from` 与 `to` 都存在且跨度超限时返回 400 与「时间跨度不能超过 100 天」，五个端点一致；缺失任一日期时放行，保留 API 不带日期取全量的能力。完成条件含 100 / 101 天边界、单侧日期与无日期请求的行为符合 Spec 边界表，相关 API 单测与 `npm run typecheck` 通过。
+目标与完成条件：按 Spec R11 与 Plan「API 契约兜底」在 `readFilters` 增加校验：`from` 与 `to` 都存在且跨度超限时返回 400 与「时间跨度不能超过 100 天」，四个筛选端点一致；缺失任一日期时放行，保留 API 不带日期取全量的能力。完成条件含 100 / 101 天边界、单侧日期与无日期请求的行为符合 Spec 边界表，相关 API 单测与 `npm run typecheck` 通过。
 
 必要依赖：T001
 
 修改范围：`server/app.ts`、`tests/api.test.ts`
+
+实施结果：`readFilters` 在「格式校验 → `from > to`」之后追加 `daySpan(from, to) > MAX_RANGE_DAYS` 判断，返回 `{ ok: false, error: '时间跨度不能超过 100 天' }`，各端点沿用既有 400 分支；缺失任一日期不校验。`tests/api.test.ts` 新增 `FILTERED_PATHS` 与 `withQuery()`，对 4 个筛选端点断言 100 天 200、101 天 400 且文案一致，单侧日期与无日期请求放行。
+
+验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/api.test.ts` 14 项通过。
+
+必要的问题与决策：Spec / Plan / T002 原文写「五个端点」，实际只有 4 个端点调用 `readFilters`（`server/app.ts:71`、`79`、`91`、`107`；`/api/health` 不解析筛选）。按「所有读取筛选的端点一致」实现，并在收尾时把文档口径改为「四个筛选端点」，不改变校验范围与验收含义。
 
 # T003 分组维度交叉聚合
 
