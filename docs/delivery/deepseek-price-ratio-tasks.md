@@ -46,11 +46,19 @@
 
 # T003 价格表与比率纯函数
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R3 / R4 / R5 / R6 与 Plan AD-P3 建立模型白名单、三档价目表、套餐参数、`creditUnitPrice(dateKey)` 与 `officialCost(...)`；月天数用 UTC 日期算术求得，覆盖 28 / 29 / 30 / 31 天与跨月，不写死固定单价。完成条件：纯函数单测断言大小月单价不同、跨月各取各自月份、分子为 0 与分母为 0 的行为符合 Spec 边界表；新建价格规则文档记录价目表版本与来源、模型映射、套餐参数、缓存等价性假设及敏感性、节假日表维护方式；改写 `product-brief.md` 的非目标条目（`:41` 保持不变，按 Plan 判断）；`npm run typecheck` 通过。
 
 修改范围：`src/shared/deepseek-pricing.ts`（新）、`tests/`、`docs/deepseek-pricing.md`（新）、`docs/product-brief.md`
+
+实施结果：新建 `deepseek-pricing.ts`，集中价目表版本、显式模型白名单（`deepseek-v4.1-flash` → `deepseek-flash`）、三档单价（按官方模型名索引，预留多档扩展）、套餐参数，以及 `creditUnitPrice(dateKey)` / `wbCost(credit, dateKey)` / `officialCost(snapshot, offpeak)` 三个纯函数；月天数用 UTC 日期算术，不写死单价。新建 `docs/deepseek-pricing.md` 记录价目表版本与来源、模型映射、套餐口径、计算口径、缓存等价性假设与敏感性、节假日表维护约束。`product-brief.md` 的非目标改写为「不把积分反推成金额；DeepSeek 官方等效费用独立计算、不与积分混算」，`:41` 保持不变。新增 `tests/deepseek-pricing.test.ts` 三组用例。
+
+验证：`npm run typecheck` 通过（0 错）；Node 24 直接导入 `.ts` 执行 14 条等价断言全部通过（28/29/30/31 天月、同月/跨月、零积分、三档计价与高峰翻倍、缓存命中上限、白名单与版本）；并用 `.data/index.db` 只读对账 254 个 DS 请求，得 `wbCost 12.520 元 / officialCost 3.010 元 / 比率 4.16×`，与 Spec 依据段的试算值完全一致。沙箱内 `npm test` 仍受既有 runner 故障影响，正式回归以开发者本地 `npm test` 为准。
+
+必要的问题与决策：价格表按官方模型名（`OfficialModel`）索引而非直接写死单一价格，使白名单与价目表分离；当前只有 `deepseek-flash` 一档，服务层用默认档位调用，不改变本次口径。
+
+提交：
 
 # T004 ETL 派生列与派生库结构
 
