@@ -2,8 +2,6 @@
 
 本计划对应 [time-range-group-split-spec.md](./time-range-group-split-spec.md)。已确认决策：**按钮为四个「今天 / 3 天 / 7 天 / 30 天」，保留「今天」**；时间控件为快捷按钮 + 常驻起止框、双向联动；去掉「更多 / 本月 / 全部 / 自定义」；**默认与重置都落在「近 3 天」**；**区间跨度上限 100 天，超限由 API 报 400、前端显示错误，不做降级展示**；分段只作用于「按分组」；提示为整行浮出明细；交叉聚合由服务层提供，不改表与口径；**「一起做」——`/api/timeseries` 去掉 `days`，日期轴归位到面板层**。
 
-**本 Plan 待开发者确认，确认前不创建 Tasks、不修改产品代码。**
-
 ## 现状分析
 
 **时间链路**
@@ -11,7 +9,7 @@
 - `src/web/filters.ts` 的 `PresetKey` 有 6 个值（`today / sevenDays / thirtyDays / month / all / custom`），`PRESETS` 直接作为 `#filter-preset` 下拉的选项；`rangeForPreset(preset, today, custom)` 计算区间，`applyPresetRange()` 只替换 `from / to` 并保留三个维度筛选。
 - `src/web/App.tsx` 同时持有 `preset`、`custom`、`filters`、`rangeError` 四份状态：`handlePreset` 写预设并替换区间，`handleCustom` 只在 `preset === 'custom'` 且区间合法时才写 `filters`，`handleReset` 回到 `today` 且把 `custom` 重置为今天。日期框只在 `preset === 'custom'` 时由 `FilterBar` 渲染。
 - `src/web/components/FilterBar.tsx` 的时间字段是 `Select`（`id="filter-preset"`）+ 条件渲染的 `.date-range` 两个 `input[type=date]`；`label[for=filter-preset]`、`.filter-time` / `.filter-time-controls` / `.select-compact` 样式都围绕下拉写。`.filter-error` 已存在，用于显示 `rangeError`。
-- `server/app.ts` 的 `readFilters()` 被五个端点共用，目前只校验 `from / to` 的格式与 `from > to`，返回 `{ ok: false, error }` 后由各端点转成 400。
+- `server/app.ts` 的 `readFilters()` 被四个读取筛选的端点共用（`/api/refresh` 不解析筛选），目前只校验 `from / to` 的格式与 `from > to`，返回 `{ ok: false, error }` 后由各端点转成 400。
 - `tests/filters.test.ts` 固化了 `month / all / custom` 三个分支与 `sevenDays` 的区间；改造后这些用例必须一起改。
 - `scripts/panel-acceptance.mjs` 对旧控件耦合较重：`setPreset()` 通过 `#filter-preset` 下拉选值，至少 10 处调用 `setPreset('all')` / `'today'` / `'custom'`；`#filter-preset` 还出现在「四个下拉」断言（约 637 行）与「预设下拉紧凑宽度 + 自定义日期框数为 2」的布局断言（约 717–740 行）。移除「全部 / 自定义」后，这些取全量数据的路径需要替代方案。
 
@@ -117,7 +115,7 @@ export function daySpan(from: string, to: string): number {
 
 **前端即时拦截**：`App.handleRange` 在写入 `filters` 前判断，超限时只设 `rangeError`、不写状态。理由：一次日期改动会触发 8 个以上 `useQuery` 并发请求，若完全交给 API 兜底，会出现 8 个 400、指标卡变 `—`、每个面板各弹一条错误；前端拦截让错误只出现在筛选栏 `.filter-error`，且不产生无效请求。规则本身来自 `src/shared/`，两端共用一份实现，不构成两套口径。
 
-**API 契约兜底**：`server/app.ts` 的 `readFilters()` 在 `from` 与 `to` 都存在时追加校验，超限返回 `{ ok: false, error: '时间跨度不能超过 100 天' }`，各端点沿用现有 `c.json({ error }, 400)` 路径。五个端点因此一致。缺失任一日期时**不校验跨度并放行**，保留 API 不带日期取全量的能力（验收脚本与后续工具用），前端日期框不会出现该状态。
+**API 契约兜底**：`server/app.ts` 的 `readFilters()` 在 `from` 与 `to` 都存在时追加校验，超限返回 `{ ok: false, error: '时间跨度不能超过 100 天' }`，各端点沿用现有 `c.json({ error }, 400)` 路径。四个筛选端点因此一致。缺失任一日期时**不校验跨度并放行**，保留 API 不带日期取全量的能力（验收脚本与后续工具用），前端日期框不会出现该状态。
 
 **面板补轴**：`src/web/display.ts` 新增纯函数
 
@@ -248,7 +246,7 @@ ORDER BY group_key ASC, total_tokens DESC, model ASC
 ## 数据与接口变化
 
 - `GET /api/timeseries` **去掉 `days`**，只返回 `rows`。这是本交付唯一的响应字段删减，属收缩契约。
-- 五个端点的 `readFilters` 新增校验：`from` 与 `to` 都存在且含首尾跨度 > 100 天时返回 `400 { error: '时间跨度不能超过 100 天' }`；缺失任一日期时不校验并放行。其余响应语义不变。
+- 四个筛选端点的 `readFilters` 新增校验：`from` 与 `to` 都存在且含首尾跨度 > 100 天时返回 `400 { error: '时间跨度不能超过 100 天' }`；缺失任一日期时不校验并放行。其余响应语义不变。
 - `GET /api/breakdown` 新增可选参数 `split=model`，仅 `dim=group` 生效；响应 `rows[].models` 为可选附加字段（`BreakdownSegment[]`）。其余两个维度、不带 `split` 的响应结构不变。
 - `Filters` 结构不变；`PresetKey` 删除 `month / all / custom`，新增 `threeDays`。
 - **无数据库迁移**：表结构、派生规则、`SCHEMA_VERSION = 3` 都不变，不需要删库重建；静态资源随构建重新生成。
@@ -268,10 +266,10 @@ ORDER BY group_key ASC, total_tokens DESC, model ASC
 
 ## 测试策略
 
-- **`tests/shared.test.ts`**：`daySpan` 的含首尾计数、跨月 / 跨年、同日为 1、UTC 不受本地时区影响；`enumerateDays` 原用例保持不动；`TimeseriesResponse` 字面量去掉 `days`；`BreakdownRow` 字面量按需补 `models`。
+- **`tests/shared.test.ts`**：`daySpan` 的含首尾计数、跨月 / 跨年、同日为 1、UTC 不受本地时区影响、与 `MAX_RANGE_DAYS` 的 100 / 101 边界；`enumerateDays` 原用例保持不动；`BreakdownRow` 字面量按需补 `models`。
 - **`tests/filters.test.ts`**：四个预设区间（含 3 天）、`DEFAULT_PRESET`、`matchPreset` 命中 / 未命中 / 端点边界、`applyPresetRange` 保留三个维度筛选；删除 `month / all / custom` 用例。
 - **`tests/display.test.ts`**：`buildTimeseriesAxis` 的含首尾连续补 0、`from > to`、空 `rows`、100 天边界（最多 100 项）；`visibleSegments` 的 0 值过滤、降序与同值稳定、无段；`segmentWidths` 之和等于原条宽、行值为 0、负值、单段、clamp。
-- **`tests/api.test.ts`**：五个端点在 `from / to` 跨度 100 天时返回 200、101 天时返回 400 且错误文案一致；只传一个日期或都不传时放行；`/api/timeseries` 响应不含 `days`；`split=model` 时每段之和等于对应行 `totalTokens` / `credit`、`dim != group` 与不带 `split` 时无 `models`、带 `model` 筛选时段收敛、非法 `split` 返回 400、C14 覆盖新字段。原有「补齐日期」用例按新契约改写。
+- **`tests/api.test.ts`**：四个筛选端点在 `from / to` 跨度 100 天时返回 200、101 天时返回 400 且错误文案一致；只传一个日期或都不传时放行；`/api/timeseries` 响应不含 `days`；`split=model` 时每段之和等于对应行 `totalTokens` / `credit`、`dim != group` 与不带 `split` 时无 `models`、带 `model` 筛选时段收敛、非法 `split` 返回 400、C14 覆盖新字段。原有「补齐日期」用例按新契约改写。
 - **交互验收**：`npm run acceptance` 按第 8 节补断言；手工核对段色与趋势图逐值一致、段宽之和、hover / focus 浮层位置与内容、四个按钮与日期联动、重置、近 7 天补满 7 格、101 天错误提示与恢复；DOM 度量确认行高仍为 52px 且列表无内部滚动。
 - **全量检查**：`npm run typecheck`、`npm test`、`npm run build`、`npm run acceptance`。项目无 lint 脚本（见 `devops.md`）。
 
@@ -292,14 +290,7 @@ ORDER BY group_key ASC, total_tokens DESC, model ASC
 ## 文档同步
 
 - `product-brief.md`：范围段把「默认展示今天」改为「默认近 3 天，四个快捷区间 + 起止日期框，不提供本月 / 全部」，补「单次区间跨度不超过 100 天」；「图表堆叠只按模型着色」补「按分组数值条也按模型分段着色」。
-- `technical-architecture.md`：模块划分的面板层描述、筛选栏段落（时间不再是下拉、日期常驻、按钮与日期双向联动）、**接口表 `/api/timeseries` 改为只返回 `rows`、`/api/breakdown` 补 `split=model` 与分段返回值、补五个端点共用的跨度上限 400 分支**、分层原则补「连续日期轴与分段颜色 / 段宽同属展示派生，由面板层生成」；删除与 `days` 相关的旧表述。
+- `technical-architecture.md`：模块划分的面板层描述、筛选栏段落（时间不再是下拉、日期常驻、按钮与日期双向联动）、**接口表 `/api/timeseries` 改为只返回 `rows`、`/api/breakdown` 补 `split=model` 与分段返回值、补四个读取筛选的端点共用的跨度上限 400 分支**、分层原则补「连续日期轴与分段颜色 / 段宽同属展示派生，由面板层生成」；删除与 `days` 相关的旧表述。
 - `docs/model-colors.md`：色标覆盖视图增加「按分组数值条色段」，已知限制补「色段靠 1px 白色分隔」。
 - `docs/devops.md`：交互验收覆盖范围补时间联动、日期轴归位、跨度上限与分段提示断言；说明 `setWideRange` 从 `rows` 取最早日期、数据跨度超过 100 天时如何调整、以及前后端需同次构建的原因。
 - `data-model.md` / `integration.md`：不改（表结构与外部数据均未变化）。
-
-## 待确认取舍
-
-- **跨度按含首尾 ≤ 100 天计算**（`to - from ≤ 99` 天差）；若希望改成按日期差 ≤ 100（含首尾 101 天），在确认 Plan 时指出，改动只涉及 `daySpan` 的比较与两处边界单测。
-- **前端是否也即时拦截**（本 Plan 定为「是」）：若希望完全由 API 兜底、前端只展示返回的错误，可去掉 `handleRange` 的拦截，但需接受多个面板同时报错的体验，并在 `devops.md` 说明。
-- **不传 `from / to` 时放行**（本 Plan 定为「是」）：保留 API 不带日期取全量的能力供验收脚本使用；若希望 API 强制要求完整区间，需同步改造验收脚本的取全量方式。
-- Spec 中「日期框清空回弹」的边界若需调整，同样在确认 Plan 时提出；它会同时影响 `handleRange` 与验收断言。

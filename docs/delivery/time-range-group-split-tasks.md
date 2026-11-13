@@ -21,6 +21,8 @@
 
 验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/shared.test.ts` 10 项通过。
 
+提交：82416fe
+
 # T002 服务层跨度校验
 
 状态：done
@@ -37,6 +39,8 @@
 
 必要的问题与决策：Spec / Plan / T002 原文写「五个端点」，实际只有 4 个端点调用 `readFilters`（`server/app.ts:71`、`79`、`91`、`107`；`/api/health` 不解析筛选）。按「所有读取筛选的端点一致」实现，并在收尾时把文档口径改为「四个筛选端点」，不改变校验范围与验收含义。
 
+提交：fe4d254
+
 # T003 分组维度交叉聚合
 
 状态：done
@@ -50,6 +54,8 @@
 实施结果：`getBreakdown()` 增加可选 `withModelSplit`，仅在 `dimension === 'group'` 时调用新增的 `attachModelSegments()`：第二条查询复用 `BASE_FROM` / `where` / `params` / `GROUP_KEY`，按 `group_key, m.id` 分组，结果按分组键归并挂到 `row.models`（无分段给 `[]`）；原聚合 SQL、`tokenShare` / `creditShare` 与表结构未改。`/api/breakdown` 读取 `split` 参数，非 `model` 值返回 400，其它维度忽略该参数。新增 `tests/helpers/segment-fixture.ts`（alpha 分组由 model-a 300 + model-b 100 构成）覆盖多模型分组。
 
 验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/api.test.ts` 18 项通过（新增 4 项：段之和等于行值、不带 split / 其它维度无 `models` 且聚合不变、模型筛选收敛、非法 split 400 与 C14）。
+
+提交：e25c074
 
 # T004 时间预设纯函数
 
@@ -67,6 +73,8 @@
 
 必要的问题与决策：本任务与 T005 合并为一个提交。只改 `filters.ts` 会让 `App.tsx` / `FilterBar.tsx` 仍引用 `PRESETS`、`CustomRange` 与三参 `rangeForPreset`，中间状态必然 `typecheck` 失败，与 Plan「每个任务完成后单独跑 typecheck」冲突；两项同属「时间状态收敛为 `from / to`」这一原子变更，按 AGENTS.md 第 6 节合并提交并同时填写 T004、T005。
 
+提交：a96b460
+
 # T005 时间控件与跨度拦截
 
 状态：done
@@ -82,6 +90,8 @@
 验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/filters.test.ts` 5 项通过。交互层断言留待 T009 的验收脚本与 T010 全量检查。
 
 必要的问题与决策：与 T004 合并为同一提交（理由见 T004）。未做 `min / max` 输入限制：跨度是区间属性而非单日属性，按 Plan 用校验加错误提示表达。
+
+提交：a96b460
 
 # T006 日期轴职责归位
 
@@ -99,6 +109,8 @@
 
 必要的问题与决策：T006 原修改范围漏了 `tests/acceptance.test.ts` 与 `tests/group-normalization.test.ts` 两个 `days` 消费方（`tsconfig.json` 的 `include` 含 `tests`，漏改会直接让 `typecheck` 失败）。按「字段删减与所有消费方同任务完成」的完成条件补入本任务范围，属范围补齐、不改需求与方案。
 
+提交：a6b3d24
+
 # T007 分段纯函数
 
 状态：done
@@ -112,6 +124,8 @@
 实施结果：`display.ts` 新增 `segmentValue(segment, metric)`、`visibleSegments(row, metric, visibleModels)`（`> 0` 且可见、按数额降序、同值按模型业务键升序，复制数组后再排序）与 `segmentWidths(share, rowValue, segments, metric)`（条宽 `share * 100` 限幅 `[0, 100]`，按段占比分摊，最后一段用差值补齐浮点误差）。函数只做展示派生，不读写聚合值。
 
 验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/display.test.ts` 27 项通过（新增 `segmentValue` 1 项、`visibleSegments` 4 项、`segmentWidths` 5 项，覆盖 0 值 / 负值 / 不可见段 / 行值为 0 / 无段 / 单段 / 浮点补齐 / 超 100% 限幅）。
+
+提交：1034f13
 
 # T008 分组条分段着色与明细提示
 
@@ -129,6 +143,8 @@
 
 必要的问题与决策：浮层不引入 portal，`.breakdown-list` 无内部滚动、`.panel` 未设 `overflow`，相对 `li` 定位即可；若验收发现被面板裁剪再评估 portal。
 
+提交：0a802a0
+
 # T009 交互验收脚本适配
 
 状态：done
@@ -139,18 +155,24 @@
 
 修改范围：`scripts/panel-acceptance.mjs`、`docs/devops.md`
 
-实施结果：`setPreset` 拆为 `clickQuick`（点 `[data-quick]`）、`typeDate` / `setRange`（原生 setter + `input` 事件，跨区间时先写不会越界的一端）、`setWideRange`（从 `/api/timeseries` 的 `rows` 取最早 `date` 到今天，跨度超 100 天直接报错）；`readTimeState` / `readGroupTooltip` / `readFirstGroupRow` 补齐状态读取，「空范围」用例改用「最早数据前一天」这一可达区间。原 `#filter-preset` 的四处下拉断言改为三个维度下拉 + 四个快捷按钮布局断言，分组行原始键改从浮层读取。新增 8 项断言：AC1 控件形态与默认区间、AC2 四个按钮回填与查询串一致及反向匹配、AC3 顺序错误与清空回弹、AC8 无 `days` 且近 7 天 7 格、AC9 100 / 101 天前后端一致拦截、AC4 分段段色与段宽、AC5 hover / focus 明细与行高。无头环境开启 `Emulation.setFocusEmulationEnabled`，否则 `focus()` 不触发浮层。`docs/devops.md` 补覆盖范围、`setWideRange` 取数与 100 天调整方式、前后端需同次构建。
+实施结果：`setPreset` 拆为 `clickQuick`（点 `[data-quick]`）、`typeDate` / `setRange`（原生 setter + `input` 事件，跨区间时先写不会越界的一端）、`setWideRange`（从 `/api/timeseries` 的 `rows` 取最早 `date` 到今天，跨度超 100 天直接报错）；`readTimeState` / `readGroupTooltip` / `readFirstGroupRow` 补齐状态读取，「空范围」用例改用「最早数据前一天」这一可达区间。原 `#filter-preset` 的四处下拉断言改为三个维度下拉 + 四个快捷按钮布局断言，分组行原始键改从浮层读取。新增 7 项断言：AC1 控件形态与默认区间、AC2 四个按钮回填与查询串一致及反向匹配、AC3 顺序错误与清空回弹、AC8 无 `days` 且近 7 天 7 格、AC9 100 / 101 天前后端一致拦截、AC4 分段段色与段宽、AC5 hover / focus 明细与行高。无头环境开启 `Emulation.setFocusEmulationEnabled`，否则 `focus()` 不触发浮层。`docs/devops.md` 补覆盖范围、`setWideRange` 取数与 100 天调整方式、前后端需同次构建。
 
 验证：`npm run acceptance` 23 项全部通过（原 16 项 + 新增 7 项，另含改写后的既有断言）；过程记录：首次运行 AC4 段宽比对口径与颜色空格归一化、AC5 无头焦点模拟两处脚本问题已修正后复跑通过。
 
 必要的问题与决策：段宽之和的口径按「条容器宽 × 行占比」（即原单色条宽），不是条容器全宽；颜色比对统一经 `normalizeColor()`，避免 `rgb(a, b, c)` 与 `rgb(a,b,c)` 的字符串差异。
 
+提交：dbf8e2b
+
 # T010 文档同步与收尾全量检查
 
-状态：pending
+状态：done
 
 目标与完成条件：按 AGENTS.md 第 5 节与 Spec「与既有交付的关系」逐项收尾：更新 `product-brief.md`、`technical-architecture.md`、`docs/model-colors.md`，核对 Spec / Plan / Tasks 与长期文档无矛盾、删除过时说明，检查 `docs/backlog/` 相关条目；按 Spec AC1–AC9 逐条验收；全量执行 `npm run typecheck`、`npm test`、`npm run build`、`npm run acceptance`；一次性回填 T001–T009 的提交字段。本任务为收尾任务。
 
 必要依赖：T001–T009
 
 修改范围：`docs/`、`docs/delivery/time-range-group-split-tasks.md`
+
+实施结果：`product-brief.md` 交付形态段改为四个快捷区间 + 常驻起止框、默认近 3 天、不提供「本月 / 全部」、单次跨度不超过 100 天，成功标准补「按分组数值条色段」；`technical-architecture.md` 分层原则把连续日期轴与分段颜色 / 段宽列为展示派生、重写筛选栏段落、接口表改为 `/api/timeseries` 只返回 `rows` 与 `/api/breakdown` 的 `split=model` / `models`、补四个读取筛选端点的 400 分支；`model-colors.md` 补分组数值条段色与 1px 白线限制。校正 Spec / Plan 中「五个端点」的表述为「四个读取筛选的端点」（`/api/refresh` 不解析筛选），删除已落定的「待确认问题 / 待确认取舍」与「Plan 待确认」提示，修正 Plan 测试策略里 `tests/shared.test.ts` 的落点描述。`docs/backlog/` 只有 `subagent-credit-reconciliation.md`，与本交付无关，无需改动。已一次性回填 T001–T009 的提交字段（T004 / T005 合并为同一提交 `a96b460`）。
+
+验证：`npm run typecheck` 通过（0 错）；`npm test` 12 个文件、136 项通过（1 项跳过）；`npm run build` 通过（仅既有的 chunk 体积提示）；`npm run acceptance` 23 项全部通过。AC 对照：AC1 / AC2 / AC3 由验收脚本同名断言覆盖（另含 AC12 的时间区布局）；AC4 / AC5 由「分组条按模型分段」「hover 与 focus 浮出明细」两项覆盖；AC6 由 `tests/api.test.ts`、`tests/group-normalization.test.ts`、`tests/acceptance.test.ts` 与既有 AC1 / AC4 / AC7 / AC13 断言覆盖；AC7 即本条全量检查与文档同步；AC8 由「不含 days、近 7 天画满 7 格」覆盖；AC9 由「100 天可用 / 101 天一致拦截」与 API 单测覆盖。
