@@ -85,13 +85,19 @@
 
 # T006 日期轴职责归位
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R9 / R10、AC6 / AC8 与 Plan「接口归位」「面板层补轴」删除 `TimeseriesResponse.days`、`getTimeseries` 只返回 `rows`；新增前端 `TrendChartData` 与 `buildTimeseriesAxis`（跨度 ≤ 100 天时逐天补 0），`TrendChart` 的渲染逻辑与 `panel-meta` 文案不变。字段删减必须与所有消费方在同一任务完成，保证 `npm run typecheck` 通过。完成条件含 `/api/timeseries` 响应不含 `days`、选近 7 天时画满 7 格、空 `rows` 走空态。
 
 必要依赖：T001、T005
 
-修改范围：`src/shared/types.ts`、`server/query.ts`、`src/web/display.ts`、`src/web/App.tsx`、`src/web/components/TrendChart.tsx`、`tests/api.test.ts`、`tests/display.test.ts`
+修改范围：`src/shared/types.ts`、`server/query.ts`、`src/web/display.ts`、`src/web/App.tsx`、`src/web/components/TrendChart.tsx`、`tests/api.test.ts`、`tests/display.test.ts`、`tests/acceptance.test.ts`、`tests/group-normalization.test.ts`
+
+实施结果：`TimeseriesResponse` 去掉 `days`，`getTimeseries()` 删除区间推断与 `enumerateDays` 调用，只返回 `{ rows }`。`display.ts` 新增 `TrendChartData` 与 `buildTimeseriesAxis(from, to, rows)`（缺少端点、`from > to` 或空 `rows` 返回空轴），`TrendChart` 的 data 类型改为 `TrendChartData`、其余渲染逻辑与 `panel-meta` 未改；`App` 用筛选区间与原始 `rows` 组装 `days / rows`，模型 0 值隐藏只作用于 `rows`。同步改写 `tests/api.test.ts` 的时序用例（断言无 `days`、不再补日期）、新增 `tests/display.test.ts` 三项轴用例，并把 `tests/acceptance.test.ts`、`tests/group-normalization.test.ts` 中读取 `days` 的断言改为「响应不含 `days` + rows 日期集合」。
+
+验证：`npm run typecheck` 通过（0 错）；`npm test` 12 个文件、126 项通过（1 项跳过）。
+
+必要的问题与决策：T006 原修改范围漏了 `tests/acceptance.test.ts` 与 `tests/group-normalization.test.ts` 两个 `days` 消费方（`tsconfig.json` 的 `include` 含 `tests`，漏改会直接让 `typecheck` 失败）。按「字段删减与所有消费方同任务完成」的完成条件补入本任务范围，属范围补齐、不改需求与方案。
 
 # T007 分段纯函数
 

@@ -20,8 +20,8 @@ import { DEFAULT_PRESET, applyPresetRange, matchPreset, rangeForPreset, todayKey
 import type { PresetKey } from './filters.ts';
 import { MAX_RANGE_DAYS } from '../shared/constants.ts';
 import { daySpan } from '../shared/dates.ts';
-import { cacheHitRate, visibleModelKeys } from './display.ts';
-import type { ModuleTab } from './display.ts';
+import { buildTimeseriesAxis, cacheHitRate, visibleModelKeys } from './display.ts';
+import type { ModuleTab, TrendChartData } from './display.ts';
 import {
   formatCredit,
   formatInteger,
@@ -96,19 +96,18 @@ export function App() {
     visibleModels.has(row.key),
   );
 
-  const visibleTimeseries = useMemo(() => {
+  const visibleTimeseries = useMemo<TrendChartData | null>(() => {
     if (!timeseries.data) {
       return null;
     }
-    // 模型集合尚未取到（首次加载或失败）时先不过滤，避免趋势图闪出空态
-    if (!modelOptions.data) {
-      return timeseries.data;
-    }
+    const rows = timeseries.data.rows;
+    // 模型集合尚未取到（首次加载或失败）时先不过滤，避免趋势图闪出空态；
+    // 日期轴始终按原始 rows 与筛选区间计算，不受 0 值隐藏影响。
     return {
-      days: timeseries.data.days,
-      rows: timeseries.data.rows.filter((row) => visibleModels.has(row.model)),
+      days: buildTimeseriesAxis(filters.from, filters.to, rows),
+      rows: modelOptions.data ? rows.filter((row) => visibleModels.has(row.model)) : rows,
     };
-  }, [timeseries.data, modelOptions.data, visibleModels]);
+  }, [timeseries.data, modelOptions.data, visibleModels, filters.from, filters.to]);
 
   const optionGroups = groupOptions.data?.rows ?? [];
   const optionSessions = sessionOptions.data?.rows ?? [];

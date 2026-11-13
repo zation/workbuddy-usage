@@ -151,12 +151,12 @@ describe('服务层聚合', () => {
     ]);
   });
 
-  it('timeseries 按天、按模型拆分并补齐日期', async () => {
+  it('timeseries 只返回按天按模型的 rows，不下发日期轴', async () => {
     const { app } = await setup();
     const response = await app.request('/api/timeseries?from=2026-11-11&to=2026-11-13');
     const body = (await response.json()) as TimeseriesResponse;
 
-    expect(body.days).toEqual(['2026-11-11', '2026-11-12', '2026-11-13']);
+    expect(body).not.toHaveProperty('days');
     expect(body.rows.map((row) => [row.date, row.model, row.totalTokens])).toEqual([
       ['2026-11-11', 'model-a', 100],
       ['2026-11-12', 'model-a', 200],
@@ -167,17 +167,15 @@ describe('服务层聚合', () => {
     expect(body.rows[0]?.modelName).toBe('Model-A');
 
     const all = (await (await app.request('/api/timeseries')).json()) as TimeseriesResponse;
-    expect(all.days).toEqual(['2026-11-11', '2026-11-12', '2026-11-13']);
+    expect(all).not.toHaveProperty('days');
+    expect(all.rows).toEqual(body.rows);
 
     const partial = (await (
       await app.request('/api/timeseries?from=2026-11-10')
     ).json()) as TimeseriesResponse;
-    expect(partial.days).toEqual([
-      '2026-11-10',
-      '2026-11-11',
-      '2026-11-12',
-      '2026-11-13',
-    ]);
+    expect(partial).not.toHaveProperty('days');
+    // 服务层不再推断区间边界，区间外没有数据的日期不由接口补齐
+    expect(partial.rows).toEqual(body.rows);
   });
 
   it('四个筛选条件按业务键生效', async () => {

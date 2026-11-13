@@ -418,7 +418,7 @@ describe('AC11 首屏数据完整性', () => {
     const rows = getRequests(fixture.db, {}).rows;
 
     expect(summary.token.requestCount).toBe(7);
-    expect(timeseries.days).toEqual(['2026-11-11', '2026-11-12', '2026-11-13']);
+    expect(timeseries).not.toHaveProperty('days');
     expect(new Set(timeseries.rows.map((row) => row.date)).size).toBe(3);
     expect(breakdowns.every((item) => item.rows.length > 0)).toBe(true);
     expect(rows[0]).not.toHaveProperty('hasCredit');

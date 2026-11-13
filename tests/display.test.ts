@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { BreakdownRow } from '../src/shared/types.ts';
+import { addDays } from '../src/shared/dates.ts';
+import type { BreakdownRow, TimeseriesRow } from '../src/shared/types.ts';
 import {
+  buildTimeseriesAxis,
   cacheHitRate,
   visibleBreakdownRows,
   visibleModelKeys,
@@ -142,5 +144,43 @@ describe('cacheHitRate', () => {
   it('分母为 0 时返回 null', () => {
     expect(cacheHitRate(0, 0)).toBeNull();
     expect(cacheHitRate(0, 50)).toBeNull();
+  });
+});
+
+function timeseriesRow(date: string): TimeseriesRow {
+  return {
+    date,
+    model: 'model-a',
+    modelName: 'Model-A',
+    totalTokens: 1,
+    inputTokens: 1,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    credit: 0,
+    requestCount: 1,
+  };
+}
+
+describe('buildTimeseriesAxis', () => {
+  it('按筛选区间生成含首尾的连续日期，与 rows 是否有数据无关', () => {
+    expect(
+      buildTimeseriesAxis('2026-11-10', '2026-11-12', [timeseriesRow('2026-11-12')]),
+    ).toEqual(['2026-11-10', '2026-11-11', '2026-11-12']);
+  });
+
+  it('区间无效、缺少端点或没有数据时不给轴', () => {
+    const rows = [timeseriesRow('2026-11-12')];
+    expect(buildTimeseriesAxis('2026-11-12', '2026-11-10', rows)).toEqual([]);
+    expect(buildTimeseriesAxis(undefined, '2026-11-12', rows)).toEqual([]);
+    expect(buildTimeseriesAxis('2026-11-10', undefined, rows)).toEqual([]);
+    expect(buildTimeseriesAxis('2026-11-10', '2026-11-12', [])).toEqual([]);
+  });
+
+  it('跨度上限内最多产出 100 个类目', () => {
+    const from = '2026-01-01';
+    const axis = buildTimeseriesAxis(from, addDays(from, 99), [timeseriesRow(from)]);
+    expect(axis).toHaveLength(100);
+    expect(axis[0]).toBe(from);
+    expect(axis.at(-1)).toBe(addDays(from, 99));
   });
 });

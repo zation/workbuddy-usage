@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { EChartsOption } from 'echarts';
-import type { TimeseriesResponse } from '../../shared/types.ts';
+import type { TrendChartData } from '../display.ts';
 import { formatCredit, formatInteger, formatTokens } from '../format.ts';
 import { modelColor } from '../model-colors.ts';
 import { EChart } from './EChart.tsx';
@@ -8,7 +8,7 @@ import { EChart } from './EChart.tsx';
 interface TrendChartProps {
   title: string;
   metric: 'tokens' | 'credit';
-  data: TimeseriesResponse | null;
+  data: TrendChartData | null;
   loading: boolean;
   error: string | null;
 }

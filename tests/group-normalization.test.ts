@@ -236,7 +236,10 @@ describe('分组口径归一化', () => {
       new Set(['model-a', 'model-c']),
     );
     expect(timeseries.rows.reduce((total, row) => total + row.totalTokens, 0)).toBe(700);
-    expect(timeseries.days).toEqual(['2026-11-12', '2026-11-13']);
+    expect(timeseries).not.toHaveProperty('days');
+    expect(new Set(timeseries.rows.map((row) => row.date))).toEqual(
+      new Set(['2026-11-12', '2026-11-13']),
+    );
 
     const groups = await getJson<BreakdownResponse>(
       app,

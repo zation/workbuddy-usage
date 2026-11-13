@@ -118,7 +118,7 @@ export interface SummaryResponse {
   lastRefreshAt: number | null;
 }
 
-/** 按天、按模型拆分的序列，days 由服务层补齐连续日期。 */
+/** 按天、按模型拆分的序列；只含有数据的日期，连续日期轴由面板层生成。 */
 export interface TimeseriesRow {
   date: string;
   model: string;
@@ -132,7 +132,6 @@ export interface TimeseriesRow {
 }
 
 export interface TimeseriesResponse {
-  days: string[];
   rows: TimeseriesRow[];
 }
 

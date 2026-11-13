@@ -1,7 +1,29 @@
-import type { BreakdownRow } from '../shared/types.ts';
+import { enumerateDays } from '../shared/dates.ts';
+import type { BreakdownRow, TimeseriesRow } from '../shared/types.ts';
 
 /** 面板当前激活的模块 tab，决定 0 值隐藏使用哪个主指标。 */
 export type ModuleTab = 'token' | 'credit';
+
+/** 趋势图输入：连续日期轴由面板按筛选区间生成，rows 只含有数据的按天按模型行。 */
+export interface TrendChartData {
+  days: string[];
+  rows: TimeseriesRow[];
+}
+
+/**
+ * R10：按 from / to 生成含首尾的连续日期轴，缺失日期由调用方补 0。
+ * 轴是展示派生，用原始 rows 计算，不受 0 值隐藏影响；区间无效或没有数据时不给轴。
+ */
+export function buildTimeseriesAxis(
+  from: string | undefined,
+  to: string | undefined,
+  rows: TimeseriesRow[],
+): string[] {
+  if (!from || !to || from > to || rows.length === 0) {
+    return [];
+  }
+  return enumerateDays(from, to);
+}
 
 /**
  * R7：按当前 tab 的主指标过滤模型，Token 看 totalTokens、积分看 credit。

@@ -1,6 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { DEFAULT_GROUP } from '../src/shared/constants.ts';
-import { enumerateDays } from '../src/shared/dates.ts';
 import type {
   BreakdownResponse,
   BreakdownRow,
@@ -179,17 +178,7 @@ export function getTimeseries(db: DatabaseSync, filters: Filters): TimeseriesRes
     requestCount: number(row.request_count),
   }));
 
-  let days: string[];
-  if (mapped.length === 0) {
-    days = [];
-  } else {
-    const dates = mapped.map((row) => row.date).sort();
-    const start = filters.from ?? dates[0] ?? '';
-    const end = filters.to ?? dates[dates.length - 1] ?? '';
-    days = start && end && start <= end ? enumerateDays(start, end) : [];
-  }
-
-  return { days, rows: mapped };
+  return { rows: mapped };
 }
 
 interface BreakdownRaw {
