@@ -87,13 +87,40 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` :: ${detail}` : ''}`);
 }
 
-async function setPreset(evaluate, value) {
+/** 展开下拉并点选指定业务键；点击与读取分两次 evaluate，等 React 完成重渲染。 */
+async function chooseOption(evaluate, triggerSelector, value, settle = 1200) {
   await evaluate(`(() => {
-    const select = document.querySelector('#filter-preset');
-    select.value = ${JSON.stringify(value)};
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    const trigger = document.querySelector(${JSON.stringify(triggerSelector)});
+    if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
   })()`);
-  await wait(1200);
+  await wait(200);
+  await evaluate(`(() => {
+    const trigger = document.querySelector(${JSON.stringify(triggerSelector)});
+    const container = trigger.closest('.select');
+    const option = [...container.querySelectorAll('.select-option')]
+      .find((item) => item.dataset.value === ${JSON.stringify(value)});
+    if (!option) throw new Error('下拉缺少选项：' + ${JSON.stringify(value)});
+    option.click();
+  })()`);
+  await wait(settle);
+}
+
+async function setPreset(evaluate, value) {
+  await chooseOption(evaluate, '#filter-preset', value);
+}
+
+/** 读触发按钮的业务键与当前渲染出的选项（含空值项与兜底项）。 */
+async function readSelect(evaluate, triggerSelector) {
+  return JSON.parse(
+    await evaluate(`(() => {
+      const trigger = document.querySelector(${JSON.stringify(triggerSelector)});
+      const container = trigger.closest('.select');
+      return JSON.stringify({
+        value: trigger.dataset.value ?? '',
+        options: [...container.querySelectorAll('.select-option')].map((option) => option.dataset.value ?? ''),
+      });
+    })()`),
+  );
 }
 
 const summaryUrlExpr = `(() => performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.includes('/api/summary')).at(-1) ?? '')()`;
@@ -117,15 +144,7 @@ function normalizeColor(value) {
 }
 
 async function selectModel(evaluate, key) {
-  await evaluate(`(() => {
-    const trigger = document.querySelector('#filter-model');
-    if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
-    const option = [...document.querySelectorAll('.model-select-option')]
-      .find((item) => item.dataset.model === ${JSON.stringify(key)});
-    if (!option) throw new Error('模型下拉缺少选项：' + ${JSON.stringify(key)});
-    option.click();
-  })()`);
-  await wait(1400);
+  await chooseOption(evaluate, '#filter-model', key, 1400);
 }
 
 let chartModuleUrls = [];
@@ -142,6 +161,14 @@ function chartStateExpr() {
       const option = instance.getOption();
       const axis = option.yAxis?.[0]?.axisLabel?.formatter;
       const tip = option.tooltip?.[0]?.valueFormatter;
+      const formatter = option.tooltip?.[0]?.formatter;
+      const probe = (items) => {
+        try {
+          return String(formatter(items));
+        } catch (error) {
+          return 'ERROR:' + error.message;
+        }
+      };
       return JSON.stringify({
         axis: typeof axis === 'function'
           ? [0, 1000, 10000, 1000000, 1000000000].map((value) => String(axis(value)))
@@ -149,13 +176,25 @@ function chartStateExpr() {
         tooltip: typeof tip === 'function'
           ? [1000, 10000, 1000000].map((value) => String(tip(value)))
           : null,
+        formatter: typeof formatter === 'function'
+          ? {
+              mixed: probe([
+                { axisValue: '2026-11-12', seriesName: '模型甲', value: 1200, marker: '<i class="m1"></i>' },
+                { axisValue: '2026-11-12', seriesName: '模型乙', value: 0, marker: '<i class="m2"></i>' },
+                { axisValue: '2026-11-12', seriesName: '模型丙', value: 340, marker: '<i class="m3"></i>' },
+              ]),
+              empty: probe([
+                { axisValue: '2026-11-13', seriesName: '模型甲', value: 0, marker: '<i class="m1"></i>' },
+              ]),
+            }
+          : null,
         colors: Object.fromEntries((option.series ?? []).map((s) => [s.id ?? s.name, s.itemStyle?.color])),
       });
     } catch {
       // 该资源不是 echarts core，继续找下一个
     }
   }
-  return JSON.stringify({ axis: null, tooltip: null, colors: {} });
+  return JSON.stringify({ axis: null, tooltip: null, formatter: null, colors: {} });
 })()`;
 }
 
@@ -187,6 +226,22 @@ async function main() {
     'AC3 不存在配色专用的全量模型拆分请求',
     paletteRequests.length === 0,
     `无筛选参数的 dim=model 请求 ${paletteRequests.length} 次`,
+  );
+
+  // AC9：除同源面板资源外，页面不请求任何外部域名
+  const externalRequests = JSON.parse(
+    await evaluate(`(() => JSON.stringify(
+      performance.getEntriesByType('resource')
+        .map((entry) => entry.name)
+        .filter((name) => {
+          try { return new URL(name).hostname !== location.hostname; } catch { return true; }
+        })
+    ))()`),
+  );
+  check(
+    'AC9 页面不产生外部域名请求',
+    externalRequests.length === 0,
+    externalRequests.length === 0 ? '仅同源请求' : externalRequests.join(', '),
   );
 
   // AC2：tab 结构、ARIA 关联与默认激活
@@ -338,20 +393,15 @@ async function main() {
   await evaluate(`(() => { document.querySelector('.panel.breakdown .breakdown-row').click(); })()`);
   await wait(1400);
   const byClick = JSON.parse(
-    await evaluate(`(() => JSON.stringify({ group: document.querySelector('#filter-group').value, url: performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.includes('/api/summary')).at(-1) ?? '' }))()`),
+    await evaluate(`(() => JSON.stringify({ group: document.querySelector('#filter-group').dataset.value ?? '', url: performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.includes('/api/summary')).at(-1) ?? '' }))()`),
   );
   await evaluate(`(() => { [...document.querySelectorAll('button')].find((button) => button.textContent === '重置').click(); })()`);
   await wait(1000);
   await setPreset(evaluate, 'all');
   await evaluate('performance.clearResourceTimings()');
-  await evaluate(`(() => {
-    const select = document.querySelector('#filter-group');
-    select.value = ${JSON.stringify(groupRow.key)};
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  })()`);
-  await wait(1400);
+  await chooseOption(evaluate, '#filter-group', groupRow.key, 1400);
   const bySelect = JSON.parse(
-    await evaluate(`(() => JSON.stringify({ group: document.querySelector('#filter-group').value, url: performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.includes('/api/summary')).at(-1) ?? '' }))()`),
+    await evaluate(`(() => JSON.stringify({ group: document.querySelector('#filter-group').dataset.value ?? '', url: performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.includes('/api/summary')).at(-1) ?? '' }))()`),
   );
   check(
     'AC1 列表点击与下拉框写入同一份筛选',
@@ -383,28 +433,23 @@ async function main() {
   const zeroToken = modelRows.filter((row) => row.totalTokens === 0).map((row) => row.key);
   const zeroCredit = modelRows.filter((row) => row.credit === 0).map((row) => row.key);
 
-  const readModelOptions = `(() => {
-    const trigger = document.querySelector('#filter-model');
-    return JSON.stringify({
-      value: trigger.dataset.model ?? '',
-      options: [...document.querySelectorAll('.model-select-option')]
-        .map((option) => option.dataset.model ?? '')
-        .filter((key) => key !== ''),
-    });
-  })()`;
+  const readModelOptions = async () => {
+    const state = await readSelect(evaluate, '#filter-model');
+    return { value: state.value, options: state.options.filter((key) => key !== '') };
+  };
 
-  const tokenOptions = JSON.parse(await evaluate(readModelOptions));
+  const tokenOptions = await readModelOptions();
   const zeroHiddenInToken = zeroToken.every((key) => !tokenOptions.options.includes(key));
   await selectModel(evaluate, tokenOptions.options[0]);
   await wait(1400);
-  const afterSelect = JSON.parse(await evaluate(readModelOptions));
+  const afterSelect = await readModelOptions();
   const stillSwitchable = afterSelect.options.length === tokenOptions.options.length && afterSelect.value === tokenOptions.options[0];
   await selectModel(
     evaluate,
     afterSelect.options.find((key) => key !== afterSelect.value) ?? afterSelect.value,
   );
   await wait(1400);
-  const afterSwitch = JSON.parse(await evaluate(readModelOptions));
+  const afterSwitch = await readModelOptions();
 
   // 明细色点与图表颜色在同一筛选下比对，避免默认「今天」与「全部时间」的模型集合差异
   await evaluate(`(() => { document.querySelectorAll('.table-toggle')[0].click(); })()`);
@@ -430,8 +475,9 @@ async function main() {
       const row = panel?.querySelector('.breakdown-row');
       const breakdownDot = row?.querySelector('.model-dot');
       const key = row?.getAttribute('title') ?? '';
-      const option = [...document.querySelectorAll('.model-select-option')]
-        .find((item) => item.dataset.model === key);
+      const container = document.querySelector('#filter-model').closest('.select');
+      const option = [...container.querySelectorAll('.select-option')]
+        .find((item) => item.dataset.value === key);
       const optionDot = option?.querySelector('.model-dot');
       const triggerDot = document.querySelector('#filter-model .model-dot');
       return JSON.stringify({
@@ -470,7 +516,7 @@ async function main() {
 
   await evaluate(`document.querySelector('#credit-tab').click()`);
   await wait(1400);
-  const creditOptions = JSON.parse(await evaluate(readModelOptions));
+  const creditOptions = await readModelOptions();
   const zeroHiddenInCredit = zeroCredit
     .filter((key) => key !== creditOptions.value)
     .every((key) => !creditOptions.options.includes(key));
@@ -487,6 +533,240 @@ async function main() {
       afterSwitch.value !== afterSelect.value &&
       colorsStable && creditAxisOk,
     `token 隐藏 ${zeroToken.length} 项、credit 隐藏 ${zeroCredit.length} 项，选中后下拉项 ${afterSelect.options.length} → ${afterSwitch.options.length}，配色稳定=${colorsStable}（比对 ${sharedModelKeys.length} 个模型），积分轴=${creditChart.axis?.join('/') ?? '无'}`,
+  );
+
+  // 复位到「全部时间 + 无筛选」，后续断言在同一条基线上执行
+  await evaluate(`(() => { [...document.querySelectorAll('button')].find((button) => button.textContent === '重置').click(); })()`);
+  await wait(1000);
+  await setPreset(evaluate, 'all');
+  await evaluate(`document.querySelector('#token-tab').click()`);
+  await wait(1500);
+
+  const autoPathPattern = /[\\/]workbuddy[\\/]\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$/i;
+  const fetchJson = async (path) => (await fetch(new URL(path, BASE_URL))).json();
+
+  // AC2：分组下拉完全由服务层聚合结果驱动
+  const groupApi = await fetchJson('/api/breakdown?dim=group');
+  const groupState = await readSelect(evaluate, '#filter-group');
+  const groupOptionKeys = groupState.options.filter((key) => key !== '');
+  const dateEntries = groupOptionKeys.filter((key) => autoPathPattern.test(key));
+  const apiKeys = groupApi.rows.map((row) => row.key).sort();
+  const sortedOptionKeys = [...groupOptionKeys].sort();
+  const hasDefaultOption = groupOptionKeys.includes('默认');
+  const hasDefaultApi = apiKeys.includes('默认');
+  check(
+    'AC2 分组下拉无日期目录条目且与聚合结果一致',
+    dateEntries.length === 0 &&
+      JSON.stringify(sortedOptionKeys) === JSON.stringify(apiKeys) &&
+      hasDefaultOption === hasDefaultApi,
+    `选项 ${groupOptionKeys.length} 项、日期条目 ${dateEntries.length} 项、含「默认」=下拉 ${hasDefaultOption} / 接口 ${hasDefaultApi}`,
+  );
+
+  // AC2 边界：当前范围没有自动分组请求时「默认」不占位
+  await setPreset(evaluate, 'custom');
+  await evaluate(`(() => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    const input = document.querySelectorAll('.date-range input[type=date]')[0];
+    setter.call(input, '2099-01-01');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await wait(300);
+  await evaluate(`(() => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    const input = document.querySelectorAll('.date-range input[type=date]')[1];
+    setter.call(input, '2099-01-01');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await wait(1500);
+  const emptyRangeState = await readSelect(evaluate, '#filter-group');
+  const emptyRangeApi = await fetchJson('/api/breakdown?dim=group&from=2099-01-01&to=2099-01-01');
+  check(
+    'AC2 空范围内「默认」不占位',
+    emptyRangeApi.rows.length === 0 && JSON.stringify(emptyRangeState.options) === JSON.stringify(['']),
+    `接口 ${emptyRangeApi.rows.length} 行、下拉 ${emptyRangeState.options.length} 项`,
+  );
+  await evaluate(`(() => { [...document.querySelectorAll('button')].find((button) => button.textContent === '重置').click(); })()`);
+  await wait(1000);
+  await setPreset(evaluate, 'all');
+
+  // AC4：虚拟业务键筛选作用于四个端点
+  let ac4Ok = false;
+  let ac4Detail = '当前数据没有自动分组请求，无法验证';
+  if (hasDefaultOption) {
+    await evaluate('performance.clearResourceTimings()');
+    await chooseOption(evaluate, '#filter-group', '默认', 1600);
+    const afterDefault = await readSelect(evaluate, '#filter-group');
+    const summaryUrlNow = await evaluate(summaryUrlExpr);
+    const encoded = encodeURIComponent('默认');
+    const query = `group=${encoded}`;
+    const [summary, groups, sessions, models, timeseries, requests] = await Promise.all([
+      fetchJson(`/api/summary?${query}`),
+      fetchJson(`/api/breakdown?dim=group&${query}`),
+      fetchJson(`/api/breakdown?dim=session&${query}`),
+      fetchJson(`/api/breakdown?dim=model&${query}`),
+      fetchJson(`/api/timeseries?${query}`),
+      fetchJson(`/api/requests?${query}`),
+    ]);
+    const requestGroups = [...new Set(requests.rows.map((row) => row.group))];
+    const allAuto = requestGroups.length > 0 && requestGroups.every((key) => autoPathPattern.test(key));
+    const requestSessions = [...new Set(requests.rows.map((row) => row.session))].sort();
+    const requestModels = [...new Set(requests.rows.map((row) => row.model))].sort();
+    const timeseriesTokens = timeseries.rows.reduce((total, row) => total + row.totalTokens, 0);
+    ac4Ok =
+      afterDefault.value === '默认' &&
+      summaryUrlNow.includes(encoded) &&
+      groups.rows.length === 1 &&
+      groups.rows[0]?.key === '默认' &&
+      allAuto &&
+      JSON.stringify(requestSessions) === JSON.stringify(sessions.rows.map((row) => row.key).sort()) &&
+      JSON.stringify(requestModels) === JSON.stringify(models.rows.map((row) => row.key).sort()) &&
+      timeseriesTokens === summary.token.totalTokens;
+    ac4Detail =
+      `回显=${afterDefault.value}、URL 含编码键=${summaryUrlNow.includes(encoded)}、` +
+      `分组行=${groups.rows.length}、明细 ${requests.rows.length} 条全为自动路径=${allAuto}、` +
+      `会话/模型与明细一致=${ac4Ok}、token 一致=${timeseriesTokens === summary.token.totalTokens}`;
+    await evaluate(`(() => { [...document.querySelectorAll('button')].find((button) => button.textContent === '重置').click(); })()`);
+    await wait(1000);
+    await setPreset(evaluate, 'all');
+  }
+  check('AC4 选中「默认」后四个端点只含自动分组数据', ac4Ok, ac4Detail);
+
+  // AC12：四个下拉的 ARIA 组合与交互一致
+  const ariaState = JSON.parse(
+    await evaluate(`(() => JSON.stringify(
+      ['#filter-preset', '#filter-group', '#filter-session', '#filter-model'].map((selector) => {
+        const trigger = document.querySelector(selector);
+        const container = trigger.closest('.select');
+        const controls = trigger.getAttribute('aria-controls');
+        return {
+          selector,
+          role: trigger.getAttribute('role'),
+          haspopup: trigger.getAttribute('aria-haspopup'),
+          expanded: trigger.getAttribute('aria-expanded'),
+          controls,
+          controlsExists: Boolean(document.getElementById(controls)),
+          activedescendant: trigger.getAttribute('aria-activedescendant'),
+          selected: container.querySelectorAll('.select-option[aria-selected="true"]').length,
+        };
+      })
+    ))()`),
+  );
+  const ariaOk =
+    ariaState.length === 4 &&
+    ariaState.every(
+      (item) =>
+        item.role === 'combobox' &&
+        item.haspopup === 'listbox' &&
+        item.expanded === 'false' &&
+        item.controlsExists &&
+        item.activedescendant === null &&
+        item.selected === 1,
+    );
+
+  const pressKey = async (key) => {
+    await evaluate(`(() => {
+      const trigger = document.querySelector('#filter-group');
+      trigger.focus();
+      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true }));
+    })()`);
+    await wait(250);
+  };
+  const groupOpenState = async () =>
+    JSON.parse(
+      await evaluate(`(() => {
+        const trigger = document.querySelector('#filter-group');
+        const id = trigger.getAttribute('aria-activedescendant');
+        const active = id ? document.getElementById(id) : null;
+        const container = trigger.closest('.select');
+        return JSON.stringify({
+          expanded: trigger.getAttribute('aria-expanded'),
+          activeId: id ?? '',
+          activeValue: active?.dataset.value ?? '',
+          value: trigger.dataset.value ?? '',
+          options: container.querySelectorAll('.select-option').length,
+        });
+      })()`),
+    );
+
+  await pressKey('ArrowDown');
+  const opened = await groupOpenState();
+  await pressKey('ArrowDown');
+  const moved = await groupOpenState();
+  await pressKey('Enter');
+  await wait(1400);
+  const afterEnter = await groupOpenState();
+  await pressKey('ArrowDown');
+  await pressKey('Escape');
+  const afterEscape = await groupOpenState();
+  await pressKey('ArrowDown');
+  await evaluate(`(() => { document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); })()`);
+  await wait(250);
+  const afterOutside = await groupOpenState();
+
+  const keyboardOk =
+    opened.expanded === 'true' &&
+    opened.activeId !== '' &&
+    opened.options > 1 &&
+    moved.activeId !== opened.activeId &&
+    afterEnter.expanded === 'false' &&
+    afterEnter.value === moved.activeValue &&
+    afterEscape.expanded === 'false' &&
+    afterOutside.expanded === 'false';
+  await chooseOption(evaluate, '#filter-group', '', 1400);
+
+  const presetLayout = JSON.parse(
+    await evaluate(`(() => {
+      const container = document.querySelector('#filter-preset').closest('.select');
+      const trigger = document.querySelector('#filter-preset');
+      return JSON.stringify({
+        compact: container.classList.contains('select-compact'),
+        width: Math.round(trigger.getBoundingClientRect().width),
+        fullWidth: Math.round(document.querySelector('#filter-group').getBoundingClientRect().width),
+      });
+    })()`),
+  );
+  await setPreset(evaluate, 'custom');
+  const customDateInputs = await evaluate(
+    `document.querySelectorAll('.date-range input[type=date]').length`,
+  );
+  await setPreset(evaluate, 'all');
+  const layoutOk =
+    presetLayout.compact && presetLayout.width >= 100 && presetLayout.width < presetLayout.fullWidth && customDateInputs === 2;
+
+  check(
+    'AC12 四个下拉 ARIA 一致、键盘与点击外部关闭可用、时间预设紧凑宽度不变',
+    ariaOk && keyboardOk && layoutOk,
+    `ARIA=${ariaOk}（${ariaState.map((item) => item.expanded).join('/')}）、键盘=${keyboardOk}、` +
+      `预设宽=${presetLayout.width}px（全宽 ${presetLayout.fullWidth}px）、自定义日期框=${customDateInputs}`,
+  );
+
+  // AC13：两张趋势图的 tooltip 都过滤 0 值
+  await evaluate(`document.querySelector('#token-tab').click()`);
+  await wait(1500);
+  const tokenChartRule = await readChart(evaluate);
+  await evaluate(`document.querySelector('#credit-tab').click()`);
+  await wait(1500);
+  const creditChartRule = await readChart(evaluate);
+  const tooltipRule = (state) => {
+    const formatter = state?.formatter;
+    if (!formatter) {
+      return false;
+    }
+    return (
+      formatter.mixed.includes('2026-11-12') &&
+      formatter.mixed.includes('模型甲') &&
+      formatter.mixed.includes('模型丙') &&
+      !formatter.mixed.includes('模型乙') &&
+      formatter.mixed.indexOf('模型甲') < formatter.mixed.indexOf('模型丙') &&
+      formatter.empty.includes('2026-11-13') &&
+      formatter.empty.includes('无数据') &&
+      !formatter.empty.includes('模型甲')
+    );
+  };
+  check(
+    'AC13 两张趋势图 tooltip 过滤 0 值并保留日期',
+    tooltipRule(tokenChartRule) && tooltipRule(creditChartRule),
+    `Token=${tooltipRule(tokenChartRule)}、积分=${tooltipRule(creditChartRule)}`,
   );
 
   if (SCREENSHOT_DIR) {
