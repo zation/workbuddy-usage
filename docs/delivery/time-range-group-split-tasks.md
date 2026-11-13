@@ -39,13 +39,17 @@
 
 # T003 分组维度交叉聚合
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R4 与 Plan「服务层：附加交叉聚合」实现 `split=model`（仅 `dim=group` 生效，非法值 400），复用同一 `where / params / GROUP_KEY` 追加第二条查询，把按模型分段挂到 `BreakdownRow.models`；不改原聚合 SQL、不改 `tokenShare / creditShare`、不改派生库结构与 `SCHEMA_VERSION`。完成条件含「每行段之和 = 行值」、其它维度与不带 `split` 时无 `models`、模型筛选时段收敛、C14 不含内部 id。
 
 必要依赖：T001
 
 修改范围：`server/app.ts`、`server/query.ts`、`tests/api.test.ts`
+
+实施结果：`getBreakdown()` 增加可选 `withModelSplit`，仅在 `dimension === 'group'` 时调用新增的 `attachModelSegments()`：第二条查询复用 `BASE_FROM` / `where` / `params` / `GROUP_KEY`，按 `group_key, m.id` 分组，结果按分组键归并挂到 `row.models`（无分段给 `[]`）；原聚合 SQL、`tokenShare` / `creditShare` 与表结构未改。`/api/breakdown` 读取 `split` 参数，非 `model` 值返回 400，其它维度忽略该参数。新增 `tests/helpers/segment-fixture.ts`（alpha 分组由 model-a 300 + model-b 100 构成）覆盖多模型分组。
+
+验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/api.test.ts` 18 项通过（新增 4 项：段之和等于行值、不带 split / 其它维度无 `models` 且聚合不变、模型筛选收敛、非法 split 400 与 C14）。
 
 # T004 时间预设纯函数
 

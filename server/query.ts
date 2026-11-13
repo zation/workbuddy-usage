@@ -4,6 +4,7 @@ import { enumerateDays } from '../src/shared/dates.ts';
 import type {
   BreakdownResponse,
   BreakdownRow,
+  BreakdownSegment,
   Dimension,
   Filters,
   RequestRow,
@@ -231,6 +232,7 @@ export function getBreakdown(
   db: DatabaseSync,
   filters: Filters,
   dimension: Dimension,
+  withModelSplit = false,
 ): BreakdownResponse {
   const { where, params } = buildWhere(filters);
   const columns = dimensionColumns(dimension);
@@ -273,7 +275,61 @@ export function getBreakdown(
     };
   });
 
+  if (withModelSplit && dimension === 'group') {
+    attachModelSegments(db, mapped, where, params);
+  }
+
   return { dimension, rows: mapped };
+}
+
+interface SegmentRaw {
+  group_key: string | null;
+  model: string | null;
+  model_name: string | null;
+  total_tokens: number | null;
+  credit: number | null;
+}
+
+/**
+ * 追加一条与汇总行同源、同筛选、同 GROUP_KEY 的交叉查询，把按模型分段挂到行上。
+ * 汇总 SQL 不改，分组键必须复用 GROUP_KEY，否则自动目录归并出的「默认」会与分段错位。
+ */
+function attachModelSegments(
+  db: DatabaseSync,
+  rows: BreakdownRow[],
+  where: string,
+  params: Array<string | number>,
+): void {
+  const segments = db
+    .prepare(
+      `SELECT
+         ${GROUP_KEY} AS group_key,
+         COALESCE(m.model, '未知模型') AS model,
+         COALESCE(m.display_name, m.model, '未知模型') AS model_name,
+         SUM(r.total_tokens) AS total_tokens,
+         SUM(r.credit) AS credit
+       ${BASE_FROM} ${where}
+       GROUP BY ${GROUP_KEY}, m.id
+       ORDER BY group_key ASC, total_tokens DESC, model ASC`,
+    )
+    .all(...params) as unknown as SegmentRaw[];
+
+  const byGroup = new Map<string, BreakdownSegment[]>();
+  for (const segment of segments) {
+    const key = segment.group_key ?? '';
+    const list = byGroup.get(key) ?? [];
+    list.push({
+      model: segment.model ?? '未知模型',
+      modelName: segment.model_name ?? segment.model ?? '未知模型',
+      totalTokens: number(segment.total_tokens),
+      credit: number(segment.credit),
+    });
+    byGroup.set(key, list);
+  }
+
+  for (const row of rows) {
+    row.models = byGroup.get(row.key) ?? [];
+  }
 }
 
 interface RequestRaw {

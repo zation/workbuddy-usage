@@ -10,6 +10,8 @@ import type {
   SummaryResponse,
   TimeseriesResponse,
 } from '../src/shared/types.ts';
+import { createSegmentFixture } from './helpers/segment-fixture.ts';
+import type { SegmentFixture } from './helpers/segment-fixture.ts';
 import { createStatsFixture } from './helpers/stats-fixture.ts';
 import type { StatsFixture } from './helpers/stats-fixture.ts';
 import { cleanupTempDirs, makeTempDir } from './helpers/temp.ts';
@@ -26,6 +28,7 @@ function withQuery(path: string, query: string): string {
 }
 
 const fixtures: StatsFixture[] = [];
+const segmentFixtures: SegmentFixture[] = [];
 
 async function setup() {
   const fixture = await createStatsFixture();
@@ -53,6 +56,9 @@ function collectKeys(value: unknown, keys: Set<string>): void {
 afterEach(() => {
   while (fixtures.length > 0) {
     fixtures.pop()?.close();
+  }
+  while (segmentFixtures.length > 0) {
+    segmentFixtures.pop()?.close();
   }
   cleanupTempDirs();
 });
@@ -217,6 +223,95 @@ describe('服务层聚合', () => {
       expect((await app.request(withQuery(path, `to=${day101}`))).status).toBe(200);
       expect((await app.request(path)).status).toBe(200);
     }
+  });
+});
+
+describe('分组维度模型分段', () => {
+  async function setupSegments() {
+    const fixture = await createSegmentFixture();
+    segmentFixtures.push(fixture);
+    await fixture.refresher.refresh();
+    return createApp({ db: fixture.db });
+  }
+
+  async function groupRows(app: ReturnType<typeof createApp>, query = '') {
+    const response = await app.request(`/api/breakdown?dim=group${query}`);
+    expect(response.status).toBe(200);
+    return (await response.json()) as BreakdownResponse;
+  }
+
+  it('split=model 按模型拆段，段之和等于行值', async () => {
+    const app = await setupSegments();
+    const body = await groupRows(app, '&split=model');
+
+    expect(
+      body.rows.map((row) => [
+        row.key,
+        row.totalTokens,
+        row.models?.map((seg) => [seg.model, seg.modelName, seg.totalTokens, seg.credit]),
+      ]),
+    ).toEqual([
+      [
+        '/work/alpha',
+        400,
+        [
+          ['model-a', 'Model-A', 300, 1.5],
+          ['model-b', 'Model-B', 100, 0.5],
+        ],
+      ],
+      ['/work/beta', 200, [['model-c', 'model-c', 200, 1]]],
+    ]);
+
+    for (const row of body.rows) {
+      const segments = row.models ?? [];
+      expect(segments.reduce((sum, seg) => sum + seg.totalTokens, 0)).toBe(row.totalTokens);
+      expect(segments.reduce((sum, seg) => sum + seg.credit, 0)).toBeCloseTo(row.credit, 10);
+    }
+  });
+
+  it('不带 split 或其它维度时不下发 models，聚合结果不变', async () => {
+    const app = await setupSegments();
+    const plain = await groupRows(app);
+
+    expect(plain.rows.every((row) => !('models' in row))).toBe(true);
+    expect(plain.rows.map((row) => [row.key, row.totalTokens, row.tokenShare])).toEqual([
+      ['/work/alpha', 400, 400 / 600],
+      ['/work/beta', 200, 200 / 600],
+    ]);
+
+    const segmented = await groupRows(app, '&split=model');
+    expect(segmented.rows.map((row) => [row.key, row.totalTokens, row.tokenShare])).toEqual(
+      plain.rows.map((row) => [row.key, row.totalTokens, row.tokenShare]),
+    );
+
+    for (const dimension of ['model', 'session']) {
+      const response = await app.request(`/api/breakdown?dim=${dimension}&split=model`);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as BreakdownResponse;
+      expect(body.rows.every((row) => !('models' in row))).toBe(true);
+    }
+  });
+
+  it('模型筛选生效时段随之收敛', async () => {
+    const app = await setupSegments();
+    const body = await groupRows(app, '&split=model&model=model-b');
+
+    expect(body.rows.map((row) => [row.key, row.totalTokens])).toEqual([['/work/alpha', 100]]);
+    expect(body.rows[0]?.models).toEqual([
+      { model: 'model-b', modelName: 'Model-B', totalTokens: 100, credit: 0.5 },
+    ]);
+  });
+
+  it('非法 split 返回 400，分段响应不含内部 id（C14）', async () => {
+    const app = await setupSegments();
+    const bad = await app.request('/api/breakdown?dim=group&split=session');
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: 'split 只支持 model' });
+
+    const response = await app.request('/api/breakdown?dim=group&split=model');
+    const keys = new Set<string>();
+    collectKeys(await response.json(), keys);
+    expect(keys.has('id')).toBe(false);
   });
 });
 

@@ -92,11 +92,15 @@ export function createApp({ db, refresher, staticRoot }: AppOptions): Hono {
     if (!dimension || !isDimension(dimension)) {
       return c.json({ error: 'dim 必须是 group、model 或 session' }, 400);
     }
+    const split = normalize(c.req.query('split'));
+    if (split && split !== 'model') {
+      return c.json({ error: 'split 只支持 model' }, 400);
+    }
     const parsed = readFilters(c);
     if (!parsed.ok) {
       return c.json({ error: parsed.error }, 400);
     }
-    return c.json(getBreakdown(db, parsed.filters, dimension));
+    return c.json(getBreakdown(db, parsed.filters, dimension, split === 'model'));
   });
 
   app.get('/api/requests', (c) => {
