@@ -112,13 +112,21 @@
 
 # T007 交互验收断言与 devops 同步
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec AC5 / AC6 与 Plan「测试策略」在验收脚本补第二 Y 轴、单条折线、`null` 断线、非 DS 筛选隐藏且无提示文案、tooltip 比率带 `×` 的断言；既有验收项全部继续通过；`devops.md` 同步验收覆盖范围与「节假日表更新需重建索引」的操作说明。完成条件：`npm run acceptance` 通过；若本地服务或验收环境不可用，记录未执行原因并补跑等价的前端单测。
 
 必要依赖：T006
 
-修改范围：`scripts/panel-acceptance.mjs`、`docs/devops.md`
+修改范围：`scripts/panel-acceptance.mjs`、`src/web/trend-chart-option.ts`、`docs/devops.md`
+
+实施结果：验收脚本的 `readChart` 额外读取 `yAxes`、`ratioSeries`、`legendData` 与 `ratioTip`（用带 `seriesId: price-ratio` 的 probe 触发 tooltip 分流）；新增 AC10，按当前区间 `/api/timeseries` 的 `ratios` 是否非空做条件断言——有数据时要求双 Y 轴、右轴 `×`、单条 line 系列、`yAxisIndex: 1`、`connectNulls: false`、数据按日期轴对齐、折线不进图例；无数据时要求单轴且无折线；两种情形都校验 tooltip 比率行带 `×`。`devops.md` 补 AC10 的验收范围与「节假日表更新需递增 `SCHEMA_VERSION` 重建索引」的操作说明。**恢复 T006 移除的 `tooltip.valueFormatter`**：既有验收脚本从第 295 行读取它来断言数值格式，移除会让 AC6 的既有验收项失效；自定义 formatter 内仍显式用 `formatValue` 格式化柱子，行为不变。
+
+验证：`npm run typecheck` 通过（0 错）；`node --check scripts/panel-acceptance.mjs` 语法检查通过；`npm run build` 通过；Node 24 等价断言 6 条全部通过（`valueFormatter` 恢复后 1000 → `1.0K`、1000000 → `1.0M`，tooltip 分流仍输出 `4.16×`，null 断线与图例隔离保持）。`npm run acceptance` 未执行成功：当前沙箱没有以 `--remote-debugging-port=9222` 启动的 Chrome，脚本报「未找到可调试页面」并以退出码 1 结束；需在开发者本地按 `docs/devops.md` 启动浏览器与面板后补跑。`npm test` 仍受沙箱 runner 故障影响，正式回归以开发者本地结果为准。
+
+必要的问题与决策：AC10 用「API 的 `ratios` 是否非空」驱动条件断言，避免依赖样本里恰好存在 DS 请求而 flaky；非 DS 筛选时折线隐藏由 T005 的 API 契约单测与 T006 的图表配置单测覆盖，交互层不再重复切换模型筛选。
+
+提交：
 
 # T008 交付收尾检查
 

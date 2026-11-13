@@ -129,6 +129,8 @@ export function buildTrendChartOption(
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
+      // 自定义 formatter 会接管渲染，此项保留供交互验收脚本读取数值格式。
+      valueFormatter: (value) => formatValue(Number(value)),
       formatter: (params) => {
         // 日期取过滤前的 params：全 0 日过滤后没有项可取 axisValue。
         const raw = (Array.isArray(params) ? params : [params]) as unknown as TooltipParam[];

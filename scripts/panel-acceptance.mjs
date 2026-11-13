@@ -322,6 +322,24 @@ function chartStateExpr() {
             }
           : null,
         colors: Object.fromEntries((option.series ?? []).map((s) => [s.id ?? s.name, s.itemStyle?.color])),
+        yAxes: (Array.isArray(option.yAxis) ? option.yAxis : [option.yAxis]).map((a) => ({
+          name: a?.name ?? null,
+          type: a?.type ?? null,
+        })),
+        ratioSeries: (option.series ?? [])
+          .filter((s) => s.id === 'price-ratio')
+          .map((s) => ({
+            type: s.type,
+            yAxisIndex: s.yAxisIndex,
+            connectNulls: s.connectNulls,
+            data: s.data,
+          })),
+        legendData: Array.isArray(option.legend?.[0]?.data) ? option.legend[0].data : [],
+        ratioTip: typeof formatter === 'function'
+          ? probe([
+              { axisValue: '2026-11-12', seriesId: 'price-ratio', seriesName: '价格比率', value: 4.16, marker: '<i></i>' },
+            ])
+          : null,
       });
     } catch {
       // 该资源不是 echarts core，继续找下一个
@@ -1008,6 +1026,31 @@ async function main() {
     `100 天类目=${hundredChart.categories.length}、101 天提示=${invalidTime.error || '无'}、` +
       `越界后请求=${requestsAfterInvalid}、API=${tooLongResponse.status}/${tooLongBody.error}、` +
       `无日期请求=${fullResponse.status}、恢复后类目=${recoveredChart.categories.length}`,
+  );
+
+  const ratioApi = await fetchJson(`/api/timeseries?from=${addDays(today, -6)}&to=${today}`);
+  const ratioChart = await readChart(evaluate);
+  const hasRatios = Array.isArray(ratioApi.ratios) && ratioApi.ratios.length > 0;
+  const ratioLines = ratioChart.ratioSeries ?? [];
+  const ratioAxes = ratioChart.yAxes ?? [];
+  const ratioShown =
+    hasRatios
+      ? ratioAxes.length === 2 &&
+        ratioAxes[1]?.name === '×' &&
+        ratioLines.length === 1 &&
+        ratioLines[0].type === 'line' &&
+        ratioLines[0].yAxisIndex === 1 &&
+        ratioLines[0].connectNulls === false &&
+        ratioLines[0].data.length === ratioChart.categories.length &&
+        !(ratioChart.legendData ?? []).includes('价格比率')
+      : ratioAxes.length === 1 && ratioLines.length === 0;
+  check(
+    'AC10 Token 图按 DS 数据叠加价格比率折线，无 DS 数据时隐藏',
+    ratioShown &&
+      typeof ratioChart.ratioTip === 'string' &&
+      ratioChart.ratioTip.includes('4.16×'),
+    `ratios=${ratioApi.ratios?.length ?? 0}、y 轴 ${ratioAxes.length} 个、折线 ${ratioLines.length} 条、` +
+      `右轴=${ratioAxes[1]?.name ?? '无'}、tooltip 比率=${ratioChart.ratioTip?.includes('4.16×') ?? false}`,
   );
 
   await clickQuick(evaluate, 'thirtyDays');
