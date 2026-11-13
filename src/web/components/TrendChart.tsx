@@ -17,8 +17,30 @@ function axisValue(value: number, metric: 'tokens' | 'credit'): string {
   return metric === 'credit' ? formatInteger(value) : formatTokens(value);
 }
 
+const ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+/** 提示内容按 HTML 渲染，展示名由本地面板数据提供，做最小转义。 */
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/gu, (char) => ESCAPES[char] ?? char);
+}
+
+interface TooltipParam {
+  axisValue?: string | number;
+  seriesName?: string;
+  value?: unknown;
+  marker?: string;
+}
+
 export function TrendChart({ title, metric, data, loading, error }: TrendChartProps) {
   const option = useMemo<EChartsOption>(() => {
+    const formatValue = (value: number): string =>
+      metric === 'tokens' ? formatTokens(value) : formatCredit(value);
     const days = data?.days ?? [];
     const rows = data?.rows ?? [];
     const models = new Map<string, string>();
@@ -60,8 +82,23 @@ export function TrendChart({ title, metric, data, loading, error }: TrendChartPr
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
-        valueFormatter: (value) =>
-          metric === 'tokens' ? formatTokens(Number(value)) : formatCredit(Number(value)),
+        valueFormatter: (value) => formatValue(Number(value)),
+        formatter: (params) => {
+          // 日期取过滤前的 params：全 0 日过滤后没有项可取 axisValue。
+          const raw = (Array.isArray(params) ? params : [params]) as unknown as TooltipParam[];
+          const axis = escapeHtml(String(raw[0]?.axisValue ?? ''));
+          const list = raw
+            .filter((item) => Number(item.value) > 0)
+            .sort((left, right) => Number(right.value) - Number(left.value));
+          if (list.length === 0) {
+            return `${axis}<br/>无数据`;
+          }
+          const lines = list.map(
+            (item) =>
+              `${item.marker ?? ''}${escapeHtml(item.seriesName ?? '')}：${formatValue(Number(item.value))}`,
+          );
+          return [axis, ...lines].join('<br/>');
+        },
       },
       legend: {
         bottom: 0,

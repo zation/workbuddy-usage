@@ -60,11 +60,17 @@
 
 # T005 趋势图 tooltip 过滤 0 值
 
-状态：pending
+状态：done
 
 目标与完成条件：`TrendChart` 的 tooltip 增加 `formatter`：从**过滤前的 `params`** 取 `axisValue` 作为首行日期（避免全 0 日丢失日期），过滤数值 ≤ 0 的系列，保留项按数值降序，每行色点 + 展示名 + 格式化值；无保留项时只显示日期与「无数据」；`valueFormatter` 保留并与 formatter 共用同一格式化函数 `formatValue`（`formatTokens` / `formatCredit`），供验收脚本 AC5 读取，运行时由 formatter 接管。`series.data` 仍按天补 0，堆叠、坐标轴与合计口径不变。展示名与日期做最小 HTML 转义。两张图共用组件，规则同时生效，分别验证由 T006 承担。对应 Spec R11、AC13。
 
 修改范围：`src/web/components/TrendChart.tsx`。
+
+实施结果：`formatValue` 在 `useMemo` 内按 `metric` 绑定，`valueFormatter` 与 `formatter` 共用；`formatter` 先取 `raw[0].axisValue` 再过滤 `Number(value) > 0` 并按数值降序，保留项输出 `marker + 转义后的展示名 + 全角冒号 + 格式化值`，无保留项返回「日期 + 无数据」。ECharts 的 `CallbackDataParams` 没有 `axisValue` 字段，用本地 `TooltipParam` 接口承接运行时结构，未改动 `series.data` 与堆叠配置。
+
+验证：`npm run typecheck` 通过；`npm run build` 通过。提示内容的实际渲染与两张图一致性由 T006 验收脚本断言。
+
+提交：
 
 # T006 验收脚本适配与新增断言
 
