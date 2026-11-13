@@ -92,13 +92,13 @@ describe('系列归属与兜底', () => {
   });
 
   it('显式模型直接查表，新模型按系列或全局兜底取到固定色值', () => {
-    expect(modelColor('hy4')).toBe('#1d4ed8');
+    expect(modelColor('hy4')).toBe('#086dba');
     expect(modelColor(UNKNOWN_MODEL)).toBe('#64748b');
-    expect(modelColor('kimi-k4')).toBe('#15803d');
-    expect(modelColor('hy5')).toBe('#6366f1');
-    expect(modelColor('glm-6')).toBe('#ec4899');
-    expect(modelColor('new-model-x')).toBe('#0f766e');
-    expect(modelColor('mystery-1')).toBe('#0284c7');
+    expect(modelColor('kimi-k4')).toBe('#035fc4');
+    expect(modelColor('hy5')).toBe('#3aa3e0');
+    expect(modelColor('glm-6')).toBe('#9a93e6');
+    expect(modelColor('new-model-x')).toBe('#57534e');
+    expect(modelColor('mystery-1')).toBe('#0d9488');
     expect(FALLBACK_COLORS).toContain(modelColor('new-model-x'));
   });
 

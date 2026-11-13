@@ -6,6 +6,7 @@
 
 - 颜色绑定模型业务键 `model`（`BreakdownRow.key`、`TimeseriesRow.model`、`RequestRow.model` 共用），**不绑定展示名**；展示名规范化或追加 `(标识)` 后缀不影响颜色。
 - 基础色相按系列分配：名字同系列的模型颜色相近，系列内用深浅档位区分；不同系列色相拉开。
+- 基础色相取自 Artificial Analysis 的厂商配色（腾讯、Kimi、DeepSeek、小米、MiniMax、阶跃），便于和外部榜单对照。
 - 颜色只由标识本身与静态色表决定，与筛选、时间、tab、刷新次数、其它模型是否存在无关；首帧即稳定，不需要为配色额外请求模型集合。
 - 色点出现在趋势图系列与图例、按模型拆分、模型下拉、请求明细，全部取自 `src/web/model-colors.ts` 的 `modelColor()`，与图表系列填充色逐值一致。
 
@@ -13,17 +14,17 @@
 
 | 模型标识 | 系列 | 色值 |
 | --- | --- | --- |
-| `deepseek-v4.1-flash` | deepseek | `#ea580c` |
-| `glm-5.2` | glm | `#db2777` |
-| `hy3` | hunyuan | `#312e81` |
-| `hy4` | hunyuan | `#1d4ed8` |
-| `hy4-free` | hunyuan | `#2563eb` |
-| `hy4-preview` | hunyuan | `#3b82f6` |
-| `hy4-preview-f` | hunyuan | `#60a5fa` |
-| `kimi-k3.1-pro` | kimi | `#16a34a` |
-| `mimo-v2.6-pro` | mimo | `#7c3aed` |
-| `minimax-m3.1-flash` | minimax | `#0d9488` |
-| `step-5-preview` | step | `#a16207` |
+| `deepseek-v4.1-flash` | deepseek | `#2243e6` |
+| `glm-5.2` | glm | `#736cd3` |
+| `hy3` | hunyuan | `#054a7f` |
+| `hy4` | hunyuan | `#086dba` |
+| `hy4-free` | hunyuan | `#0a89eb` |
+| `hy4-preview` | hunyuan | `#5cb9ff` |
+| `hy4-preview-f` | hunyuan | `#9dd2fb` |
+| `kimi-k3.1-pro` | kimi | `#047afe` |
+| `mimo-v2.6-pro` | mimo | `#ff6900` |
+| `minimax-m3.1-flash` | minimax | `#eb3568` |
+| `step-5-preview` | step | `#00f5e7` |
 | `未知模型` | — | `#64748b` |
 
 该表由 `tests/model-colors.test.ts` 与代码常量逐项比对，改动任一处都必须同步。
@@ -48,6 +49,8 @@
 ## 已知限制
 
 - 同系列颜色相近，堆叠图相邻块靠 1px 白色描边分辨边界；浅色档在白底偏淡。
+- 蓝系占了 kimi、deepseek 与 hunyuan 三个系列，色相接近，相邻时主要靠明度差与白色描边区分；这是采用厂商色的代价。
+- `step` 采用亮青色，浅色档在白底偏淡，深色档更易读。
 - 每系列只有 3 个保留档位，多个同系列新模型可能哈希到同一档而同色；当前不扩容，后续按实际模型规模再评估。
 - 两个色表外标识恰好落到同一基础色且同一档位时允许同色。
 - 全局兜底色板与部分系列色相可能接近，靠深浅档位拉开。
@@ -57,3 +60,4 @@
 | 日期 | 内容 |
 | --- | --- |
 | 2026-11-12 | 初版：按系列分配基础色相，11 个模型标识 + 「未知模型」各自固定色值，色表外标识走稳定哈希兜底 |
+| 2026-11-13 | 整体改用 Artificial Analysis 的厂商色：hunyuan 换成腾讯蓝 `#5cb9ff` 并重排深浅档，kimi / deepseek / mimo / minimax 直接采用其 AA 厂商色；`glm` 的 AA 色 `#1c7ff8` 与 Kimi `#047afe` 近乎同色（RGB 距离 25，低于可辨判据 60），改用 AA 图里 SpaceXAI 的紫 `#736cd3`，避免蓝系堆成一色；`step` 在 AA 上没有厂商色，取其图里 Step Image Edit 2 的亮青 `#00f5e7`。同步重排各系列保留档与全局兜底色板 |

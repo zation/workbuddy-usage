@@ -18,49 +18,49 @@ const SERIES_INPUT: ModelSeries[] = [
     name: 'hunyuan',
     prefix: 'hy',
     explicit: {
-      hy3: '#312e81',
-      hy4: '#1d4ed8',
-      'hy4-free': '#2563eb',
-      'hy4-preview': '#3b82f6',
-      'hy4-preview-f': '#60a5fa',
+      hy3: '#054a7f',
+      hy4: '#086dba',
+      'hy4-free': '#0a89eb',
+      'hy4-preview': '#5cb9ff',
+      'hy4-preview-f': '#9dd2fb',
     },
-    reserved: ['#1e3a8a', '#6366f1', '#0ea5e9'],
+    reserved: ['#032f52', '#3aa3e0', '#c8e7fd'],
   },
   {
     name: 'kimi',
     prefix: 'kimi',
-    explicit: { 'kimi-k3.1-pro': '#16a34a' },
-    reserved: ['#15803d', '#4d7c0f', '#65a30d'],
+    explicit: { 'kimi-k3.1-pro': '#047afe' },
+    reserved: ['#035fc4', '#4c9bff', '#a8d3ff'],
   },
   {
     name: 'deepseek',
     prefix: 'deepseek',
-    explicit: { 'deepseek-v4.1-flash': '#ea580c' },
-    reserved: ['#c2410c', '#f97316', '#dc2626'],
+    explicit: { 'deepseek-v4.1-flash': '#2243e6' },
+    reserved: ['#182f9e', '#5a74f5', '#a3b2ff'],
   },
   {
     name: 'glm',
     prefix: 'glm',
-    explicit: { 'glm-5.2': '#db2777' },
-    reserved: ['#be185d', '#ec4899', '#c026d3'],
+    explicit: { 'glm-5.2': '#736cd3' },
+    reserved: ['#5b54b8', '#9a93e6', '#c3bff5'],
   },
   {
     name: 'mimo',
     prefix: 'mimo',
-    explicit: { 'mimo-v2.6-pro': '#7c3aed' },
-    reserved: ['#6d28d9', '#9333ea', '#4f46e5'],
+    explicit: { 'mimo-v2.6-pro': '#ff6900' },
+    reserved: ['#cc5500', '#ff8c33', '#ffb066'],
   },
   {
     name: 'minimax',
     prefix: 'minimax',
-    explicit: { 'minimax-m3.1-flash': '#0d9488' },
-    reserved: ['#0f766e', '#14b8a6', '#0891b2'],
+    explicit: { 'minimax-m3.1-flash': '#eb3568' },
+    reserved: ['#b81a44', '#ff6b8a', '#ffa3b5'],
   },
   {
     name: 'step',
     prefix: 'step',
-    explicit: { 'step-5-preview': '#a16207' },
-    reserved: ['#854d0e', '#ca8a04', '#b45309'],
+    explicit: { 'step-5-preview': '#00f5e7' },
+    reserved: ['#00bdb2', '#4dfff3', '#a6fffa'],
   },
 ];
 
@@ -69,14 +69,14 @@ const SERIES: readonly ModelSeries[] = [...SERIES_INPUT].sort(
 );
 
 export const FALLBACK_COLORS: readonly string[] = [
-  '#0284c7',
+  '#0d9488',
   '#65a30d',
-  '#e11d48',
   '#7c2d12',
-  '#0f766e',
   '#a21caf',
   '#57534e',
-  '#4338ca',
+  '#9f1239',
+  '#b45309',
+  '#0891b2',
 ];
 
 export const MODEL_COLOR_TABLE: Readonly<Record<string, string>> = Object.fromEntries([
