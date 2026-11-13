@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 /**
  * 派生库结构版本：改表结构或维表展示名规则先递增该值，旧库会在下次启动时被删除重建。
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS meta (
 CREATE TABLE IF NOT EXISTS groups (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   group_path TEXT NOT NULL UNIQUE,
-  display_name TEXT NOT NULL
+  display_name TEXT NOT NULL,
+  is_auto INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS sessions (

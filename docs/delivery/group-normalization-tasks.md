@@ -14,13 +14,19 @@
 
 # T002 维表 `is_auto` 与结构版本递增
 
-状态：pending
+状态：done
 
 目标与完成条件：`src/etl/index-db.ts` 的 `groups` 表增加 `is_auto INTEGER NOT NULL DEFAULT 0`，`SCHEMA_VERSION` 由 2 递增 1 为 3；不写迁移脚本。`DimensionWriter.ensureGroup` 的插入改为携带 `is_auto = isAutoGroupPath(key)`，冲突仍为 `ON CONFLICT DO NOTHING`，**不加 `DO UPDATE`**：`is_auto` 是 `group_path` 的纯函数派生值、同一 UNIQUE 业务键恒定，重写无收益且会改变既有写入语义；判定规则变更靠 `SCHEMA_VERSION` 递增重建。`未知分组` 与空 `cwd` 的 `is_auto` 为 0。`tests/index-db.test.ts` 断言 `groups` 新列与默认值、版本递增后旧库删除重建、连续两次全量重建的 `groups` 行集合一致且与文件遍历顺序无关；`tests/dimensions.test.ts` 断言重复 `ensureGroup` 不新增行且 `is_auto` / `display_name` 保持不变。不写「同一路径二次刷新后 `is_auto` 变化」这类不可能成立的断言。对应 Spec R2、R3、AC8。
 
 必要依赖：T001。
 
 修改范围：`src/etl/index-db.ts`、`src/etl/dimensions.ts`、`tests/index-db.test.ts`、`tests/dimensions.test.ts`。
+
+实施结果：`SCHEMA_VERSION` 3，`groups` 末尾加 `is_auto INTEGER NOT NULL DEFAULT 0`；`ensureGroup` 的插入语句带三列，值由 `isAutoGroupPath(key) ? 1 : 0` 算出，仍为 `DO NOTHING`。`未知分组` 走同一函数返回 false，自然落 0，未加特判。测试用「先写入、手动改成 0、再新建写入器重复 `ensureGroup`」验证 `DO NOTHING` 不回写已有行；结构侧用两次删库重建 + 逆序写入比对 `groups` 行集合，并核对了日期目录与普通目录的 `is_auto` 取值。
+
+验证：`npm run typecheck` 通过；`npx vitest run tests/dimensions.test.ts tests/index-db.test.ts` 24 项通过（新增 2 项结构断言、1 项维表断言）。
+
+提交：
 
 # T003 服务层分组聚合与虚拟业务键
 

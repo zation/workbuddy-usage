@@ -185,12 +185,28 @@ describe('维表 upsert', () => {
     expect(second).toBe(first);
     expect(rows<{ group_path: string; display_name: string }>(db, 'SELECT * FROM groups')).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ group_path: '/work/demo', display_name: 'demo' }),
-        expect.objectContaining({ group_path: 'E:\\Project\\workbuddy-usage', display_name: 'workbuddy-usage' }),
-        expect.objectContaining({ group_path: UNKNOWN_GROUP, display_name: UNKNOWN_GROUP }),
+        expect.objectContaining({ group_path: '/work/demo', display_name: 'demo', is_auto: 0 }),
+        expect.objectContaining({ group_path: 'E:\\Project\\workbuddy-usage', display_name: 'workbuddy-usage', is_auto: 0 }),
+        expect.objectContaining({ group_path: UNKNOWN_GROUP, display_name: UNKNOWN_GROUP, is_auto: 0 }),
       ]),
     );
     expect(unknown).toBeGreaterThan(windows);
+  });
+
+  it('自动目录分组落 is_auto = 1，重复写入不新增行也不改写已存快照', () => {
+    const { db, writer } = setup();
+    const path = '/Users/x/WorkBuddy/2026-10-17-21-46-27';
+    const snapshot = (): unknown =>
+      db.prepare('SELECT display_name, is_auto FROM groups WHERE group_path = ?').get(path);
+
+    writer.ensureGroup(path);
+    expect(snapshot()).toEqual({ display_name: '2026-10-17-21-46-27', is_auto: 1 });
+
+    db.prepare('UPDATE groups SET is_auto = 0 WHERE group_path = ?').run(path);
+    new DimensionWriter(db).ensureGroup(path);
+
+    expect(db.prepare('SELECT COUNT(*) AS n FROM groups').get()).toEqual({ n: 1 });
+    expect(snapshot()).toEqual({ display_name: '2026-10-17-21-46-27', is_auto: 0 });
   });
 
   it('外部会话同步更新展示名且保留消失的行（C11）', () => {

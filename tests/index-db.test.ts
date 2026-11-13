@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SCHEMA_VERSION, closeIndex, openIndex } from '../src/etl/index-db.ts';
+import { DimensionWriter } from '../src/etl/dimensions.ts';
 
 const tempDirs: string[] = [];
 
@@ -21,6 +22,18 @@ function columnNames(db: DatabaseSync, table: string): string[] {
 function indexNames(db: DatabaseSync, table: string): string[] {
   const rows = db.prepare(`PRAGMA index_list(${table})`).all() as Array<{ name: string }>;
   return rows.map((row) => row.name);
+}
+
+interface GroupRow {
+  group_path: string;
+  display_name: string;
+  is_auto: number;
+}
+
+function groupRows(db: DatabaseSync): GroupRow[] {
+  return db
+    .prepare('SELECT group_path, display_name, is_auto FROM groups ORDER BY group_path')
+    .all() as unknown as GroupRow[];
 }
 
 afterEach(() => {
@@ -66,6 +79,7 @@ describe('派生索引 schema', () => {
       'has_credit',
       'step_count',
     ]);
+    expect(columnNames(db, 'groups')).toEqual(['id', 'group_path', 'display_name', 'is_auto']);
     expect(columnNames(db, 'meta')).toEqual([
       'id',
       'schema_version',
@@ -149,6 +163,50 @@ describe('派生索引 schema', () => {
     const second = openIndex(indexPath);
     expect(second.rebuilt).toBe(false);
     expect(second.db.prepare('SELECT COUNT(*) AS n FROM groups').get()).toEqual({ n: 1 });
+    closeIndex(second.db);
+  });
+
+  it('groups.is_auto 默认 0', () => {
+    const { db } = openIndex(makeIndexPath());
+    db.prepare('INSERT INTO groups (group_path, display_name) VALUES (?, ?)').run('/a', 'a');
+    expect(groupRows(db)).toEqual([{ group_path: '/a', display_name: 'a', is_auto: 0 }]);
+    closeIndex(db);
+  });
+
+  it('连续两次全量重建的 groups 行集合一致且与写入顺序无关', () => {
+    const indexPath = makeIndexPath();
+    const paths = [
+      '/work/beta',
+      '/Users/x/WorkBuddy/2026-10-17-21-46-27',
+      '/work/alpha',
+      'C:\\Users\\x\\WorkBuddy\\2026-10-18-09-00-00',
+    ];
+
+    const first = openIndex(indexPath);
+    const firstWriter = new DimensionWriter(first.db);
+    for (const path of paths) {
+      firstWriter.ensureGroup(path);
+    }
+    const firstRows = groupRows(first.db);
+    first.db.prepare('UPDATE meta SET schema_version = ? WHERE id = 1').run(SCHEMA_VERSION - 1);
+    closeIndex(first.db);
+
+    const second = openIndex(indexPath);
+    expect(second.rebuilt).toBe(true);
+    const secondWriter = new DimensionWriter(second.db);
+    for (const path of [...paths].reverse()) {
+      secondWriter.ensureGroup(path);
+    }
+    expect(groupRows(second.db)).toEqual(firstRows);
+
+    expect(
+      Object.fromEntries(firstRows.map((row) => [row.group_path, row.is_auto])),
+    ).toEqual({
+      '/work/beta': 0,
+      '/Users/x/WorkBuddy/2026-10-17-21-46-27': 1,
+      '/work/alpha': 0,
+      'C:\\Users\\x\\WorkBuddy\\2026-10-18-09-00-00': 1,
+    });
     closeIndex(second.db);
   });
 });

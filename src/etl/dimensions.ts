@@ -125,7 +125,7 @@ export class DimensionWriter {
   constructor(db: DatabaseSync) {
     this.db = db;
     this.insertGroup = db.prepare(
-      'INSERT INTO groups (group_path, display_name) VALUES (?, ?) ON CONFLICT(group_path) DO NOTHING',
+      'INSERT INTO groups (group_path, display_name, is_auto) VALUES (?, ?, ?) ON CONFLICT(group_path) DO NOTHING',
     );
     this.selectGroup = db.prepare('SELECT id FROM groups WHERE group_path = ?');
     this.insertSessionFallback = db.prepare(
@@ -173,7 +173,7 @@ export class DimensionWriter {
       return cached;
     }
     const displayName = key === UNKNOWN_GROUP ? UNKNOWN_GROUP : lastPathSegment(key);
-    this.insertGroup.run(key, displayName);
+    this.insertGroup.run(key, displayName, isAutoGroupPath(key) ? 1 : 0);
     const row = this.selectGroup.get(key) as { id?: number } | undefined;
     if (typeof row?.id !== 'number') {
       throw new Error(`无法写入分组维表：${key}`);
