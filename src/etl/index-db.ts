@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
  * 派生库结构版本：改表结构、或改维表的派生规则（展示名、自动分组判定等）先递增该值，
  * 旧库会在下次启动时被删除重建。
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS requests (
   started_at INTEGER NOT NULL,
   ended_at INTEGER NOT NULL,
   date_key TEXT NOT NULL,
+  is_deepseek_offpeak INTEGER NOT NULL DEFAULT 1,
   input_tokens INTEGER NOT NULL DEFAULT 0,
   output_tokens INTEGER NOT NULL DEFAULT 0,
   cache_read_tokens INTEGER NOT NULL DEFAULT 0,

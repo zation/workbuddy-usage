@@ -33,9 +33,9 @@ const WARNING_KEYS = [
 const INSERT_REQUEST_SQL = `
 INSERT INTO requests (
   request_id, group_id, session_id, model_id, source_file_id, is_subagent,
-  started_at, ended_at, date_key,
+  started_at, ended_at, date_key, is_deepseek_offpeak,
   input_tokens, output_tokens, cache_read_tokens, total_tokens, step_count
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(request_id) DO UPDATE SET
   group_id = excluded.group_id,
   session_id = excluded.session_id,
@@ -45,6 +45,7 @@ ON CONFLICT(request_id) DO UPDATE SET
   started_at = excluded.started_at,
   ended_at = excluded.ended_at,
   date_key = excluded.date_key,
+  is_deepseek_offpeak = excluded.is_deepseek_offpeak,
   input_tokens = excluded.input_tokens,
   output_tokens = excluded.output_tokens,
   cache_read_tokens = excluded.cache_read_tokens,
@@ -181,6 +182,7 @@ async function doRefresh(db: DatabaseSync, config: EtlConfig): Promise<RefreshRe
             request.startedAt,
             request.endedAt,
             request.dateKey,
+            request.isDeepseekOffpeak ? 1 : 0,
             request.inputTokens,
             request.outputTokens,
             request.cacheReadTokens,

@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
+import { isDeepseekOffpeak } from '../shared/deepseek-offpeak.ts';
 import { toDateKey } from '../shared/dates.ts';
 import { UNKNOWN_MODEL } from '../shared/constants.ts';
 import type {
@@ -165,6 +166,7 @@ export async function parseSourceFile(
       startedAt: item.startedAt,
       endedAt: item.endedAt,
       dateKey: toDateKey(item.startedAt),
+      isDeepseekOffpeak: isDeepseekOffpeak(item.startedAt),
       inputTokens: item.inputTokens,
       outputTokens: item.outputTokens,
       cacheReadTokens: item.cacheReadTokens,

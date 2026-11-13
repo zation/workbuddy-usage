@@ -44,6 +44,7 @@
 | `started_at` | INTEGER NOT NULL | 该请求所有步骤中最早的 `timestamp`（毫秒） |
 | `ended_at` | INTEGER NOT NULL | 该请求所有步骤中最晚的 `timestamp`（毫秒） |
 | `date_key` | TEXT NOT NULL | 由 `started_at` 按固定业务时区 UTC+8 派生的 `YYYY-MM-DD` |
+| `is_deepseek_offpeak` | INTEGER NOT NULL DEFAULT 1 | 1 表示按 DeepSeek 官方高峰 / 空闲规则判为空闲；与 `date_key` 由同一 `started_at` 派生。所有请求都填 0/1，但只有 DS 价格计算消费该列，其他模型的闲时规则不得复用 |
 | `input_tokens` | INTEGER NOT NULL DEFAULT 0 | 输入 token |
 | `output_tokens` | INTEGER NOT NULL DEFAULT 0 | 输出 token |
 | `cache_read_tokens` | INTEGER NOT NULL DEFAULT 0 | 缓存命中读取 token（输入的子集） |
@@ -176,5 +177,5 @@ models   1 ──┘
 
 - **外部库 `workbuddy.db`**：WorkBuddy 所有，本项目以只读连接访问，不建表、不写入、不加锁。其表结构变化由 [integration.md](./integration.md) 记录并跟踪。
 - **派生库 `.data/index.db`**：本项目所有，sqlite 单文件，位于仓库目录内并在 `.gitignore` 中排除。仅作缓存，不承担数据安全责任。
-- **版本管理**：`meta.schema_version` 记录结构版本。修改表结构、或修改维表展示名这类派生规则时递增该值，启动时版本不匹配则直接删库重建，不写迁移脚本——重建成本是几十秒，迁移脚本的维护成本更高。引入展示名冲突规则时该值由 1 增至 2，引入分组自动目录标记（`groups.is_auto` 与聚合口径）时由 2 增至 3。删库重建后所有 `id` 重新分配，因此任何外部持久化都不得引用内部 `id`。
+- **版本管理**：`meta.schema_version` 记录结构版本。修改表结构、或修改维表展示名这类派生规则时递增该值，启动时版本不匹配则直接删库重建，不写迁移脚本——重建成本是几十秒，迁移脚本的维护成本更高。引入展示名冲突规则时该值由 1 增至 2，引入分组自动目录标记（`groups.is_auto` 与聚合口径）时由 2 增至 3，引入 DeepSeek 闲时预处理列（`is_deepseek_offpeak`）时由 3 增至 4。节假日表更新会改变历史请求的闲时判定，同属派生规则变更，也必须递增该值触发重建，否则历史行的 `is_deepseek_offpeak` 会停留在旧判定。删库重建后所有 `id` 重新分配，因此任何外部持久化都不得引用内部 `id`。
 - **不做**：不备份原始数据、不归档历史快照、不与云端同步、不追溯补齐本地已不可读的记录。

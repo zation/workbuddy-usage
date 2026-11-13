@@ -71,6 +71,7 @@ describe('派生索引 schema', () => {
       'started_at',
       'ended_at',
       'date_key',
+      'is_deepseek_offpeak',
       'input_tokens',
       'output_tokens',
       'cache_read_tokens',

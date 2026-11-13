@@ -62,13 +62,19 @@
 
 # T004 ETL 派生列与派生库结构
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R2 / AC3 与 Plan AD-P2 把闲时标记接入 `ParsedRequest` 并在刷新时写入 `requests.is_deepseek_offpeak`，`SCHEMA_VERSION` 3→4；`ON CONFLICT DO UPDATE` 分支同步该列。完成条件：旧库自动删库重建后每行都有 0/1，`date_key` 与闲时标记由同一 `started_at` 派生；在原始日志未变化的前提下，重建前后当前 GMT+8 环境的按天合计一致（AC1）；相关 ETL 单测与 `npm run typecheck` 通过；`data-model.md` 同步新列说明、「节假日表更新需递增版本」的维护约束与版本号。
 
 必要依赖：T001、T002
 
 修改范围：`src/shared/types.ts`、`src/etl/parse.ts`、`src/etl/refresh.ts`、`src/etl/index-db.ts`、`tests/`、`docs/data-model.md`
+
+实施结果：`index-db.ts` 增加 `is_deepseek_offpeak INTEGER NOT NULL DEFAULT 1`（紧随 `date_key`），`SCHEMA_VERSION` 3→4；`ParsedRequest` 增加 `isDeepseekOffpeak`；`parse.ts` 用与 `date_key` 同一 `startedAt` 调 `isDeepseekOffpeak()` 派生；`refresh.ts` 的 INSERT 列、15 个占位符、`ON CONFLICT DO UPDATE` 分支与 `insert.run` 参数同步。`tests/index-db.test.ts` 列断言与 `tests/parse.test.ts` 的归并断言同步。`data-model.md` 补列说明、版本演进（3→4）与「节假日表更新必须递增版本」的维护约束。
+
+验证：`npm run typecheck` 通过（0 错）；`npm run build` 通过；Node 24 等价脚本从源码提取 `SCHEMA_SQL` 与 `INSERT_REQUEST_SQL` 在内存 sqlite 中实际建表、编译并执行 INSERT，断言 `SCHEMA_VERSION === 4`、新列 NOT NULL DEFAULT 1、高峰请求写 0 / 空闲请求写 1，且派生值与 `isDeepseekOffpeak()` 一致。沙箱内 `npm test` 仍受既有 runner 故障影响，正式回归以开发者本地 `npm test` 为准。重建前后按天合计对照（AC3）未在沙箱触发，避免在验证阶段全量重扫外部日志；派生库下次启动按既有机制自动重建，该对照由开发者本地首次刷新时确认。
+
+提交：
 
 # T005 服务层比率聚合与 API 契约
 

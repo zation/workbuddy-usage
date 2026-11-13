@@ -43,6 +43,7 @@ export interface ParsedRequest {
   startedAt: number;
   endedAt: number;
   dateKey: string;
+  isDeepseekOffpeak: boolean;
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;

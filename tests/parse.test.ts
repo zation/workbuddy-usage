@@ -105,6 +105,7 @@ describe('按请求归并', () => {
       startedAt: at(23, 50),
       endedAt: at(0, 10, 12),
       dateKey: '2026-11-11',
+      isDeepseekOffpeak: true,
       isSubagent: false,
       groupPath: '/work/demo',
       modelKey: 'model-a',
