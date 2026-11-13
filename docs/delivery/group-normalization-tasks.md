@@ -10,7 +10,7 @@
 
 验证：`npm run typecheck` 通过；`npx vitest run tests/dimensions.test.ts` 17 项通过（新增 5 项）。
 
-提交：
+提交：f6b79b1
 
 # T002 维表 `is_auto` 与结构版本递增
 
@@ -26,7 +26,7 @@
 
 验证：`npm run typecheck` 通过；`npx vitest run tests/dimensions.test.ts tests/index-db.test.ts` 24 项通过（新增 2 项结构断言、1 项维表断言）。
 
-提交：
+提交：a447d1c、de3df65
 
 # T003 服务层分组聚合与虚拟业务键
 
@@ -42,7 +42,7 @@
 
 验证：`npm run typecheck` 通过；`npx vitest run tests/group-normalization.test.ts` 8 项通过；`npm test` 全量 111 项通过、1 项平台条件跳过（`it.skipIf(win32)`，既存）。
 
-提交：
+提交：077f8b7
 
 # T004 通用下拉组件与 `FilterBar` 统一
 
@@ -56,7 +56,7 @@
 
 验证：`npm run typecheck` 通过；`npm test` 全量 111 项通过、1 项平台条件跳过；`npm run build` 通过（Vite 仍有既存 chunk 体积提示）。下拉的键盘、ARIA 与紧凑宽度的实际表现由 T006 验收脚本承担。
 
-提交：
+提交：04902ec、de3df65
 
 # T005 趋势图 tooltip 过滤 0 值
 
@@ -70,7 +70,7 @@
 
 验证：`npm run typecheck` 通过；`npm run build` 通过。提示内容的实际渲染与两张图一致性由 T006 验收脚本断言。
 
-提交：
+提交：cf7c745
 
 # T006 验收脚本适配与新增断言
 
@@ -98,7 +98,7 @@
 
 验证：`SCREENSHOT_DIR=.data/acceptance-shots node scripts/panel-acceptance.mjs` 实跑，16 项全 PASS（既有 10 项 + 新增 AC9 / AC2×2 / AC4 / AC12 / AC13），退出码 0；`npm run typecheck` 通过。
 
-提交：
+提交：101acfb
 
 # T007 长期文档同步
 
@@ -114,14 +114,54 @@
 
 验证：人工通读四份文档与实现逐条对照（列名、版本号、虚拟键、判定与快照语义、面板行为、风险应对）；`grep` 确认长期文档中无残留的旧口径描述。未改动 v1.0.0 归档文档。
 
-提交：
+提交：bbabcc6
 
 # T008 交付收尾检查
 
-状态：pending
+状态：done
 
 目标与完成条件：逐项核对 Spec 的 AC1–AC14 是否满足；核对各任务状态与实施记录，一次性回填所有已实施任务的「提交」字段；确认 Spec / Plan 的 docs 固化提交已完成（AGENTS.md 第 2 节）、四份长期文档与实现一致、无已知矛盾；AC10 的分组相关断言调整逐条列明（不得直接删除或跳过）；手工检查（四个下拉键盘、点击外部关闭、自定义日期框、有 0 值与全 0 两天的 hover）结果记入本任务；`docs/backlog/` 仅有子代理积分条目且本交付明确不处理，核对无需更新即可。全量运行 `npm run typecheck`、`npm test`、`npm run build`；`npm run acceptance` 按 AC14 必须实际运行，未执行或环境不具备时记为「未验证风险」并说明原因，不得记为通过。收尾提交不填「提交」字段。对应 AGENTS.md 第 5 节。
 
 必要依赖：T001–T007。
 
 修改范围：`docs/delivery/group-normalization-tasks.md`。
+
+实施结果：
+
+**验收标准逐项结论**
+
+- AC1：`tests/dimensions.test.ts` 5 组用例覆盖 POSIX / Windows 分隔符、末尾分隔符、大小写、父目录不符、非日期末段、空串 / 根路径 / 单段路径，全部通过。
+- AC2：验收脚本「分组下拉无日期目录条目且与聚合结果一致」（选项 9 项、日期条目 0 项、下拉与接口的「默认」存在性一致）与「空范围内『默认』不占位」（接口 0 行、下拉仅 1 项空值项）均 PASS。
+- AC3：`tests/group-normalization.test.ts` 断言合并行数值等于逐路径 `/api/breakdown` + `/api/requests` 的实际求和（token / 积分 / 请求数 / 会话去重）；验收脚本进一步核对「默认」筛选下 timeseries 合计与 summary 一致。
+- AC4：验收脚本核对 summary 请求带 `group=%E9%BB%98%E8%AE%A4`、触发值回显、`dim=group` 仅一行、明细 186 条全为自动路径、会话与模型集合与明细一致；单测覆盖四个端点的同一断言。
+- AC5：单测断言 `groupName = 默认` 而 `group` 仍为原始路径（含撞名分组与「未知分组」）。
+- AC6：单测三视图求和均 2100 且等于总览；既有 `tests/api.test.ts` 的 AC3 断言未改动仍通过。
+- AC7：「未知分组」独立成行（500，不并入 700），既有 AC7 用例未改动仍通过。
+- AC8：`tests/index-db.test.ts` 两次删库重建 + 逆序写入行集合一致；`tests/group-normalization.test.ts` 断言重建前后 group 聚合逐行相同。
+- AC9：既有 `scan-external.test.ts` 覆盖只读连接拒绝写入；本轮额外实测连续 3 次 `POST /api/refresh`，`workbuddy.db` / `-wal` / `-shm` 的 size 与 mtime 前后完全一致（首次比对出现差异，同时 `changedFiles = 1`，是 WorkBuddy 自身写入，重测基线稳定后三轮均无变化）；验收脚本 AC9 断言页面无外部域名请求。
+- AC10：**无需调整任何既有断言**。`tests/acceptance.test.ts` 与面板断言未改动即全部通过；分组相关断言中没有按日期业务键硬编码的映射，`默认` 的引入未改变既有覆盖范围，因此本项没有「调整前后对照」需要列明。
+- AC11：T007 已同步四份长期文档，本轮复核列名、版本号、虚拟键、判定与快照语义、面板行为与风险条目均与实现一致；`grep` 确认长期文档无残留旧口径。
+- AC12：验收脚本检查四个 trigger 的 `role=combobox` / `aria-haspopup=listbox` / `aria-expanded=false` / `aria-controls` 指向存在元素 / `aria-activedescendant` 为空 / 每个下拉恰有一项 `aria-selected=true`；在分组下拉上派发 ↑↓ 移动、Enter 选中、Esc 关闭、`pointerdown` 点击外部关闭全部符合预期；时间预设宽 112px（同列全宽 237px），「自定义」下渲染 2 个原生日期输入。
+- AC13：验收脚本在 Token 与积分图上各调一次 formatter，断言 0 值被剔除、非 0 保留且按键值降序、全 0 时同时含日期与「无数据」；另在真实页面用 ECharts `showTip` 复核——2026-11-13 显示「2026-11-13 / DeepSeek-V4.1-Flash：4.7M / Hy4 (hy4-free)：470.1K」（11 个系列仅 2 个非 0），2026-10-29 显示「2026-10-29 / 无数据」。
+- AC14：`npm run acceptance` 实跑 16 项全部 PASS、退出码 0。
+
+**文档与流程**
+
+Spec / Plan 的 docs 固化提交为 `b789161`（先于 T001）。T001–T007 的「提交」字段已回填；本收尾提交不填。`docs/backlog/` 只有 `subagent-credit-reconciliation.md`，本交付明确不处理，无需更新。
+
+**剩余风险**
+
+WorkBuddy 改变自动目录命名格式时判定会失效，已写入 `integration.md` 兼容性风险表，应对是更新规则并递增 `SCHEMA_VERSION` 重建；无其它未验证项。
+
+**交付整体复核**
+
+全部任务完成后按层复核了一遍 diff：解析层的判定与写入、服务层的 CASE / WHERE / 明细展示名、面板的组件与样式、验收脚本的选择器与新增断言、四份长期文档。发现并修复两处 polish（`de3df65`）：`SCHEMA_VERSION` 的注释只提「展示名规则」，补成「派生规则（展示名、自动分组判定等）」，避免下次改判定时漏递增；日期输入框在收窄选择器时内边距从 10px 变成 8px，与下拉触发按钮不再对齐，改回 10px。未发现功能性缺陷。
+
+验证：
+
+- `npm run typecheck`：通过。
+- `npm test`：12 个文件、111 项通过，1 项 `it.skipIf(win32)` 平台条件跳过（既存）。
+- `npm run build`：通过（Vite 仍有既存 chunk 体积提示）。
+- `npm run acceptance`：16 项全部 PASS（既有 10 项 + 新增 6 项），退出码 0；运行前已重启 API 进程并删库重建，前置条件满足。
+
+提交：
