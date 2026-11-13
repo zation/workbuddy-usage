@@ -20,9 +20,9 @@
 
 实施结果：`constants.ts` 新增 `BUSINESS_TZ_OFFSET_MS`；`dates.ts` 的 `toDateKey` 改为 UTC+8 折算（唯一「绝对时间 → 业务日期」入口），`formatDateKey` 改为纯 UTC 日期键语义，`parseDateKey` / `addDays` / `isValidDateKey` 改 UTC 日期算术，`daySpan` 与 `enumerateDays` 不变；`filters.ts` 的 `todayKey(nowMs?)` 改走 `toDateKey` 并支持注入时间；`format.ts` 两个格式化函数改用 `getUTC*` 加固定偏移；验收脚本 `todayKey()` 在脚本内自带 +8 折算，保持不 import `.ts`。测试 fixture 全部改 `Date.UTC` 绝对构造，`parse.test.ts` 跨零点 helper 用减偏移量保持「北京 23:50 → 次日 00:10」语义，新增 `tests/timezone.test.ts` 用三种 TZ 的子进程比对同一快照。AD-6、`data-model.md` 的 `date_key` 列说明、保留理由与 C5 同步改写。
 
-验证：`npm run typecheck` 通过（0 错；tsconfig 的 include 覆盖 `tests`，新增与修改的测试文件类型均通过）；`npm run build` 通过（621 模块，dist 产物正常）；Node 24 直接导入 `.ts` 执行 18 条纯函数断言全部通过，并以 `UTC` / `Asia/Shanghai` / `America/Los_Angeles` 三个子进程比对 `toDateKey` / `todayKey` / `formatDateTime` / `formatRefreshTime`，输出一致。`npm test` 未通过：vitest 5.1.0 在当前沙箱无法建立 runner 上下文，最小探针（不导入项目代码）可复现，与本次改动无关；已排除 Node 版本、pool 模式、isolate、Vite 缓存、注入的 `NODE_OPTIONS` 与项目配置，详见 `docs/backlog/vitest-runner-context.md`，待在开发者本地终端补跑。
+验证：`npm run typecheck` 通过（0 错；tsconfig 的 include 覆盖 `tests`，新增与修改的测试文件类型均通过）；`npm run build` 通过（621 模块，dist 产物正常）；Node 24 直接导入 `.ts` 执行 18 条纯函数断言全部通过，并以 `UTC` / `Asia/Shanghai` / `America/Los_Angeles` 三个子进程比对 `toDateKey` / `todayKey` / `formatDateTime` / `formatRefreshTime`，输出一致。**开发者本地终端 `npm test`：13 个测试文件全部通过，137 passed / 1 skipped（输出由开发者提供，含本任务新增的 `tests/timezone.test.ts`），作为正式回归证据。** 当前沙箱内 vitest 5.1.0 无法建立 runner 上下文（最小探针可复现，与改动无关，已排除 Node 版本、pool 模式、isolate、Vite 缓存、注入的 `NODE_OPTIONS` 与项目配置），详见 `docs/backlog/vitest-runner-context.md`。
 
-必要的问题与决策：`npm test` 故障为既有环境问题，不为此删除测试、跳过断言或降低校验标准；本任务以等价断言补齐功能正确性证据，但「测试套件全绿」仍需开发者确认。
+必要的问题与决策：沙箱内 `npm test` 故障为执行环境特有问题，开发者本地用同一套依赖与测试文件全部通过，判定不需要改动依赖、也不需要降低校验标准；沙箱内保留等价断言作为功能正确性证据，正式回归以开发者本地 `npm test` 结果为准。
 
 提交：
 
