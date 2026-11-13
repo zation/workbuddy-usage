@@ -101,13 +101,17 @@
 
 # T007 分段纯函数
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R5 / R7 与 Plan「分段纯函数下沉」实现按当前主指标的段过滤（值 > 0 且属于可见模型集合）、降序与稳定排序、段宽分摊（各段宽度之和等于原单色条宽）。完成条件含 0 值过滤、行值为 0、负值、无段、宽度和等边界由单测覆盖，且不改变任何聚合值。
 
 必要依赖：T001
 
 修改范围：`src/web/display.ts`、`tests/display.test.ts`
+
+实施结果：`display.ts` 新增 `segmentValue(segment, metric)`、`visibleSegments(row, metric, visibleModels)`（`> 0` 且可见、按数额降序、同值按模型业务键升序，复制数组后再排序）与 `segmentWidths(share, rowValue, segments, metric)`（条宽 `share * 100` 限幅 `[0, 100]`，按段占比分摊，最后一段用差值补齐浮点误差）。函数只做展示派生，不读写聚合值。
+
+验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/display.test.ts` 27 项通过（新增 `segmentValue` 1 项、`visibleSegments` 4 项、`segmentWidths` 5 项，覆盖 0 值 / 负值 / 不可见段 / 行值为 0 / 无段 / 单段 / 浮点补齐 / 超 100% 限幅）。
 
 # T008 分组条分段着色与明细提示
 

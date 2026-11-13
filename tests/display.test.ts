@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { addDays } from '../src/shared/dates.ts';
-import type { BreakdownRow, TimeseriesRow } from '../src/shared/types.ts';
+import type { BreakdownRow, BreakdownSegment, TimeseriesRow } from '../src/shared/types.ts';
 import {
   buildTimeseriesAxis,
   cacheHitRate,
+  segmentValue,
+  segmentWidths,
   visibleBreakdownRows,
   visibleModelKeys,
+  visibleSegments,
 } from '../src/web/display.ts';
 import {
   formatCredit,
@@ -182,5 +185,98 @@ describe('buildTimeseriesAxis', () => {
     expect(axis).toHaveLength(100);
     expect(axis[0]).toBe(from);
     expect(axis.at(-1)).toBe(addDays(from, 99));
+  });
+});
+
+function segment(model: string, totalTokens: number, credit = 0): BreakdownSegment {
+  return { model, modelName: model.toUpperCase(), totalTokens, credit };
+}
+
+describe('segmentValue', () => {
+  it('按当前主指标取值', () => {
+    const seg = segment('model-a', 300, 1.5);
+    expect(segmentValue(seg, 'token')).toBe(300);
+    expect(segmentValue(seg, 'credit')).toBe(1.5);
+  });
+});
+
+describe('visibleSegments', () => {
+  const rowWithModels = row({
+    key: '/work/alpha',
+    totalTokens: 400,
+    credit: 4,
+    models: [
+      segment('model-a', 300, 1.5),
+      segment('model-b', 100, 2.5),
+      segment('model-zero', 0, 0),
+      segment('model-hidden', 50, 0),
+      segment('model-negative', -10, -1),
+    ],
+  });
+
+  it('只保留主指标大于 0 且可见的段，按数额降序', () => {
+    const visible = visibleSegments(rowWithModels, 'token', new Set(['model-a', 'model-b', 'model-zero', 'model-negative']));
+    expect(visible.map((seg) => seg.model)).toEqual(['model-a', 'model-b']);
+  });
+
+  it('积分 tab 按 credit 过滤与排序', () => {
+    const visible = visibleSegments(
+      rowWithModels,
+      'credit',
+      new Set(['model-a', 'model-b', 'model-zero', 'model-hidden', 'model-negative']),
+    );
+    expect(visible.map((seg) => [seg.model, seg.credit])).toEqual([
+      ['model-b', 2.5],
+      ['model-a', 1.5],
+    ]);
+  });
+
+  it('同值按模型业务键升序，且不修改原数组', () => {
+    const original = [segment('model-c', 50), segment('model-a', 50), segment('model-b', 100)];
+    const sorted = visibleSegments(
+      row({ key: 'g', totalTokens: 200, models: original }),
+      'token',
+      new Set(['model-a', 'model-b', 'model-c']),
+    );
+    expect(sorted.map((seg) => seg.model)).toEqual(['model-b', 'model-a', 'model-c']);
+    expect(original.map((seg) => seg.model)).toEqual(['model-c', 'model-a', 'model-b']);
+  });
+
+  it('没有分段时返回空数组', () => {
+    expect(visibleSegments(row({ key: 'g', totalTokens: 10 }), 'token', new Set(['model-a']))).toEqual(
+      [],
+    );
+  });
+});
+
+describe('segmentWidths', () => {
+  it('各段宽度之和等于原单色条宽', () => {
+    const segments = [segment('model-a', 300), segment('model-b', 100)];
+    const widths = segmentWidths(0.5, 400, segments, 'token');
+    expect(widths).toEqual([37.5, 12.5]);
+    expect(widths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(50, 10);
+  });
+
+  it('单段占满整条宽度', () => {
+    expect(segmentWidths(0.25, 100, [segment('model-a', 100)], 'token')).toEqual([25]);
+  });
+
+  it('行值为 0、没有段或占比为 0 时不画色段', () => {
+    expect(segmentWidths(0.5, 0, [segment('model-a', 10)], 'token')).toEqual([]);
+    expect(segmentWidths(0.5, 100, [], 'token')).toEqual([]);
+    expect(segmentWidths(0, 100, [segment('model-a', 100)], 'token')).toEqual([]);
+  });
+
+  it('三段均分时用最后一段补齐浮点误差', () => {
+    const segments = [segment('a', 1), segment('b', 1), segment('c', 1)];
+    const widths = segmentWidths(1, 3, segments, 'token');
+    expect(widths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(100, 10);
+  });
+
+  it('占比超过 100% 时限幅为 100，负值不出现', () => {
+    const segments = [segment('a', 300), segment('b', 100)];
+    const widths = segmentWidths(2, 400, segments, 'token');
+    expect(widths).toEqual([75, 25]);
+    expect(widths.every((width) => width >= 0 && width <= 100)).toBe(true);
   });
 });
