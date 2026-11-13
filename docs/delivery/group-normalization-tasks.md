@@ -30,13 +30,19 @@
 
 # T003 服务层分组聚合与虚拟业务键
 
-状态：pending
+状态：done
 
 目标与完成条件：`src/shared/constants.ts` 新增 `DEFAULT_GROUP = '默认'`。`server/query.ts` 用同一组 TS 常量拼出分组的 `key` / `name` / `GROUP BY` 表达式：自动分组的 `key` 与 `name` 均为「默认」，`GROUP BY` 使用与 `key` 完全相同的表达式；`GROUP_LABEL` 只有自动分组一个分支，其余返回 `COALESCE(g.display_name, g.group_path, '未知分组')`，**不对手动分组展示名撞「默认」做回退**（允许两个同名项，业务键不同、筛选互不影响）；`buildWhere` 在 `group === DEFAULT_GROUP` 时压入 `g.is_auto = 1`，其它取值维持 `g.group_path = ?`；`getRequests` 的 `group_name` 使用同一表达式，`group` 仍返回原始 `group_path`，明细 hover 仍为原始路径。新增 `tests/group-normalization.test.ts`（独立夹具：手动分组 + 两个日期目录 + 空 `cwd` + 一个展示名为「默认」的手动分组），断言：日期分组聚合成一行、数值等于按现有口径重新聚合、占比按全量、会话数按跨分组去重；手动分组行数与数值不变、撞名分组 `name` 仍是「默认」且 `key` 是完整路径；四个端点在 `group=默认` 下都只返回自动分组数据；明细展示名与业务键分离；两次重建的 group 聚合结果一致；三视图求和等于总览。对应 Spec R4–R8、AC3 / AC4 / AC5 / AC6 / AC7 / AC8。
 
 必要依赖：T002。
 
 修改范围：`server/query.ts`、`src/shared/constants.ts`、`tests/group-normalization.test.ts`、`tests/helpers/`。
+
+实施结果：`GROUP_NAME` / `GROUP_KEY` / `GROUP_LABEL` 三个模块常量由 `DEFAULT_GROUP` 拼装，`dimensionColumns('group')` 的 `key` 与 `groupBy` 引用同一个 `GROUP_KEY`；`buildWhere` 先判虚拟键再走路径匹配；`getRequests` 的 `group_name` 改用 `GROUP_LABEL`，`group` 仍取 `g.group_path`。夹具含 6 个分组（自动 2、手动 3、未知 1），token 合计 2100、自动分组 700 / 2 请求 / 2 会话 / 积分 2；「等于重新聚合」改为逐日期路径比对 `/api/breakdown` 与 `/api/requests` 的实际求和，避免只比同一行而失真。测试文件内自带夹具，未改动 `tests/helpers/`。
+
+验证：`npm run typecheck` 通过；`npx vitest run tests/group-normalization.test.ts` 8 项通过；`npm test` 全量 111 项通过、1 项平台条件跳过（`it.skipIf(win32)`，既存）。
+
+提交：
 
 # T004 通用下拉组件与 `FilterBar` 统一
 

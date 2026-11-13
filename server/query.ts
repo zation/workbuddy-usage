@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { DEFAULT_GROUP } from '../src/shared/constants.ts';
 import { enumerateDays } from '../src/shared/dates.ts';
 import type {
   BreakdownResponse,
@@ -20,6 +21,13 @@ LEFT JOIN groups g ON g.id = r.group_id
 LEFT JOIN sessions s ON s.id = r.session_id
 LEFT JOIN models m ON m.id = r.model_id
 `;
+
+const GROUP_NAME = "COALESCE(g.display_name, g.group_path, '未知分组')";
+
+/** 自动分组合并成一行「默认」：key 与 GROUP BY 必须是同一个表达式，否则会被拆成多行。 */
+const GROUP_KEY = `CASE WHEN g.is_auto = 1 THEN '${DEFAULT_GROUP}' ELSE COALESCE(g.group_path, '未知分组') END`;
+
+const GROUP_LABEL = `CASE WHEN g.is_auto = 1 THEN '${DEFAULT_GROUP}' ELSE ${GROUP_NAME} END`;
 
 const SORT_COLUMNS: Record<RequestSortField, string> = {
   startedAt: 'r.started_at',
@@ -49,7 +57,9 @@ function buildWhere(filters: Filters): WhereClause {
     clauses.push('r.date_key <= ?');
     params.push(filters.to);
   }
-  if (filters.group) {
+  if (filters.group === DEFAULT_GROUP) {
+    clauses.push('g.is_auto = 1');
+  } else if (filters.group) {
     clauses.push('g.group_path = ?');
     params.push(filters.group);
   }
@@ -197,9 +207,9 @@ function dimensionColumns(dimension: Dimension): { key: string; name: string; gr
   switch (dimension) {
     case 'group':
       return {
-        key: "COALESCE(g.group_path, '未知分组')",
-        name: "COALESCE(g.display_name, g.group_path, '未知分组')",
-        groupBy: 'g.id',
+        key: GROUP_KEY,
+        name: GROUP_LABEL,
+        groupBy: GROUP_KEY,
       };
     case 'model':
       return {
@@ -312,7 +322,7 @@ export function getRequests(
          r.credit,
          r.step_count,
          g.group_path,
-         COALESCE(g.display_name, g.group_path, '未知分组') AS group_name,
+         ${GROUP_LABEL} AS group_name,
          s.session_key,
          COALESCE(s.display_name, substr(s.session_key, 1, 8), '未知会话') AS session_name,
          m.model,
