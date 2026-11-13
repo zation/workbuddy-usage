@@ -136,6 +136,14 @@ export interface TimeseriesResponse {
   rows: TimeseriesRow[];
 }
 
+/** 分组行按模型拆出的交叉聚合段，模型只用业务键与展示名。 */
+export interface BreakdownSegment {
+  model: string;
+  modelName: string;
+  totalTokens: number;
+  credit: number;
+}
+
 /** 单维度拆分的聚合行，占比由服务层算好。 */
 export interface BreakdownRow {
   key: string;
@@ -149,6 +157,8 @@ export interface BreakdownRow {
   sessionCount: number;
   tokenShare: number;
   creditShare: number;
+  /** 仅 group 维度按 split=model 查询时下发；其它维度与不带 split 时不出现。 */
+  models?: BreakdownSegment[];
 }
 
 export interface BreakdownResponse {

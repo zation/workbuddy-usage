@@ -11,11 +11,15 @@
 
 # T001 共享跨度规则与类型增量
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R11 与 Plan「跨度校验与面板层补轴」建立单一共享规则（`MAX_RANGE_DAYS = 100`、`daySpan(from, to)` 用 UTC 计含首尾天数），`enumerateDays` 及其 3700 guard 保持不变；按 Plan「接口归位」「服务层：附加交叉聚合」补齐 `BreakdownSegment` 与 `BreakdownRow.models?`。本任务不删 `TimeseriesResponse.days`（留待 T006），完成条件含共享层相关单测与 `npm run typecheck` 通过。
 
 修改范围：`src/shared/constants.ts`、`src/shared/dates.ts`、`src/shared/types.ts`、`tests/shared.test.ts`
+
+实施结果：`constants.ts` 新增 `MAX_RANGE_DAYS = 100`；`dates.ts` 新增 `daySpan()`（UTC 解析、`Math.round` 折算天数后 `+1`，`enumerateDays` 与 guard 未动）；`types.ts` 新增 `BreakdownSegment` 与可选 `BreakdownRow.models`，`TimeseriesResponse.days` 保留。单测新增「区间跨度」四项（含首尾、跨月年、时区 / 夏令时、100 / 101 边界）与「分组行可附带按模型分段」一项。
+
+验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/shared.test.ts` 10 项通过。
 
 # T002 服务层跨度校验
 

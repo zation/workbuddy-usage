@@ -34,7 +34,17 @@ export function isValidDateKey(value: string): boolean {
   return formatDateKey(parsed) === value;
 }
 
-/** 服务层补齐时序日期区间时使用，包含首尾。 */
+/**
+ * 日期区间跨度（含首尾天数）。用 UTC 解析日期键，结果不受运行进程时区与夏令时影响；
+ * 与 MAX_RANGE_DAYS 比较即可判断区间是否超限。
+ */
+export function daySpan(from: string, to: string): number {
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  return Math.round((end - start) / 86400000) + 1;
+}
+
+/** 补齐连续日期区间时使用，包含首尾。 */
 export function enumerateDays(from: string, to: string): string[] {
   const days: string[] = [];
   let cursor = from;
