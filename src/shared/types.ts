@@ -132,8 +132,17 @@ export interface TimeseriesRow {
   requestCount: number;
 }
 
+/** 按天的 DeepSeek 价格比率；只含筛选范围内有 DS 请求的日期。 */
+export interface PriceRatioRow {
+  date: string;
+  ratio: number | null;
+  wbCost: number;
+  officialCost: number;
+}
+
 export interface TimeseriesResponse {
   rows: TimeseriesRow[];
+  ratios: PriceRatioRow[];
 }
 
 /** 分组行按模型拆出的交叉聚合段，模型只用业务键与展示名。 */

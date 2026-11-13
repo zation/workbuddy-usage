@@ -165,6 +165,7 @@ describe('服务层聚合', () => {
       ['2026-11-13', 'model-c', 500],
     ]);
     expect(body.rows[0]?.modelName).toBe('Model-A');
+    expect(body.ratios).toEqual([]);
 
     const all = (await (await app.request('/api/timeseries')).json()) as TimeseriesResponse;
     expect(all).not.toHaveProperty('days');

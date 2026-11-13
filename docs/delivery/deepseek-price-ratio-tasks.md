@@ -78,13 +78,19 @@
 
 # T005 服务层比率聚合与 API 契约
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R5 / AC4 与 Plan AD-P4 在 `getTimeseries` 增加按天 × 闲时的第二条聚合，复用 `buildWhere(filters)` 并追加 DS 白名单，产出顶层 `ratios`；`rows` 的形状与语义不变，其余端点不变。完成条件：`ratios` 的分子 / 分母 / 比率与手算 fixture 逐请求对账一致；同一天同时含高峰与空闲请求时，分子只由当天 credit 总和乘一次单价（不按档重复计入），分母为两档官方费用之和；分母为 0 时 `ratio: null`、分子为 0 时比率如实为 0；服务层只返回有 DS 请求的日期、不补空白日期；四个筛选对 `ratios` 生效，筛选非 DS 模型时返回空数组；补一条跨时区断言覆盖 AC1 的「比率序列一致」；类型契约单测、API 单测与 `npm run typecheck` 通过；`technical-architecture.md` 接口表同步。
 
 必要依赖：T003、T004
 
-修改范围：`src/shared/types.ts`、`server/query.ts`、`tests/api.test.ts`、`docs/technical-architecture.md`
+修改范围：`src/shared/types.ts`、`src/etl/index-db.ts`（导出 `SCHEMA_SQL` 供测试建库）、`server/query.ts`、`tests/api.test.ts`、`tests/price-ratio.test.ts`（新）、`docs/technical-architecture.md`
+
+实施结果：`TimeseriesResponse` 增加顶层 `ratios: PriceRatioRow[]`（`date` / `ratio` / `wbCost` / `officialCost`），`rows` 形状不变。`getTimeseries` 在原子聚合之外新增一条按 `(date_key, is_deepseek_offpeak)` 分组的查询，复用 `buildWhere(filters)` 并追加 DS 白名单；按天合并两档时先累加当天 credit 再**只乘一次** `wbCost`，分母为两档官方费用之和，分母为 0 时 `ratio` 为 `null`，分子为 0 时如实为 0；服务层只返回有 DS 请求的日期。`index-db.ts` 导出 `SCHEMA_SQL` 供测试在内存库建表。新增 `tests/price-ratio.test.ts` 四组契约用例，`tests/api.test.ts` 补 `ratios` 空数组断言，`technical-architecture.md` 接口表同步。
+
+验证：`npm run typecheck` 通过（首次发现 `tests/price-ratio.test.ts` 漏传 `filters` 参数，已修复后复验 0 错）；`npm run build` 通过；Node 24 等价脚本直接调 `getTimeseries` 执行 11 条断言全部通过，覆盖两档合并积分不重复、分母 0 → `null`、分子 0 → 0、模型/日期筛选生效、非 DS 模型返回空数组、`rows` 形状不变。沙箱内 `npm test` 仍受既有 runner 故障影响，正式回归以开发者本地 `npm test` 为准。
+
+提交：
 
 # T006 前端折线、双 Y 轴与 tooltip 分流
 

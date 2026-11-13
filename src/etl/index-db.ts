@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
  */
 export const SCHEMA_VERSION = 4;
 
-const SCHEMA_SQL = `
+export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   schema_version INTEGER NOT NULL,

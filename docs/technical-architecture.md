@@ -53,7 +53,7 @@
 | 端点 | 返回 |
 | --- | --- |
 | `GET /api/summary` | 区间合计：token 四项、积分、请求数、会话数；顶层另返回上次刷新完成时间 `lastRefreshAt`（与筛选无关，从未刷新为 `null`） |
-| `GET /api/timeseries` | 只返回按天、按模型拆分的 `rows`（含数据的日期），不含日期轴；连续日期轴由面板按 `from / to` 生成 |
+| `GET /api/timeseries` | 返回按天、按模型拆分的 `rows`（含数据的日期）与按天的 DS 价格比率 `ratios`（只含有 DS 请求的日期，分母为 0 时 `ratio` 为 `null`）；不含日期轴，连续日期轴由面板按 `from / to` 生成 |
 | `GET /api/breakdown?dim=group\|model\|session` | 按单一维度拆分的聚合与占比；`dim=group` 时可用 `split=model` 附加 `rows[].models`（按模型的分段 token 与积分），其它维度忽略该参数，非法值返回 400 |
 | `GET /api/requests` | 请求级明细，用于表格与排序 |
 | `POST /api/refresh` | 触发一次刷新，返回扫描文件数、新增或更新请求数、补挂积分条数、耗时 |

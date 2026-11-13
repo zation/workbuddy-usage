@@ -1,11 +1,13 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { DEFAULT_GROUP } from '../src/shared/constants.ts';
+import { DEEPSEEK_MODEL_KEYS, officialCost, wbCost } from '../src/shared/deepseek-pricing.ts';
 import type {
   BreakdownResponse,
   BreakdownRow,
   BreakdownSegment,
   Dimension,
   Filters,
+  PriceRatioRow,
   RequestRow,
   RequestsResponse,
   RequestSortField,
@@ -145,6 +147,15 @@ interface TimeseriesRaw {
   request_count: number;
 }
 
+interface RatioRaw {
+  date: string;
+  offpeak: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_read_tokens: number | null;
+  credit: number | null;
+}
+
 /** 固定按天、按模型拆分；堆叠着色由面板按 model 决定。 */
 export function getTimeseries(db: DatabaseSync, filters: Filters): TimeseriesResponse {
   const { where, params } = buildWhere(filters);
@@ -178,7 +189,50 @@ export function getTimeseries(db: DatabaseSync, filters: Filters): TimeseriesRes
     requestCount: number(row.request_count),
   }));
 
-  return { rows: mapped };
+  const modelPlaceholders = DEEPSEEK_MODEL_KEYS.map(() => '?').join(', ');
+  const ratioWhere = `${where} ${where ? 'AND' : 'WHERE'} m.model IN (${modelPlaceholders})`;
+  const ratioRows = db
+    .prepare(
+      `SELECT
+         r.date_key AS date,
+         r.is_deepseek_offpeak AS offpeak,
+         SUM(r.input_tokens) AS input_tokens,
+         SUM(r.output_tokens) AS output_tokens,
+         SUM(r.cache_read_tokens) AS cache_read_tokens,
+         SUM(r.credit) AS credit
+       ${BASE_FROM} ${ratioWhere}
+       GROUP BY r.date_key, r.is_deepseek_offpeak`,
+    )
+    .all(...params, ...DEEPSEEK_MODEL_KEYS) as unknown as RatioRaw[];
+
+  const byDate = new Map<string, { credit: number; official: number }>();
+  for (const row of ratioRows) {
+    const entry = byDate.get(row.date) ?? { credit: 0, official: 0 };
+    entry.credit += number(row.credit);
+    entry.official += officialCost(
+      {
+        inputTokens: number(row.input_tokens),
+        outputTokens: number(row.output_tokens),
+        cacheReadTokens: number(row.cache_read_tokens),
+      },
+      row.offpeak === 1,
+    );
+    byDate.set(row.date, entry);
+  }
+
+  const ratios: PriceRatioRow[] = [...byDate.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, entry]) => {
+      const workbuddy = wbCost(entry.credit, date);
+      return {
+        date,
+        wbCost: workbuddy,
+        officialCost: entry.official,
+        ratio: entry.official > 0 ? workbuddy / entry.official : null,
+      };
+    });
+
+  return { rows: mapped, ratios };
 }
 
 interface BreakdownRaw {
