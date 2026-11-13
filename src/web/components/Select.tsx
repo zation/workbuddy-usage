@@ -113,7 +113,11 @@ export function Select({
           {selected.key && renderLeading ? renderLeading(selected.key) : null}
           {selected.name}
         </span>
-        <span className="select-chevron" aria-hidden="true">▾</span>
+        <span className="select-chevron" aria-hidden="true">
+          <svg viewBox="0 0 12 12" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2.5 4.5 6 8l3.5-3.5" />
+          </svg>
+        </span>
       </button>
       <ul
         id={listboxId}
