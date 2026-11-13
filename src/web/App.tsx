@@ -275,6 +275,7 @@ export function App() {
                 title="按天 Token 趋势"
                 metric="tokens"
                 data={visibleTimeseries}
+                ratios={timeseries.data?.ratios}
                 loading={timeseries.loading}
                 error={timeseries.error}
               />

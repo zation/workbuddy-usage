@@ -94,13 +94,21 @@
 
 # T006 前端折线、双 Y 轴与 tooltip 分流
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec「用户或系统行为」/ AC5 与 Plan AD-P5 在 Token 趋势图增加一条按天比率折线：注册 `LineChart`、`yAxis` 改数组（右轴 `×`）、柱显式 `yAxisIndex: 0`、折线 `yAxisIndex: 1`、折线不进 `legend`、缺失日期 `null` 且 `connectNulls: false`；按 `seriesId` 分流 tooltip 格式，比率单独一行带 `×`，不参与柱子的 0 值过滤与降序排序。完成条件：积分图与既有柱状行为（0 值隐藏、排序、转义、色表）完全不变；筛选非 DS 模型时折线隐藏且界面无新增文案；相关前端单测与 `npm run typecheck` 通过。
 
 必要依赖：T005
 
-修改范围：`src/web/components/EChart.tsx`、`src/web/components/TrendChart.tsx`、`src/web/App.tsx`、`tests/`
+修改范围：`src/web/trend-chart-option.ts`（新）、`src/web/components/EChart.tsx`、`src/web/components/TrendChart.tsx`、`src/web/App.tsx`、`tests/trend-chart-option.test.ts`（新）
+
+实施结果：把图表配置抽成纯 TS 函数 `buildTrendChartOption(data, metric, ratios)`，`TrendChart` 只保留渲染；`EChart` 注册 `LineChart`；App 只在 Token 图传 `timeseries.data?.ratios`。有比率数据时启用第二 Y 轴（右轴 `×`）、柱显式 `yAxisIndex: 0`、单条折线 `yAxisIndex: 1` 且 `connectNulls: false`，缺失日期与 `ratio: null` 的日期都落 `null`；`legend.data` 固定为模型展示名，折线不进图例，界面无新增文案。移除被自定义 formatter 接管的全局 `valueFormatter`，tooltip 按 `seriesId` 分流：柱子沿用 0 值过滤与数值降序及原格式，折线单独一行只显示 `4.16×`，`null` 时不追加。积分图与空 `ratios` 完全保持单轴纯柱。新增 `tests/trend-chart-option.test.ts` 五组用例。
+
+验证：`npm run typecheck` 通过（0 错）；`npm run build` 通过（621 模块，注册 LineChart 后产物 781 kB）；Node 24 直接导入纯 TS 模块执行 17 条等价断言全部通过，覆盖单/双轴、单条折线、右轴名称、null 断线、图例隔离、柱 `yAxisIndex`、积分图与空 ratios 不显示折线、tooltip 的 0 值过滤/降序/`×` 格式/null 不追加。沙箱内 `npm test` 仍受既有 runner 故障影响，正式回归以开发者本地 `npm test` 为准。
+
+必要的问题与决策：为让双轴与 tooltip 分流可在沙箱内实证验证，把 option 构造从 `.tsx` 组件抽到独立的纯 `.ts` 模块（Node 24 的 type stripping 不处理 JSX）；组件行为不变，`useMemo` 依赖同步加 `ratios`。
+
+提交：
 
 # T007 交互验收断言与 devops 同步
 
