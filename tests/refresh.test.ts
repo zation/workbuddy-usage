@@ -18,7 +18,7 @@ interface Fixture {
 }
 
 const opened: DatabaseSync[] = [];
-const base = new Date(2026, 10, 12, 10, 0).getTime();
+const base = Date.UTC(2026, 10, 12, 10, 0);
 
 function writeProject(home: string, relativePath: string, lines: string[]): void {
   const absolute = join(home, 'projects', relativePath);

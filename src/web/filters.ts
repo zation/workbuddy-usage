@@ -1,4 +1,4 @@
-import { addDays, formatDateKey } from '../shared/dates.ts';
+import { addDays, toDateKey } from '../shared/dates.ts';
 import type { Filters } from '../shared/types.ts';
 
 export type PresetKey = 'today' | 'threeDays' | 'sevenDays' | 'thirtyDays';
@@ -14,8 +14,8 @@ export const QUICK_PRESETS: Array<{ key: PresetKey; label: string }> = [
 /** 首屏与「重置」的默认区间。 */
 export const DEFAULT_PRESET: PresetKey = 'threeDays';
 
-export function todayKey(): string {
-  return formatDateKey(new Date());
+export function todayKey(nowMs: number = Date.now()): string {
+  return toDateKey(nowMs);
 }
 
 export function rangeForPreset(preset: PresetKey, today: string): Filters {

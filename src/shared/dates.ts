@@ -1,28 +1,31 @@
+import { BUSINESS_TZ_OFFSET_MS } from './constants.ts';
+
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function pad(value: number): string {
   return String(value).padStart(2, '0');
 }
 
-/** 按运行进程的本地时区把毫秒时间戳折算为 YYYY-MM-DD。 */
+/** 绝对时间戳按固定业务时区 UTC+8 折算为 YYYY-MM-DD，不读运行进程时区。 */
 export function toDateKey(timestampMs: number): string {
-  const date = new Date(timestampMs);
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const date = new Date(timestampMs + BUSINESS_TZ_OFFSET_MS);
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 }
 
+/** 纯 UTC 日期键格式化，只服务日期键算术，不用于把当前时间折算成业务日期。 */
 export function formatDateKey(date: Date): string {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 }
 
-/** 本地日期零点，用于日期加减而不受夏令时影响。 */
+/** 用 UTC 零点构造日期键，避免本地时区与夏令时影响。 */
 function parseDateKey(key: string): Date {
   const [year, month, day] = key.split('-').map((part) => Number.parseInt(part, 10));
-  return new Date(year ?? 1970, (month ?? 1) - 1, day ?? 1);
+  return new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1));
 }
 
 export function addDays(key: string, delta: number): string {
   const date = parseDateKey(key);
-  date.setDate(date.getDate() + delta);
+  date.setUTCDate(date.getUTCDate() + delta);
   return formatDateKey(date);
 }
 

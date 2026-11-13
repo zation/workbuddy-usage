@@ -41,7 +41,7 @@ export async function createSegmentFixture(): Promise<SegmentFixture> {
     ],
   );
 
-  const day = new Date(2026, 10, 12, 10, 0).getTime();
+  const day = Date.UTC(2026, 10, 12, 10, 0);
 
   writeProject(home, 'enc1/s1.jsonl', [
     stepLine({

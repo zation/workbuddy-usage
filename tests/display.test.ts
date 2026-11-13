@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BUSINESS_TZ_OFFSET_MS } from '../src/shared/constants.ts';
 import { addDays } from '../src/shared/dates.ts';
 import type { BreakdownRow, BreakdownSegment, TimeseriesRow } from '../src/shared/types.ts';
 import {
@@ -69,10 +70,13 @@ describe('formatTokens', () => {
 });
 
 describe('formatRefreshTime', () => {
-  it('按本地时区输出 HH:mm', () => {
-    expect(formatRefreshTime(new Date(2026, 10, 12, 9, 5).getTime())).toBe('09:05');
-    expect(formatRefreshTime(new Date(2026, 10, 12, 23, 59).getTime())).toBe('23:59');
-    expect(formatRefreshTime(new Date(2026, 10, 12, 0, 0).getTime())).toBe('00:00');
+  const beijing = (hour: number, minute: number) =>
+    Date.UTC(2026, 10, 12, hour, minute) - BUSINESS_TZ_OFFSET_MS;
+
+  it('按固定业务时区输出 HH:mm', () => {
+    expect(formatRefreshTime(beijing(9, 5))).toBe('09:05');
+    expect(formatRefreshTime(beijing(23, 59))).toBe('23:59');
+    expect(formatRefreshTime(beijing(0, 0))).toBe('00:00');
   });
 });
 

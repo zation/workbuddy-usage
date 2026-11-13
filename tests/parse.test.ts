@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseSourceFile } from '../src/etl/parse.ts';
-import { UNKNOWN_MODEL } from '../src/shared/constants.ts';
+import { BUSINESS_TZ_OFFSET_MS, UNKNOWN_MODEL } from '../src/shared/constants.ts';
 import type { SessionMeta, SourceFileRef } from '../src/shared/types.ts';
 import { cleanupTempDirs, makeTempDir } from './helpers/temp.ts';
 
@@ -86,7 +86,7 @@ afterEach(() => {
 describe('按请求归并', () => {
   it('取 total_tokens 最大那条的四项，含时间末条更小的反例', async () => {
     const at = (hour: number, minute: number, day = 11) =>
-      new Date(2026, 10, day, hour, minute).getTime();
+      Date.UTC(2026, 10, day, hour, minute) - BUSINESS_TZ_OFFSET_MS;
     const file = makeFile([
       stepLine({ requestId: 'r1', timestamp: at(23, 50), input: 60, output: 40, cache: 10, total: 100 }),
       stepLine({ requestId: 'r1', timestamp: at(23, 55), input: 150, output: 100, cache: 50, total: 250 }),

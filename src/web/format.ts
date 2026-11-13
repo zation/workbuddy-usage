@@ -1,3 +1,5 @@
+import { BUSINESS_TZ_OFFSET_MS } from '../shared/constants.ts';
+
 const integerFormatter = new Intl.NumberFormat('zh-CN');
 const creditFormatter = new Intl.NumberFormat('zh-CN', {
   minimumFractionDigits: 2,
@@ -33,11 +35,16 @@ export function formatTokens(value: number): string {
   return `${scaled.toFixed(1)}${TOKEN_UNITS[index].suffix}`;
 }
 
-/** 上次刷新完成时间，本地时区 HH:mm。 */
+/** 固定业务时区 UTC+8 的时间字段，不读浏览器时区。 */
+function businessDate(timestampMs: number): Date {
+  return new Date(timestampMs + BUSINESS_TZ_OFFSET_MS);
+}
+
+/** 上次刷新完成时间，固定业务时区 HH:mm。 */
 export function formatRefreshTime(timestampMs: number): string {
-  const date = new Date(timestampMs);
+  const date = businessDate(timestampMs);
   const pad = (value: number) => String(value).padStart(2, '0');
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
 }
 
 export function formatCredit(value: number): string {
@@ -49,7 +56,7 @@ export function formatPercent(value: number): string {
 }
 
 export function formatDateTime(timestampMs: number): string {
-  const date = new Date(timestampMs);
+  const date = businessDate(timestampMs);
   const pad = (value: number) => String(value).padStart(2, '0');
-  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
 }

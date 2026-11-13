@@ -43,7 +43,7 @@
 | `is_subagent` | INTEGER NOT NULL DEFAULT 0 | 是否来自 `subagents/agent-*.jsonl`；请求级标记，同一父会话内主/子请求混在一起，不能移到维表 |
 | `started_at` | INTEGER NOT NULL | 该请求所有步骤中最早的 `timestamp`（毫秒） |
 | `ended_at` | INTEGER NOT NULL | 该请求所有步骤中最晚的 `timestamp`（毫秒） |
-| `date_key` | TEXT NOT NULL | 由 `started_at` 按本地时区派生的 `YYYY-MM-DD` |
+| `date_key` | TEXT NOT NULL | 由 `started_at` 按固定业务时区 UTC+8 派生的 `YYYY-MM-DD` |
 | `input_tokens` | INTEGER NOT NULL DEFAULT 0 | 输入 token |
 | `output_tokens` | INTEGER NOT NULL DEFAULT 0 | 输出 token |
 | `cache_read_tokens` | INTEGER NOT NULL DEFAULT 0 | 缓存命中读取 token（输入的子集） |
@@ -54,7 +54,7 @@
 
 `started_at` / `ended_at` 独立取自全部步骤的时间边界，与四项 token 的取值来源（C2）无关。
 
-**`date_key` 是有意保留的派生列**：本地时区折算只在解析层做一次，把"哪一天"的口径固化下来，避免查询时依赖运行进程的时区（用户改时区、跨夏令时、不同机器打开都会让同一条历史数据落到不同日期）；同时 `WHERE date_key BETWEEN ? AND ?` 与 `GROUP BY date_key` 可直接走索引，SQL 不必对每行做时间函数换算，各视图也共用同一天界（AC3）。代价只是一列冗余。
+**`date_key` 是有意保留的派生列**：UTC+8 折算只在解析层做一次，把"哪一天"的口径固化下来，避免查询时依赖运行进程的时区（用户改时区、跨夏令时、不同机器打开或重扫都会让同一条历史数据落到不同日期）；同时 `WHERE date_key BETWEEN ? AND ?` 与 `GROUP BY date_key` 可直接走索引，SQL 不必对每行做时间函数换算，各视图也共用同一天界（AC3）。折算偏移量来自共享常量，时间戳本身始终是绝对时间。代价只是一列冗余。
 
 索引：`date_key`、`group_id`、`model_id`、`session_id`、`source_file_id` 各建普通索引；`request_id` 由 UNIQUE 自带索引。
 
@@ -150,7 +150,7 @@ models   1 ──┘
 - **C2 取 `total_tokens` 最大那条而非求和**：四个 token 字段必须取自同一条步骤记录，不得各字段分别取最大值，否则会出现"输入来自第 7 步、输出来自第 3 步"的拼接错误。按时间排序的最后一条**不一定**是最大值那条（实测存在反例，见 [integration.md](./integration.md)），因此口径中的"末步"一律指数值最大那条，不按时间戳取末条。
 - **C3 token 恒等**：`total_tokens = input_tokens + output_tokens`（约 7000 条原始记录零例外），写入前校验，不等则记录告警并保留原值。
 - **C4 缓存归属**：`cache_read_tokens ≤ input_tokens`（零例外），缓存命中是输入的子集，不额外计入合计。
-- **C5 日期派生**：`date_key` 只能由 `started_at` 派生，不单独维护，避免两处不一致；时间戳缺失或非数字的步骤直接跳过并计入解析告警，不生成"未知日期"。保留该列的理由见 `requests` 表说明。
+- **C5 日期派生**：`date_key` 只能由 `started_at` 按固定 UTC+8 派生，不单独维护，避免两处不一致；时间戳缺失或非数字的步骤直接跳过并计入解析告警，不生成"未知日期"。保留该列的理由见 `requests` 表说明。
 - **C6 积分取值**：`credit` 直接取 `credit_json[request_id]`，有记录时 `has_credit = 1`（即使值为 0），缺失时 `credit = 0` 且 `has_credit = 0`；不做比例分摊、不做金额换算。`has_credit` 只用于对账与排查，不对外暴露、不参与展示，也不用于计算覆盖率一类指标。每次刷新无条件重读 `session_usage`，只更新当前映射中存在的请求（含值的修正）；映射外的请求行不触碰、不主动清零。本地已不可读的记录不追溯补齐。
 - **C7 分组快照**：解析时把 `sessions.cwd` 换成 `groups.id` 写入 `requests.group_id`；`groups` 行是快照（C11），会话被清理后未重新解析的请求仍指向原分组；该文件被重新解析而会话已不存在时，指向 `未知分组` 那一行。`is_auto` 同样随该行快照保留，不因会话清理或规则重算而改写。
 - **C8 对账**：`source_files` 中记录的文件若已不存在，删除 `source_file_id` 等于该文件 `id` 的请求行，并删除该 `source_files` 行，使文件再次出现时按新文件全量解析；文件仍在但内容变化时由 C10 原子替换，不残留已消失的请求。反过来，`requests` 中不应出现 `source_files` 之外的文件来源。

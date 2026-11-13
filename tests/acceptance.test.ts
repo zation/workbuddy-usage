@@ -21,9 +21,9 @@ interface AcceptanceFixture {
 
 const opened: AcceptanceFixture[] = [];
 
-const day11 = new Date(2026, 10, 11, 10, 0).getTime();
-const day12 = new Date(2026, 10, 12, 10, 0).getTime();
-const day13 = new Date(2026, 10, 13, 10, 0).getTime();
+const day11 = Date.UTC(2026, 10, 11, 10, 0);
+const day12 = Date.UTC(2026, 10, 12, 10, 0);
+const day13 = Date.UTC(2026, 10, 13, 10, 0);
 
 function writeProject(home: string, relativePath: string, lines: string[]): void {
   const absolute = join(home, 'projects', relativePath);

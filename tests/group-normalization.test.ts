@@ -66,8 +66,8 @@ async function setup(): Promise<Fixture> {
     ],
   );
 
-  const day12 = new Date(2026, 10, 12, 10, 0).getTime();
-  const day13 = new Date(2026, 10, 13, 10, 0).getTime();
+  const day12 = Date.UTC(2026, 10, 12, 10, 0);
+  const day13 = Date.UTC(2026, 10, 13, 10, 0);
   const single = (
     requestId: string,
     timestamp: number,

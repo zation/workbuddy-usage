@@ -12,11 +12,19 @@
 
 # T001 时间口径统一
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R1 与 Plan AD-P1 建立单一业务时区常量，把「时间戳 → 业务日期 / 显示时间」的折算全部改为固定 UTC+8，日期键算术改为 UTC 纯日期运算，时间戳字段继续以 epoch ms 存储与流转。覆盖 shared 纯函数、前端「今天」与两个时间格式化函数、验收脚本 `today()`、测试 fixture 的绝对时间戳构造。`formatDateKey` 只保留纯 UTC 日期键语义供日期算术使用，`todayKey()` 改走 `toDateKey(Date.now())`（否则会取到 UTC 日期、北京时间 00:00–08:00 显示前一天）；验收脚本保持不 import `.ts`，在脚本内实现同一 +8 折算。完成条件：至少 UTC / UTC+8 / UTC-8 三种环境下同一 epoch 得到相同的 `date_key`、`todayKey` 与显示结果（跨时区用子进程隔离验证）；现有日期单测改绝对构造后通过；`npm run typecheck` 通过。同步修订 AD-6 与 `data-model.md` 的 `date_key` 列说明、保留理由、C5。
 
 修改范围：`src/shared/constants.ts`、`src/shared/dates.ts`、`src/web/filters.ts`、`src/web/format.ts`、`scripts/panel-acceptance.mjs`、`tests/`、`docs/technical-architecture.md`、`docs/data-model.md`
+
+实施结果：`constants.ts` 新增 `BUSINESS_TZ_OFFSET_MS`；`dates.ts` 的 `toDateKey` 改为 UTC+8 折算（唯一「绝对时间 → 业务日期」入口），`formatDateKey` 改为纯 UTC 日期键语义，`parseDateKey` / `addDays` / `isValidDateKey` 改 UTC 日期算术，`daySpan` 与 `enumerateDays` 不变；`filters.ts` 的 `todayKey(nowMs?)` 改走 `toDateKey` 并支持注入时间；`format.ts` 两个格式化函数改用 `getUTC*` 加固定偏移；验收脚本 `todayKey()` 在脚本内自带 +8 折算，保持不 import `.ts`。测试 fixture 全部改 `Date.UTC` 绝对构造，`parse.test.ts` 跨零点 helper 用减偏移量保持「北京 23:50 → 次日 00:10」语义，新增 `tests/timezone.test.ts` 用三种 TZ 的子进程比对同一快照。AD-6、`data-model.md` 的 `date_key` 列说明、保留理由与 C5 同步改写。
+
+验证：`npm run typecheck` 通过（0 错；tsconfig 的 include 覆盖 `tests`，新增与修改的测试文件类型均通过）；`npm run build` 通过（621 模块，dist 产物正常）；Node 24 直接导入 `.ts` 执行 18 条纯函数断言全部通过，并以 `UTC` / `Asia/Shanghai` / `America/Los_Angeles` 三个子进程比对 `toDateKey` / `todayKey` / `formatDateTime` / `formatRefreshTime`，输出一致。`npm test` 未通过：vitest 5.1.0 在当前沙箱无法建立 runner 上下文，最小探针（不导入项目代码）可复现，与本次改动无关；已排除 Node 版本、pool 模式、isolate、Vite 缓存、注入的 `NODE_OPTIONS` 与项目配置，详见 `docs/backlog/vitest-runner-context.md`，待在开发者本地终端补跑。
+
+必要的问题与决策：`npm test` 故障为既有环境问题，不为此删除测试、跳过断言或降低校验标准；本任务以等价断言补齐功能正确性证据，但「测试套件全绿」仍需开发者确认。
+
+提交：
 
 # T002 闲时判定与节假日表
 

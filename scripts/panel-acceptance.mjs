@@ -107,6 +107,8 @@ async function chooseOption(evaluate, triggerSelector, value, settle = 1200) {
   await wait(settle);
 }
 
+const BUSINESS_TZ_OFFSET_MS = 8 * 60 * 60 * 1000;
+
 function addDays(key, delta) {
   const [year, month, day] = key.split('-').map((value) => Number.parseInt(value, 10));
   const date = new Date(Date.UTC(year, month - 1, day));
@@ -119,10 +121,10 @@ function daySpan(from, to) {
 }
 
 function todayKey() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
+  const now = new Date(Date.now() + BUSINESS_TZ_OFFSET_MS);
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(now.getUTCDate()).padStart(2, '0');
+  return `${now.getUTCFullYear()}-${month}-${day}`;
 }
 
 /** 点时间快捷按钮，等待 React 重渲染与数据刷新。 */

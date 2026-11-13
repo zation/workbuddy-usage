@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_RANGE_DAYS } from '../src/shared/constants.ts';
+import { BUSINESS_TZ_OFFSET_MS, MAX_RANGE_DAYS } from '../src/shared/constants.ts';
 import { addDays, daySpan, enumerateDays, isValidDateKey, toDateKey } from '../src/shared/dates.ts';
 import type { BreakdownRow, RefreshResult, RequestRow, SummaryResponse } from '../src/shared/types.ts';
 import { emptyWarnings } from '../src/shared/types.ts';
 
 describe('日期工具', () => {
-  it('按本地时区派生日期', () => {
-    const localMidnight = new Date(2026, 10, 12, 0, 5, 0).getTime();
-    expect(toDateKey(localMidnight)).toBe('2026-11-12');
+  it('按固定业务时区 UTC+8 派生日期', () => {
+    const beijing = (day: number, hour: number, minute: number) =>
+      Date.UTC(2026, 10, day, hour, minute) - BUSINESS_TZ_OFFSET_MS;
+    expect(toDateKey(beijing(12, 0, 5))).toBe('2026-11-12');
+    expect(toDateKey(beijing(12, 23, 59))).toBe('2026-11-12');
+    expect(toDateKey(beijing(11, 23, 59))).toBe('2026-11-11');
+    expect(toDateKey(Date.UTC(2026, 10, 11, 15, 59))).toBe('2026-11-11');
+    expect(toDateKey(Date.UTC(2026, 10, 11, 16, 0))).toBe('2026-11-12');
   });
 
   it('跨月加减日期', () => {
