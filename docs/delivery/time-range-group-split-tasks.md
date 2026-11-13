@@ -131,13 +131,19 @@
 
 # T009 交互验收脚本适配
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec AC1–AC9 与 Plan「验收脚本适配」把 `setPreset` 改造为 `clickQuick / setRange / setWideRange`（宽区间起点从 `rows` 取最小 `date`），改写依赖 `#filter-preset` 的下拉与布局断言，补齐时间联动、日期轴归位、跨度上限与分段提示断言；脚本不引入依赖、不改产品代码，`npm run acceptance` 全项通过。同步 `docs/devops.md` 的覆盖范围与取数说明，并写明数据跨度超过 100 天时如何调整验收取数。
 
 必要依赖：T005、T006、T008
 
 修改范围：`scripts/panel-acceptance.mjs`、`docs/devops.md`
+
+实施结果：`setPreset` 拆为 `clickQuick`（点 `[data-quick]`）、`typeDate` / `setRange`（原生 setter + `input` 事件，跨区间时先写不会越界的一端）、`setWideRange`（从 `/api/timeseries` 的 `rows` 取最早 `date` 到今天，跨度超 100 天直接报错）；`readTimeState` / `readGroupTooltip` / `readFirstGroupRow` 补齐状态读取，「空范围」用例改用「最早数据前一天」这一可达区间。原 `#filter-preset` 的四处下拉断言改为三个维度下拉 + 四个快捷按钮布局断言，分组行原始键改从浮层读取。新增 8 项断言：AC1 控件形态与默认区间、AC2 四个按钮回填与查询串一致及反向匹配、AC3 顺序错误与清空回弹、AC8 无 `days` 且近 7 天 7 格、AC9 100 / 101 天前后端一致拦截、AC4 分段段色与段宽、AC5 hover / focus 明细与行高。无头环境开启 `Emulation.setFocusEmulationEnabled`，否则 `focus()` 不触发浮层。`docs/devops.md` 补覆盖范围、`setWideRange` 取数与 100 天调整方式、前后端需同次构建。
+
+验证：`npm run acceptance` 23 项全部通过（原 16 项 + 新增 7 项，另含改写后的既有断言）；过程记录：首次运行 AC4 段宽比对口径与颜色空格归一化、AC5 无头焦点模拟两处脚本问题已修正后复跑通过。
+
+必要的问题与决策：段宽之和的口径按「条容器宽 × 行占比」（即原单色条宽），不是条容器全宽；颜色比对统一经 `normalizeColor()`，避免 `rgb(a, b, c)` 与 `rgb(a,b,c)` 的字符串差异。
 
 # T010 文档同步与收尾全量检查
 

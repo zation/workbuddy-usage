@@ -46,7 +46,13 @@ dev 的 Vite proxy 只转发 `^/api/` 前缀。不要改回 `/api`：前端模�
 
 ## 交互验收
 
-交互类验收用 `scripts/panel-acceptance.mjs`：脚本通过 CDP 驱动本机 Chrome，核对 tab 与 ARIA 关联（含非激活面板 `hidden` 与 canvas 数）、筛选两入口一致、拆分列表行数与滚动、明细折叠与懒加载、token 单位、缓存命中率、0 值隐藏与模型下拉可切换。趋势图部分从页面已加载的 ECharts 实例读取 y 轴刻度、tooltip 与 series 颜色，另核对单位无「万 / 亿」/ 积分 `k` 与配色跨筛选稳定。逐项打印 PASS/FAIL，失败时退出码为 1。
+交互类验收用 `scripts/panel-acceptance.mjs`：脚本通过 CDP 驱动本机 Chrome，核对 tab 与 ARIA 关联（含非激活面板 `hidden` 与 canvas 数）、筛选两入口一致、拆分列表行数与滚动、明细折叠与懒加载、token 单位、缓存命中率、0 值隐藏与模型下拉可切换。时间区核对四个快捷按钮与常驻起止框的双向联动、默认与重置为近 3 天、非法区间的错误提示与清空回弹、面板层补轴（近 7 天画满 7 格）、100 天可用与 101 天被前端和 API 一致拦截；分组列表核对按模型分段的段色与段宽之和、hover 与键盘 focus 的明细提示。趋势图部分从页面已加载的 ECharts 实例读取 y 轴刻度、tooltip、x 轴类目与 series 颜色，另核对单位无「万 / 亿」/ 积分 `k` 与配色跨筛选稳定。逐项打印 PASS/FAIL，失败时退出码为 1。
+
+脚本取「全量区间」的方式是 `GET /api/timeseries`（不带日期参数）返回 `rows` 里的最早 `date` 到当天，所以**数据跨度不能超过 100 天**。当前样本约 47 天；若本机数据增长到超过 100 天，脚本会在建立宽区间前直接报错。此时把依赖全量区间的断言改为直接读取不带日期参数的 API，或临时用 `WORKBUDDY_HOME` 指向样本目录后重建索引再跑。
+
+无头 Chrome 默认被判为未聚焦，脚本会开启 `Emulation.setFocusEmulationEnabled`，否则用 `focus()` 触发的浮层断言不会生效。
+
+`/api/timeseries` 已不再返回 `days`（日期轴由面板层生成）。若 API 与前端不是同一次构建（开发期前后端版本错配），会出现趋势图空白；重启 `npm run dev` 或重新 `npm run build` 即可，前后端需同次构建，不能只回退一侧。
 
 1. 用 Node 24 启动面板：`npm run dev`
 2. 另开一个带调试端口的 Chrome（示例为 macOS 路径，其它系统换成自己的 Chrome 可执行文件）：

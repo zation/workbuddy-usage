@@ -70,6 +70,8 @@ function createClient(socket) {
 async function openPage(client) {
   await client.send('Page.enable');
   await client.send('Runtime.enable');
+  // 无头窗口常被判为未聚焦，focus 事件不触发；开启焦点模拟才能验证键盘可达
+  await client.send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await client.send('Emulation.setDeviceMetricsOverride', {
     width: 1400,
     height: 1100,
@@ -105,8 +107,136 @@ async function chooseOption(evaluate, triggerSelector, value, settle = 1200) {
   await wait(settle);
 }
 
-async function setPreset(evaluate, value) {
-  await chooseOption(evaluate, '#filter-preset', value);
+function addDays(key, delta) {
+  const [year, month, day] = key.split('-').map((value) => Number.parseInt(value, 10));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + delta);
+  return date.toISOString().slice(0, 10);
+}
+
+function daySpan(from, to) {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1;
+}
+
+function todayKey() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+/** 点时间快捷按钮，等待 React 重渲染与数据刷新。 */
+async function clickQuick(evaluate, key, settle = 1300) {
+  await evaluate(`(() => {
+    const button = document.querySelector('[data-quick=${JSON.stringify(key)}]');
+    if (!button) throw new Error('缺少快捷按钮：' + ${JSON.stringify(key)});
+    button.click();
+  })()`);
+  await wait(settle);
+}
+
+/** 用原生 setter 改日期框并派发 input，模拟用户输入。 */
+async function typeDate(evaluate, index, value, settle = 300) {
+  await evaluate(`(() => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    const input = document.querySelectorAll('.date-range input[type=date]')[${index}];
+    setter.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await wait(settle);
+}
+
+async function readTimeState(evaluate) {
+  return JSON.parse(
+    await evaluate(`(() => {
+      const inputs = [...document.querySelectorAll('.date-range input[type=date]')];
+      const buttons = [...document.querySelectorAll('[data-quick]')];
+      return JSON.stringify({
+        from: inputs[0]?.value ?? '',
+        to: inputs[1]?.value ?? '',
+        buttons: buttons.map((button) => button.dataset.quick ?? ''),
+        pressed: buttons
+          .filter((button) => button.getAttribute('aria-pressed') === 'true')
+          .map((button) => button.dataset.quick ?? ''),
+        pressedAttrs: buttons.map((button) => button.getAttribute('aria-pressed')),
+        selectsInTime: document.querySelectorAll('.filter-time .select').length,
+        groupRole: document.querySelector('.filter-time [role=group]')?.getAttribute('aria-label') ?? '',
+        error: document.querySelector('.filter-error')?.textContent ?? '',
+      });
+    })()`),
+  );
+}
+
+/** 写日期区间：先写不会越界的一端，避免中间态被前端拦截。 */
+async function setRange(evaluate, from, to, settle = 1300) {
+  const current = await readTimeState(evaluate);
+  if (current.to && from > current.to) {
+    await typeDate(evaluate, 1, to);
+    await typeDate(evaluate, 0, from);
+  } else {
+    await typeDate(evaluate, 0, from);
+    await typeDate(evaluate, 1, to);
+  }
+  await wait(settle);
+}
+
+/** 用「数据最早日期 → 今天」覆盖全量；跨度超过 100 天时明确报错，见 docs/devops.md。 */
+async function setWideRange(evaluate, settle = 1400) {
+  const series = await (await fetch(new URL('/api/timeseries', BASE_URL))).json();
+  const dates = series.rows.map((row) => row.date).sort();
+  const from = dates[0];
+  const to = todayKey();
+  if (!from) {
+    throw new Error('时序接口没有数据，无法建立全量区间');
+  }
+  if (daySpan(from, to) > 100) {
+    throw new Error(`数据跨度 ${daySpan(from, to)} 天超过 100 天上限，请按 docs/devops.md 调整验收取数`);
+  }
+  await setRange(evaluate, from, to, settle);
+  return { from, to };
+}
+
+async function readGroupTooltip(evaluate) {
+  return JSON.parse(
+    await evaluate(`(() => {
+      const tip = document.querySelector('.breakdown-tooltip');
+      if (!tip) return JSON.stringify({ open: false });
+      const items = [...tip.querySelectorAll('.breakdown-tooltip-list li')];
+      return JSON.stringify({
+        open: true,
+        title: tip.querySelector('.breakdown-tooltip-title')?.textContent ?? '',
+        total: tip.querySelector('.breakdown-tooltip-total')?.textContent ?? '',
+        key: tip.querySelector('.breakdown-tooltip-key')?.textContent ?? '',
+        models: items.map((item) => item.querySelector('.breakdown-tooltip-model')?.textContent ?? ''),
+        values: items.map((item) => item.querySelector('.breakdown-tooltip-value')?.textContent ?? ''),
+        colors: items.map((item) => {
+          const dot = item.querySelector('.model-dot');
+          return dot ? getComputedStyle(dot).backgroundColor : '';
+        }),
+        empty: Boolean(tip.querySelector('.breakdown-tooltip-empty')),
+        pointerEvents: getComputedStyle(tip).pointerEvents,
+      });
+    })()`),
+  );
+}
+
+/** 悬浮分组首行并读回明细提示，随后移出以恢复原状。 */
+async function readFirstGroupRow(evaluate) {
+  await evaluate(`(() => {
+    document.querySelector('.panel.breakdown .breakdown-row')
+      .dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  })()`);
+  await wait(250);
+  const tip = await readGroupTooltip(evaluate);
+  const name = await evaluate(
+    `document.querySelector('.panel.breakdown .breakdown-name')?.textContent ?? ''`,
+  );
+  await evaluate(`(() => {
+    document.querySelector('.panel.breakdown .breakdown-row')
+      .dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+  })()`);
+  await wait(150);
+  return { key: tip.key ?? '', name };
 }
 
 /** 读触发按钮的业务键与当前渲染出的选项（含空值项与兜底项）。 */
@@ -173,6 +303,7 @@ function chartStateExpr() {
         axis: typeof axis === 'function'
           ? [0, 1000, 10000, 1000000, 1000000000].map((value) => String(axis(value)))
           : null,
+        categories: Array.isArray(option.xAxis?.[0]?.data) ? option.xAxis[0].data : [],
         tooltip: typeof tip === 'function'
           ? [1000, 10000, 1000000].map((value) => String(tip(value)))
           : null,
@@ -382,13 +513,8 @@ async function main() {
   // AC1：列表点击与下拉框写入同一份筛选
   await evaluate(`(() => { document.querySelectorAll('.table-toggle')[0].click(); })()`);
   await wait(600);
-  await setPreset(evaluate, 'all');
-  const groupRow = JSON.parse(
-    await evaluate(`(() => {
-      const row = document.querySelector('.panel.breakdown .breakdown-row');
-      return JSON.stringify({ key: row.title, name: row.querySelector('.breakdown-name').textContent });
-    })()`),
-  );
+  await setWideRange(evaluate);
+  const groupRow = await readFirstGroupRow(evaluate);
   await evaluate('performance.clearResourceTimings()');
   await evaluate(`(() => { document.querySelector('.panel.breakdown .breakdown-row').click(); })()`);
   await wait(1400);
@@ -397,7 +523,7 @@ async function main() {
   );
   await evaluate(`(() => { [...document.querySelectorAll('button')].find((button) => button.textContent === '重置').click(); })()`);
   await wait(1000);
-  await setPreset(evaluate, 'all');
+  await setWideRange(evaluate);
   await evaluate('performance.clearResourceTimings()');
   await chooseOption(evaluate, '#filter-group', groupRow.key, 1400);
   const bySelect = JSON.parse(
@@ -415,20 +541,20 @@ async function main() {
   // AC7：0 值隐藏与下拉可切换
   await evaluate(`(() => { [...document.querySelectorAll('button')].find((button) => button.textContent === '重置').click(); })()`);
   await wait(1000);
-  await setPreset(evaluate, 'all');
+  await setWideRange(evaluate);
   const tokenChart = await readChart(evaluate);
   await wait(1500);
   const settledChart = await readChart(evaluate);
   const frameStable =
     Object.keys(tokenChart.colors).length > 0 &&
     Object.entries(tokenChart.colors).every(([key, color]) => settledChart.colors[key] === color);
-  await setPreset(evaluate, 'today');
+  await clickQuick(evaluate, 'today');
   const todayChart = await readChart(evaluate);
   const sharedModelKeys = Object.keys(tokenChart.colors).filter((key) => todayChart.colors[key]);
   const colorsStable =
     sharedModelKeys.length > 0 &&
     sharedModelKeys.every((key) => tokenChart.colors[key] === todayChart.colors[key]);
-  await setPreset(evaluate, 'all');
+  await setWideRange(evaluate);
   const modelRows = (await (await fetch(new URL('/api/breakdown?dim=model', BASE_URL))).json()).rows;
   const zeroToken = modelRows.filter((row) => row.totalTokens === 0).map((row) => row.key);
   const zeroCredit = modelRows.filter((row) => row.credit === 0).map((row) => row.key);
@@ -538,7 +664,7 @@ async function main() {
   // 复位到「全部时间 + 无筛选」，后续断言在同一条基线上执行
   await evaluate(`(() => { [...document.querySelectorAll('button')].find((button) => button.textContent === '重置').click(); })()`);
   await wait(1000);
-  await setPreset(evaluate, 'all');
+  await setWideRange(evaluate);
   await evaluate(`document.querySelector('#token-tab').click()`);
   await wait(1500);
 
@@ -563,31 +689,19 @@ async function main() {
   );
 
   // AC2 边界：当前范围没有自动分组请求时「默认」不占位
-  await setPreset(evaluate, 'custom');
-  await evaluate(`(() => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-    const input = document.querySelectorAll('.date-range input[type=date]')[0];
-    setter.call(input, '2099-01-01');
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  })()`);
-  await wait(300);
-  await evaluate(`(() => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-    const input = document.querySelectorAll('.date-range input[type=date]')[1];
-    setter.call(input, '2099-01-01');
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  })()`);
-  await wait(1500);
+  const earliest = (await fetchJson('/api/timeseries')).rows.map((row) => row.date).sort()[0];
+  const emptyDate = addDays(earliest, -1);
+  await setRange(evaluate, emptyDate, emptyDate);
   const emptyRangeState = await readSelect(evaluate, '#filter-group');
-  const emptyRangeApi = await fetchJson('/api/breakdown?dim=group&from=2099-01-01&to=2099-01-01');
+  const emptyRangeApi = await fetchJson(`/api/breakdown?dim=group&from=${emptyDate}&to=${emptyDate}`);
   check(
     'AC2 空范围内「默认」不占位',
     emptyRangeApi.rows.length === 0 && JSON.stringify(emptyRangeState.options) === JSON.stringify(['']),
-    `接口 ${emptyRangeApi.rows.length} 行、下拉 ${emptyRangeState.options.length} 项`,
+    `空区间 ${emptyDate}：接口 ${emptyRangeApi.rows.length} 行、下拉 ${emptyRangeState.options.length} 项`,
   );
   await evaluate(`(() => { [...document.querySelectorAll('button')].find((button) => button.textContent === '重置').click(); })()`);
   await wait(1000);
-  await setPreset(evaluate, 'all');
+  await setWideRange(evaluate);
 
   // AC4：虚拟业务键筛选作用于四个端点
   let ac4Ok = false;
@@ -627,14 +741,14 @@ async function main() {
       `会话/模型与明细一致=${ac4Ok}、token 一致=${timeseriesTokens === summary.token.totalTokens}`;
     await evaluate(`(() => { [...document.querySelectorAll('button')].find((button) => button.textContent === '重置').click(); })()`);
     await wait(1000);
-    await setPreset(evaluate, 'all');
+    await setWideRange(evaluate);
   }
   check('AC4 选中「默认」后四个端点只含自动分组数据', ac4Ok, ac4Detail);
 
-  // AC12：四个下拉的 ARIA 组合与交互一致
+  // AC12：三个维度下拉的 ARIA 组合与交互一致，时间区为快捷按钮 + 常驻日期框
   const ariaState = JSON.parse(
     await evaluate(`(() => JSON.stringify(
-      ['#filter-preset', '#filter-group', '#filter-session', '#filter-model'].map((selector) => {
+      ['#filter-group', '#filter-session', '#filter-model'].map((selector) => {
         const trigger = document.querySelector(selector);
         const container = trigger.closest('.select');
         const controls = trigger.getAttribute('aria-controls');
@@ -652,7 +766,7 @@ async function main() {
     ))()`),
   );
   const ariaOk =
-    ariaState.length === 4 &&
+    ariaState.length === 3 &&
     ariaState.every(
       (item) =>
         item.role === 'combobox' &&
@@ -714,30 +828,22 @@ async function main() {
     afterOutside.expanded === 'false';
   await chooseOption(evaluate, '#filter-group', '', 1400);
 
-  const presetLayout = JSON.parse(
-    await evaluate(`(() => {
-      const container = document.querySelector('#filter-preset').closest('.select');
-      const trigger = document.querySelector('#filter-preset');
-      return JSON.stringify({
-        compact: container.classList.contains('select-compact'),
-        width: Math.round(trigger.getBoundingClientRect().width),
-        fullWidth: Math.round(document.querySelector('#filter-group').getBoundingClientRect().width),
-      });
-    })()`),
+  const timeLayout = await readTimeState(evaluate);
+  const dateInputCount = await evaluate(
+    `document.querySelectorAll('.filter-time .date-range input[type=date]').length`,
   );
-  await setPreset(evaluate, 'custom');
-  const customDateInputs = await evaluate(
-    `document.querySelectorAll('.date-range input[type=date]').length`,
-  );
-  await setPreset(evaluate, 'all');
   const layoutOk =
-    presetLayout.compact && presetLayout.width >= 100 && presetLayout.width < presetLayout.fullWidth && customDateInputs === 2;
+    timeLayout.buttons.join(',') === 'today,threeDays,sevenDays,thirtyDays' &&
+    timeLayout.pressedAttrs.every((value) => value === 'true' || value === 'false') &&
+    timeLayout.selectsInTime === 0 &&
+    timeLayout.groupRole === '时间范围' &&
+    dateInputCount === 2;
 
   check(
-    'AC12 四个下拉 ARIA 一致、键盘与点击外部关闭可用、时间预设紧凑宽度不变',
+    'AC12 三个维度下拉 ARIA 一致、键盘与点击外部关闭可用，时间区为四个快捷按钮 + 两个日期框',
     ariaOk && keyboardOk && layoutOk,
     `ARIA=${ariaOk}（${ariaState.map((item) => item.expanded).join('/')}）、键盘=${keyboardOk}、` +
-      `预设宽=${presetLayout.width}px（全宽 ${presetLayout.fullWidth}px）、自定义日期框=${customDateInputs}`,
+      `快捷按钮=${timeLayout.buttons.join('/')}、时间区下拉=${timeLayout.selectsInTime}、日期框=${dateInputCount}`,
   );
 
   // AC13：两张趋势图的 tooltip 都过滤 0 值
@@ -767,6 +873,237 @@ async function main() {
     'AC13 两张趋势图 tooltip 过滤 0 值并保留日期',
     tooltipRule(tokenChartRule) && tooltipRule(creditChartRule),
     `Token=${tooltipRule(tokenChartRule)}、积分=${tooltipRule(creditChartRule)}`,
+  );
+
+  // ===== 时间控件、日期轴、跨度上限与分组分段 =====
+  await evaluate(`document.querySelector('#token-tab').click()`);
+  await wait(1200);
+  await evaluate(`(() => { [...document.querySelectorAll('button')].find((button) => button.textContent === '重置').click(); })()`);
+  await wait(1500);
+
+  const today = todayKey();
+  const threeStart = addDays(today, -2);
+  const defaultTime = await readTimeState(evaluate);
+  check(
+    'AC1 时间区为四个快捷按钮 + 常驻起止框，首屏默认近 3 天',
+    defaultTime.buttons.join(',') === 'today,threeDays,sevenDays,thirtyDays' &&
+      defaultTime.pressed.join(',') === 'threeDays' &&
+      defaultTime.from === threeStart &&
+      defaultTime.to === today &&
+      defaultTime.selectsInTime === 0,
+    `按钮=${defaultTime.buttons.join('/')}、高亮=${defaultTime.pressed.join('/')}、区间=${defaultTime.from}→${defaultTime.to}`,
+  );
+
+  const quickCases = [
+    ['today', today, today],
+    ['threeDays', threeStart, today],
+    ['sevenDays', addDays(today, -6), today],
+    ['thirtyDays', addDays(today, -29), today],
+  ];
+  let quickOk = true;
+  const quickDetails = [];
+  for (const [key, from, to] of quickCases) {
+    await clickQuick(evaluate, key);
+    const state = await readTimeState(evaluate);
+    const url = await evaluate(summaryUrlExpr);
+    const matched =
+      state.pressed.join(',') === key &&
+      state.from === from &&
+      state.to === to &&
+      url.includes(`from=${from}`) &&
+      url.includes(`to=${to}`);
+    quickOk = quickOk && matched;
+    quickDetails.push(`${key}:${state.from}→${state.to}/${state.pressed.join('/')}`);
+  }
+
+  await clickQuick(evaluate, 'sevenDays');
+  await typeDate(evaluate, 0, threeStart);
+  await wait(1300);
+  const backToThree = await readTimeState(evaluate);
+  await typeDate(evaluate, 0, addDays(today, -3));
+  await wait(1300);
+  const customTime = await readTimeState(evaluate);
+  check(
+    'AC2 快捷按钮回填区间且查询串一致，手动改日期按反向匹配重算高亮',
+    quickOk &&
+      backToThree.pressed.join(',') === 'threeDays' &&
+      customTime.pressed.length === 0 &&
+      customTime.from === addDays(today, -3) &&
+      customTime.to === today,
+    `${quickDetails.join('；')}，手改命中=${backToThree.pressed.join('/')}，自定义高亮 ${customTime.pressed.length} 个`,
+  );
+
+  await clickQuick(evaluate, 'threeDays');
+  await typeDate(evaluate, 0, today);
+  await wait(1300);
+  await evaluate('performance.clearResourceTimings()');
+  await typeDate(evaluate, 1, addDays(today, -5));
+  await wait(1000);
+  const inverted = await readTimeState(evaluate);
+  const requestsAfterInverted = await evaluate(
+    `(() => performance.getEntriesByType('resource').filter((entry) => entry.name.includes('/api/summary')).length)()`,
+  );
+  await evaluate(`(() => {
+    const input = document.querySelectorAll('.date-range input[type=date]')[1];
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, '');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await wait(400);
+  const afterClear = await readTimeState(evaluate);
+  check(
+    'AC3 起始晚于结束不写入筛选且不发请求，清空日期框回弹到生效值',
+    inverted.error === '起始日期不能晚于结束日期' &&
+      inverted.from === today &&
+      requestsAfterInverted === 0 &&
+      afterClear.to === today,
+    `错误=${inverted.error || '无'}、非法后 summary 请求=${requestsAfterInverted}、清空后结束日期=${afterClear.to}`,
+  );
+
+  await clickQuick(evaluate, 'sevenDays');
+  const sevenChart = await readChart(evaluate);
+  const seriesApi = await fetchJson('/api/timeseries');
+  check(
+    'AC8 /api/timeseries 不含 days，面板按区间补轴，近 7 天画满 7 格',
+    !('days' in seriesApi) &&
+      sevenChart.categories.length === 7 &&
+      sevenChart.categories[0] === addDays(today, -6) &&
+      sevenChart.categories.at(-1) === today,
+    `响应含 days=${'days' in seriesApi}、类目 ${sevenChart.categories.length} 个（${sevenChart.categories[0]}→${sevenChart.categories.at(-1)}）`,
+  );
+
+  const hundredFrom = addDays(today, -99);
+  await setRange(evaluate, hundredFrom, today);
+  await wait(600);
+  const hundredChart = await readChart(evaluate);
+  await evaluate('performance.clearResourceTimings()');
+  await typeDate(evaluate, 0, addDays(today, -100));
+  await wait(1200);
+  const invalidTime = await readTimeState(evaluate);
+  const requestsAfterInvalid = await evaluate(
+    `(() => performance.getEntriesByType('resource').filter((entry) => entry.name.includes('/api/summary')).length)()`,
+  );
+  const tooLongResponse = await fetch(
+    new URL(`/api/summary?from=${addDays(today, -100)}&to=${today}`, BASE_URL),
+  );
+  const tooLongBody = await tooLongResponse.json();
+  const fullResponse = await fetch(new URL('/api/summary', BASE_URL));
+  const fullBody = await fullResponse.json();
+  await clickQuick(evaluate, 'sevenDays');
+  const recoveredTime = await readTimeState(evaluate);
+  const recoveredChart = await readChart(evaluate);
+  check(
+    'AC9 100 天区间正常生效，101 天被前端与 API 用同一文案拦截',
+    hundredChart.categories.length === 100 &&
+      invalidTime.error === '时间跨度不能超过 100 天' &&
+      requestsAfterInvalid === 0 &&
+      tooLongResponse.status === 400 &&
+      tooLongBody.error === '时间跨度不能超过 100 天' &&
+      fullResponse.status === 200 &&
+      fullBody.token.totalTokens > 0 &&
+      recoveredTime.error === '' &&
+      recoveredChart.categories.length === 7,
+    `100 天类目=${hundredChart.categories.length}、101 天提示=${invalidTime.error || '无'}、` +
+      `越界后请求=${requestsAfterInvalid}、API=${tooLongResponse.status}/${tooLongBody.error}、` +
+      `无日期请求=${fullResponse.status}、恢复后类目=${recoveredChart.categories.length}`,
+  );
+
+  await clickQuick(evaluate, 'thirtyDays');
+  await wait(1200);
+  const segmentState = JSON.parse(
+    await evaluate(`(() => {
+      const panels = [...document.querySelectorAll('.panel.breakdown')];
+      const group = panels.find((panel) => panel.querySelector('h3')?.textContent === '按分组');
+      const others = panels.filter((panel) => panel !== group);
+      const row = group?.querySelector('.breakdown-row');
+      const bar = row?.querySelector('.breakdown-bar');
+      const segments = [...(bar?.querySelectorAll('.breakdown-segment') ?? [])];
+      return JSON.stringify({
+        segments: segments.length,
+        colors: segments.map((item) => getComputedStyle(item).backgroundColor),
+        widths: segments.map((item) => item.getBoundingClientRect().width),
+        barWidth: bar ? bar.getBoundingClientRect().width : 0,
+        rowHeight: row ? Math.round(row.getBoundingClientRect().height) : 0,
+        otherSegments: others.reduce((sum, panel) => sum + panel.querySelectorAll('.breakdown-segment').length, 0),
+        otherFills: others.reduce((sum, panel) => sum + panel.querySelectorAll('.breakdown-fill').length, 0),
+      });
+    })()`),
+  );
+
+  await evaluate(`(() => {
+    document.querySelector('.panel.breakdown .breakdown-row')
+      .dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  })()`);
+  await wait(300);
+  const groupTip = await readGroupTooltip(evaluate);
+  const rowHeightOpen = await evaluate(
+    `Math.round(document.querySelector('.panel.breakdown .breakdown-row').getBoundingClientRect().height)`,
+  );
+  const chartForSegments = await readChart(evaluate);
+  const timeNow = await readTimeState(evaluate);
+  const splitApi = await fetchJson(
+    `/api/breakdown?dim=group&split=model&from=${timeNow.from}&to=${timeNow.to}`,
+  );
+  const splitRow = splitApi.rows.find((row) => row.key === groupTip.key);
+  const expectedSegments = (splitRow?.models ?? [])
+    .filter((segment) => segment.totalTokens > 0)
+    .sort(
+      (left, right) =>
+        right.totalTokens - left.totalTokens || left.model.localeCompare(right.model),
+    );
+  const modelKeyByName = new Map(
+    (await fetchJson('/api/breakdown?dim=model')).rows.map((row) => [row.name, row.key]),
+  );
+  const expectedColors = expectedSegments.map((segment) =>
+    normalizeColor(chartForSegments.colors[segment.model] ?? ''),
+  );
+  const widthsSum = segmentState.widths.reduce((sum, width) => sum + width, 0);
+  // 原单色条宽 = 条容器宽 × 行占比；段宽之和应与它一致
+  const expectedWidth = (splitRow?.tokenShare ?? 0) * segmentState.barWidth;
+  const segmentsMatch =
+    segmentState.segments > 0 &&
+    segmentState.segments === expectedSegments.length &&
+    segmentState.colors.map(normalizeColor).every((color, index) => color === expectedColors[index]);
+
+  await evaluate(`(() => {
+    document.querySelector('.panel.breakdown .breakdown-row')
+      .dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+  })()`);
+  await wait(200);
+  const tipAfterLeave = await readGroupTooltip(evaluate);
+  await evaluate(`(() => {
+    const row = document.querySelector('.panel.breakdown .breakdown-row');
+    row.blur();
+    row.focus();
+  })()`);
+  await wait(300);
+  const focusTip = await readGroupTooltip(evaluate);
+  await evaluate(`document.querySelector('.panel.breakdown .breakdown-row').blur()`);
+
+  check(
+    'AC4 分组条按模型分段，段色与趋势图逐值一致，段宽之和等于原条宽',
+    segmentsMatch &&
+      Math.abs(widthsSum - expectedWidth) <= 1.5 &&
+      segmentState.otherSegments === 0 &&
+      segmentState.otherFills > 0,
+    `段数=${segmentState.segments}（期望 ${expectedSegments.length}）、颜色一致=${segmentsMatch}、` +
+      `段宽和=${widthsSum.toFixed(1)}px/条宽=${expectedWidth.toFixed(1)}px、` +
+      `其它列表段数=${segmentState.otherSegments}、单色条=${segmentState.otherFills}`,
+  );
+
+  check(
+    'AC5 hover 与键盘 focus 都浮出分组明细，内容降序、隐藏 0 值、不撑高行',
+    groupTip.open &&
+      groupTip.key === splitRow?.key &&
+      JSON.stringify(groupTip.models) === JSON.stringify(expectedSegments.map((segment) => segment.modelName)) &&
+      tipAfterLeave.open === false &&
+      focusTip.open === true &&
+      JSON.stringify(focusTip.models) === JSON.stringify(groupTip.models) &&
+      groupTip.pointerEvents === 'none' &&
+      rowHeightOpen === segmentState.rowHeight,
+    `提示=${groupTip.title || '无'}（${groupTip.models.length} 个模型，期望 ${expectedSegments.length} 个）、` +
+      `移出关闭=${!tipAfterLeave.open}、focus 打开=${focusTip.open}、focus 内容一致=${JSON.stringify(focusTip.models) === JSON.stringify(groupTip.models)}、` +
+      `pointer-events=${groupTip.pointerEvents || '无'}、行高=${rowHeightOpen}/${segmentState.rowHeight}`,
   );
 
   if (SCREENSHOT_DIR) {
