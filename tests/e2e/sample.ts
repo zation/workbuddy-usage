@@ -24,18 +24,36 @@ export interface SampleSession {
   customTitle?: string;
 }
 
+/** 一次独立模型调用；一条 jsonl 记录对应一个步骤。 */
+export interface SampleStep {
+  /** 北京时间 `YYYY-MM-DDTHH:mm`。 */
+  at: string;
+  input: number;
+  output: number;
+  cache: number;
+}
+
 export interface SampleRequest {
   id: string;
   session: string;
   model: string;
   modelName: string;
-  /** 北京时间 `YYYY-MM-DDTHH:mm`。 */
+  /** 首步时间，同时作为请求日期的业务基准。 */
   at: string;
   input: number;
   output: number;
   cache: number;
   credit: number;
   subagent?: boolean;
+  /** 首步之外的额外步骤；请求级四项 token 为全部步骤之和。 */
+  steps?: SampleStep[];
+}
+
+export function sampleSteps(request: SampleRequest): SampleStep[] {
+  return [
+    { at: request.at, input: request.input, output: request.output, cache: request.cache },
+    ...(request.steps ?? []),
+  ];
 }
 
 export const SAMPLE_SESSIONS: readonly SampleSession[] = [
@@ -64,13 +82,32 @@ export const SAMPLE_MODELS = {
  * 覆盖：多模型（含 DeepSeek 以触发占位比率折线）、多分组（含自动目录 → 「默认」）、多日期、
  * 全 0 日（11-11）、单模型日（11-12 与 11-10）、极窄段（alpha 里 30 token 的 glm）、
  * 0 值隐藏（kimi 无 token、mimo 无积分）、子代理文件、可手算的缓存命中率。
+ * `r-a2` 是跨 09:00 / 12:00 / 14:00 / 18:00 档位的多步 DS 请求，`r-a5` 是多步非 DS 请求，
+ * `r-a1` 是额外步骤不抵消、请求级总量真实放大的多步 DS 请求；三者都只落在同一个业务日。
+ * `r-a2` / `r-a5` 把原单步拆成多步而保持请求级四项不变，默认区间的图表形状因此不受影响；
+ * 放大发生在 11-10（`r-a1`），在默认三天区间之外。额外步骤只用 `message.usage` 四项与 `providerData`。
  */
 export const SAMPLE_REQUESTS: readonly SampleRequest[] = [
-  { id: 'r-a1', session: 's1', model: SAMPLE_MODELS.deepseek, modelName: 'DeepSeek-V4.1-Flash', at: '2026-11-10T09:00', input: 160, output: 40, cache: 0, credit: 0.1 },
-  { id: 'r-a2', session: 's1', model: SAMPLE_MODELS.deepseek, modelName: 'DeepSeek-V4.1-Flash', at: '2026-11-12T10:00', input: 2400, output: 600, cache: 1200, credit: 1.5 },
+  { id: 'r-a1', session: 's1', model: SAMPLE_MODELS.deepseek, modelName: 'DeepSeek-V4.1-Flash', at: '2026-11-10T09:00', input: 160, output: 40, cache: 0, credit: 0.1,
+    steps: [
+      { at: '2026-11-10T09:30', input: 80, output: 20, cache: 40 },
+      { at: '2026-11-10T12:30', input: 60, output: 15, cache: 30 },
+    ] },
+  { id: 'r-a2', session: 's1', model: SAMPLE_MODELS.deepseek, modelName: 'DeepSeek-V4.1-Flash', at: '2026-11-12T10:00', input: 2200, output: 550, cache: 1125, credit: 1.5,
+    steps: [
+      { at: '2026-11-12T08:59', input: 20, output: 5, cache: 0 },
+      { at: '2026-11-12T11:59', input: 30, output: 5, cache: 0 },
+      { at: '2026-11-12T12:00', input: 40, output: 10, cache: 20 },
+      { at: '2026-11-12T14:00', input: 50, output: 10, cache: 25 },
+      { at: '2026-11-12T18:00', input: 60, output: 20, cache: 30 },
+    ] },
   { id: 'r-a3', session: 's1', model: SAMPLE_MODELS.hy4, modelName: 'Hy4', at: '2026-11-13T10:00', input: 800, output: 200, cache: 400, credit: 0.5 },
   { id: 'r-a4', session: 's4', model: SAMPLE_MODELS.glm, modelName: 'GLM-5.2', at: '2026-11-14T10:00', input: 24, output: 6, cache: 0, credit: 0.03 },
-  { id: 'r-a5', session: 's4', model: SAMPLE_MODELS.mimo, modelName: 'Mimo-V2.6-Pro', at: '2026-11-13T16:00', input: 400, output: 100, cache: 0, credit: 0 },
+  { id: 'r-a5', session: 's4', model: SAMPLE_MODELS.mimo, modelName: 'Mimo-V2.6-Pro', at: '2026-11-13T16:00', input: 240, output: 60, cache: 0, credit: 0,
+    steps: [
+      { at: '2026-11-13T16:30', input: 100, output: 25, cache: 0 },
+      { at: '2026-11-13T19:00', input: 60, output: 15, cache: 0 },
+    ] },
   { id: 'r-a6', session: 's1', model: SAMPLE_MODELS.hy4, modelName: 'Hy4', at: '2026-11-14T11:00', input: 160, output: 40, cache: 0, credit: 0.1, subagent: true },
   { id: 'r-b1', session: 's2', model: SAMPLE_MODELS.deepseek, modelName: 'DeepSeek-V4.1-Flash', at: '2026-11-12T11:00', input: 800, output: 200, cache: 0, credit: 0.8 },
   { id: 'r-b2', session: 's2', model: SAMPLE_MODELS.kimi, modelName: 'Kimi-K3.1-Pro', at: '2026-11-14T15:00', input: 0, output: 0, cache: 0, credit: 0 },
@@ -98,17 +135,19 @@ function writeJsonl(path: string, lines: string[]): void {
 }
 
 function toLines(requests: readonly SampleRequest[]): string[] {
-  return requests.map((request) =>
-    stepLine({
-      requestId: request.id,
-      timestamp: sampleTimestamp(request.at),
-      input: request.input,
-      output: request.output,
-      cache: request.cache,
-      total: request.input + request.output,
-      model: request.model,
-      modelName: request.modelName,
-    }),
+  return requests.flatMap((request) =>
+    sampleSteps(request).map((step) =>
+      stepLine({
+        requestId: request.id,
+        timestamp: sampleTimestamp(step.at),
+        input: step.input,
+        output: step.output,
+        cache: step.cache,
+        total: step.input + step.output,
+        model: request.model,
+        modelName: request.modelName,
+      }),
+    ),
   );
 }
 

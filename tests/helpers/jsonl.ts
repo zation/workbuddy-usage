@@ -1,3 +1,4 @@
+/** 一条 StepSpec 生成一行 jsonl，即一次独立模型调用；同一请求多步就生成多行。 */
 export interface StepSpec {
   requestId: string;
   timestamp: number;

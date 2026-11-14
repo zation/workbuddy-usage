@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { addDays } from '../../src/shared/dates.ts';
 import type { SummaryResponse, TimeseriesResponse } from '../../src/shared/types.ts';
+import { formatTokens } from '../../src/web/format.ts';
 import { expectRange } from './expectations.ts';
 import { PanelPage } from './panel-page.ts';
 import { BASE_DATE, SAMPLE_MODELS } from './sample.ts';
@@ -125,7 +126,11 @@ test.describe('趋势图与 tooltip', () => {
     );
 
     const bars = lines.slice(1).filter((line) => !line.includes(RATIO_LABEL));
-    expect(bars).toEqual(['DeepSeek-V4.1-Flash：4.0K']);
+    expect(bars).toEqual(
+      expectation.dayRows('2026-11-12', 'tokens').map(
+        (row) => `${row.name}：${formatTokens(row.tokens)}`,
+      ),
+    );
     expect(lines.join(' ')).not.toContain('ERROR');
     expect(lines.join(' ')).not.toContain('Kimi');
 

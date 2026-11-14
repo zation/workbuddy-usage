@@ -5,7 +5,7 @@ import { isDeepseekOffpeak } from '../../src/shared/deepseek-offpeak.ts';
 import { formatCredit, formatInteger, formatPercent, formatTokens } from '../../src/web/format.ts';
 import { modelColor } from '../../src/web/model-colors.ts';
 import type { SampleRequest, SampleSession } from './sample.ts';
-import { SAMPLE_REQUESTS, SAMPLE_SESSIONS, sampleTimestamp } from './sample.ts';
+import { SAMPLE_REQUESTS, SAMPLE_SESSIONS, sampleSteps, sampleTimestamp } from './sample.ts';
 
 export type Metric = 'tokens' | 'credit';
 
@@ -141,7 +141,8 @@ export function expectRange(from: string, to: string): RangeExpectation {
   const dayMap = new Map<string, Map<string, ModelTotal>>();
 
   for (const request of requests) {
-    const tokens = request.input + request.output;
+    const steps = sampleSteps(request);
+    const tokens = steps.reduce((sum, step) => sum + step.input + step.output, 0);
     const date = toDateKey(sampleTimestamp(request.at));
 
     const model = modelMap.get(request.model) ?? {
@@ -206,9 +207,10 @@ export function expectRange(from: string, to: string): RangeExpectation {
 
   const totalTokens = models.reduce((sum, model) => sum + model.tokens, 0);
   const totalCredit = models.reduce((sum, model) => sum + model.credit, 0);
-  const inputTokens = requests.reduce((sum, request) => sum + request.input, 0);
-  const outputTokens = requests.reduce((sum, request) => sum + request.output, 0);
-  const cacheReadTokens = requests.reduce((sum, request) => sum + request.cache, 0);
+  const allSteps = requests.flatMap(sampleSteps);
+  const inputTokens = allSteps.reduce((sum, step) => sum + step.input, 0);
+  const outputTokens = allSteps.reduce((sum, step) => sum + step.output, 0);
+  const cacheReadTokens = allSteps.reduce((sum, step) => sum + step.cache, 0);
   const sessionCount = new Set(requests.map((request) => request.session)).size;
 
   const ratioByDate = new Map<string, { credit: number; official: number }>();
@@ -216,18 +218,19 @@ export function expectRange(from: string, to: string): RangeExpectation {
     if (!DEEPSEEK_MODEL_KEYS.includes(request.model)) {
       continue;
     }
-    const timestamp = sampleTimestamp(request.at);
-    const date = toDateKey(timestamp);
+    const date = toDateKey(sampleTimestamp(request.at));
     const entry = ratioByDate.get(date) ?? { credit: 0, official: 0 };
     entry.credit += request.credit;
-    entry.official += officialCost(
-      {
-        inputTokens: request.input,
-        outputTokens: request.output,
-        cacheReadTokens: request.cache,
-      },
-      isDeepseekOffpeak(timestamp),
-    );
+    for (const step of sampleSteps(request)) {
+      entry.official += officialCost(
+        {
+          inputTokens: step.input,
+          outputTokens: step.output,
+          cacheReadTokens: step.cache,
+        },
+        isDeepseekOffpeak(sampleTimestamp(step.at)),
+      );
+    }
     ratioByDate.set(date, entry);
   }
   const ratios: RatioTotal[] = [...ratioByDate.entries()]

@@ -110,4 +110,27 @@ test.describe('页面结构与网络', () => {
     await expect(panel.rows('按分组')).toHaveCount(8);
     await expect(panel.breakdownPanel('按分组').locator('.panel-meta')).toHaveText(`${groupCount} 项`);
   });
+
+  test('AC6 旧口径说明已移除，放大后的 token 数值仍用 K/M/B', async ({ page }) => {
+    const expectation = expectRange(FROM, TO);
+
+    await expect(
+      page.locator('#token-module .module-header p'),
+      'Token 模块不再渲染副标题',
+    ).toHaveCount(0);
+
+    const tokenText = await page.locator('#token-module').innerText();
+    expect(tokenText, '旧口径说明文案已移除').not.toContain('累计值最大');
+    expect(tokenText).not.toContain('同源');
+    expect(tokenText, '界面不出现解释新口径的文字').not.toContain('口径');
+
+    await panel.switchTab('credit');
+    await expect(page.locator('#credit-module .module-header p')).toHaveText(
+      '按请求汇总的积分消耗。',
+    );
+    await panel.switchTab('token');
+
+    await expect(panel.metric('合计 Token')).toHaveText(expectation.text.totalTokens);
+    expect(expectation.text.totalTokens, 'token 数值仍用 K/M/B 单位').toMatch(/[KMB]$/u);
+  });
 });

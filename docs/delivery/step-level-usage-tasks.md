@@ -72,13 +72,22 @@
 
 # T004 e2e 固定样本与期望值扩展
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec AC1 / AC2 / AC3 / AC6 与 Plan「交互验收」把 e2e 固定样本从「每请求 1 步」扩展为含多步骤、跨 09:00 / 12:00 / 14:00 / 18:00 档位、DS 与非 DS 模型的样本，`tests/helpers/jsonl.ts` 同步支持逐步行；`tests/e2e/expectations.ts` 的推导函数改为与服务端同口径（按步求和、按步判档），期望值仍从样本确定性推出、不硬编码本机实测数字；样本只用 `message.usage` 四项 + `providerData`，不伪造 `rawUsage`；`sample.spec.ts` 自检同步；AC6 补「旧口径说明文案已移除」与 K / M / B 格式断言，AC9 既有回归项继续通过。完成条件：`npm run acceptance` 通过，或如实记录未执行原因。
 
 必要依赖：T002、T003、T005
 
 修改范围：`tests/e2e/`、`tests/helpers/jsonl.ts`、`scripts/e2e-fixture.mjs`
+
+实施结果：`sample.ts` 新增 `SampleStep` / `sampleSteps()` 与 `SampleRequest.steps?`，`toLines` 改为每个请求输出多行 jsonl；`r-a2`（DS）拆成跨 09:00 / 12:00 / 14:00 / 18:00 六步、`r-a5`（非 DS）拆成三步、`r-a1`（11-10 DS）为逐步求和后真实放大的多步请求。`expectations.ts` 的请求级四项、输入 / 输出 / 缓存、按模型 / 分组 / 会话 / 日期拆分全部改为逐步骤求和，比率分母按每步 `isDeepseekOffpeak` 分档计价、分子仍按请求 `credit` 累加一次。`sample.spec.ts` 自检改为推导式并新增「请求级合计 = Σ 步骤且大于首步」；`trend.spec.ts` tooltip 柱行改为由 `dayRows` 推导；`metrics.spec.ts` 命中率自检不再写死百分比；`structure.spec.ts` 新增 AC6「旧口径说明已移除、界面无本次新增说明文字、Token 数值仍用 K/M/B」。`tests/helpers/jsonl.ts` 补充说明一条 `StepSpec` 即一步；`scripts/e2e-fixture.mjs` 无需改动，它只调用 `buildSampleHome`。
+
+验证：`npm run typecheck` 退出码 0；`npm run acceptance` 40 passed（Node 24.19.0 置于 PATH 首位，Chromium 已就绪），包含 `focus.spec.ts` 12 个像素级 hover 用例与 `trend.spec.ts` 全部比率 tooltip 用例；`npm test` 在 T002 + T003 批次已通过且本任务只改 e2e 文件。
+
+必要的问题与决策：
+
+- 第一次尝试让默认三天区间内的多步请求真实放大，把 11-12 总量从 4.0K 抬到 4.25K，Y 轴量程随之由 4.0K 升到 5.0K，GLM 极窄色段不足 10 个纯色像素，`focus.spec.ts` 的 8 个像素级用例找不到取样点。用 `git stash` 回退样本后复验基线 12/12 通过，确认是样本量程问题而非实现错误。最终把 `r-a2` / `r-a5` 改成「拆步但请求级四项不变」，真实放大仅放在 11-10 的 `r-a1`（默认三天区间外）：首步小于求和值且跨档分布改变比率，仍完整验证求和口径与按步判档，同时不扰动既有像素级断言。
+- `npm run acceptance` 必须让 Node 24 位于 PATH 首位（本机 `E:\Software\nodejs`）；WorkBuddy 托管的 Node 22.22.2 会被 `npm start` 的版本检查拒绝，单测与类型检查则两者都可运行。
 
 # T005 前端旧口径文案移除
 

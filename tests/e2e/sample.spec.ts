@@ -5,7 +5,7 @@ import { addDays, toDateKey } from '../../src/shared/dates.ts';
 import type { BreakdownResponse, SummaryResponse, TimeseriesResponse } from '../../src/shared/types.ts';
 import { expectRange } from './expectations.ts';
 import { PanelPage } from './panel-page.ts';
-import { BASE_DATE, FROZEN_NOW_MS } from './sample.ts';
+import { BASE_DATE, FROZEN_NOW_MS, SAMPLE_REQUESTS, sampleSteps } from './sample.ts';
 
 const DEFAULT_FROM = addDays(BASE_DATE, -2);
 const DEFAULT_TO = BASE_DATE;
@@ -35,7 +35,21 @@ test.describe('固定样本自检', () => {
     expect(files.length, '样本会话文件数（11 个主会话 + 1 个子代理）').toBe(12);
 
     const expectation = expectRange(DEFAULT_FROM, DEFAULT_TO);
-    expect(expectation.token.totalTokens, '默认区间 token 合计').toBe(6510);
+    expect(expectation.token.totalTokens, '默认区间 token 合计等于各模型之和').toBe(
+      expectation.models.reduce((sum, model) => sum + model.tokens, 0),
+    );
+    expect(expectation.token.totalTokens).toBe(
+      expectation.token.inputTokens + expectation.token.outputTokens,
+    );
+    expect(expectation.requests.some((request) => (request.steps?.length ?? 0) > 0)).toBe(true);
+    const multiStep = SAMPLE_REQUESTS.find((request) => request.id === 'r-a2');
+    if (!multiStep) {
+      throw new Error('样本缺少多步骤请求 r-a2');
+    }
+    expect(
+      sampleSteps(multiStep).reduce((sum, step) => sum + step.input + step.output, 0),
+      '请求级合计等于逐步求和，大于首步数值',
+    ).toBeGreaterThan(multiStep.input + multiStep.output);
     expect(expectation.token.requestCount, '默认区间请求数').toBe(15);
     expect(expectation.models.length, '样本模型数').toBe(5);
 
