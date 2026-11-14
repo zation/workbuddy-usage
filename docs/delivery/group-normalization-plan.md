@@ -66,7 +66,7 @@ ON CONFLICT(group_path) DO NOTHING
 
 **取舍**
 
-- **不加 `ON CONFLICT DO UPDATE`**：`is_auto` 是 `group_path` 的纯函数计算值，而 `group_path` 带 UNIQUE，同一业务键永远算出同一个结果，每次刷新重写它没有收益，还会改变 `ensureGroup` 既有的 `DO NOTHING` 写入语义、与 `data-model.md` 第 10 行「业务键换 id」的通用原则冲突。维表保持快照（C7 / C11）；判定规则变更属于生成规则变更，按 `data-model.md`「数据库结构与迁移」的既有约定递增 `SCHEMA_VERSION` 删库重建，不依赖增量刷新纠正存量行。
+- **不加 `ON CONFLICT DO UPDATE`**：`is_auto` 是 `group_path` 的纯函数计算值，而 `group_path` 带 UNIQUE，同一业务键永远算出同一个结果，每次刷新重写它没有收益，还会改变 `ensureGroup` 既有的 `DO NOTHING` 写入语义、与 `data-model.md` 第 10 行「业务键换 id」的通用原则冲突。维表保持快照（C7 / C11）；判定规则变更按 `data-model.md`「数据库结构与迁移」的既有约定递增 `SCHEMA_VERSION` 删库重建，不依赖增量刷新纠正存量行。
 - `groupIds` 缓存只在单次刷新内有效（`refresh.ts` 的 `doRefresh` 每次 `new DimensionWriter(db)`），已存在的行由 `DO NOTHING` 跳过，不会因缓存绕过写入语义；外部会话被清理后原行与 `is_auto` 保留。
 - `is_auto` 用 INTEGER 0/1 而不是布尔列，与 `requests.is_subagent` / `has_credit` 的既有写法一致，SQLite 无需转换。
 - `未知分组` 与空 `cwd` 走 `UNKNOWN_GROUP` 分支，`isAutoGroupPath('未知分组')` 为 false，落 0。

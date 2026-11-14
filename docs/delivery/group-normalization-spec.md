@@ -49,7 +49,7 @@
 对 `cwd` 统一按 `/` 与 `\` 切分并去掉尾部空段，取末段与倒数第二段：末段匹配 `^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$`，且倒数第二段等于 `workbuddy`（大小写不敏感）时判为自动分组。`is_auto = 1` 表示该 `cwd` 是 WorkBuddy 按时间戳自动创建的工作目录，**不依据** `is_playground` / `conversation_origin` 等会话字段判定。规则不依赖运行平台的分隔符，不硬编码用户名、盘符或 home 目录，兼容 `/Users/<user>/WorkBuddy/<日期>` 与 `C:\Users\<user>\WorkBuddy\<日期>`。末段是日期但父目录不是 `WorkBuddy` 的路径，以及 `WorkBuddy` 目录下的非日期目录，均判为手动分组。空串与取不到 `cwd` 时归入「未知分组」，不参与本规则。
 
 **R2 判定只做一次**
-判定在解析层 `ensureGroup` 插入维表行时完成，结果存 `groups.is_auto`；服务层与面板不重复实现路径规则。`is_auto` 是 `group_path` 的纯函数计算值，而 `group_path` 带 UNIQUE 约束，因此同一业务键的判定结果恒定，维表行按既有 `ON CONFLICT DO NOTHING` 语义保持快照（C7 / C11），增量刷新不改写已有行。判定规则变更属于生成规则变更，必须递增 `SCHEMA_VERSION` 触发删库重建，不依赖增量刷新纠正存量行。外部会话被清理后保留原行。
+判定在解析层 `ensureGroup` 插入维表行时完成，结果存 `groups.is_auto`；服务层与面板不重复实现路径规则。`is_auto` 是 `group_path` 的纯函数计算值，而 `group_path` 带 UNIQUE 约束，因此同一业务键的判定结果恒定，维表行按既有 `ON CONFLICT DO NOTHING` 语义保持快照（C7 / C11），增量刷新不改写已有行。判定规则变更必须递增 `SCHEMA_VERSION` 触发删库重建，不依赖增量刷新纠正存量行。外部会话被清理后保留原行。
 
 **R3 表结构与版本**
 `groups` 增加 `is_auto INTEGER NOT NULL DEFAULT 0`；`SCHEMA_VERSION` 由当前的 2 递增 1 为 3（实施时以当时的当前版本为准，只递增 1），启动时版本不匹配即删库重建（沿用现有机制，不写迁移脚本）。重建后内部 `id` 重新分配，API 仍一律使用业务键字符串（C14）。

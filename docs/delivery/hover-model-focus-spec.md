@@ -20,7 +20,7 @@
 - `group-normalization-spec.md`：趋势图 tooltip 的 0 值过滤、按值降序、日期行与「无数据」分支、展示名转义规则不变；只在模型行上增加不透明度状态。
 - `model-color-binding-spec.md` 与 `docs/model-colors.md`：颜色仍由模型业务键决定，色值不变；`emphasis.focus: 'series'` 的作用范围保留，只调整 blur 强度。
 
-`docs/delivery/v1.0.0/` 归档三份文档完全保留原样；其余交付文档只统一「数据库 / WorkBuddy 数据库」术语、去掉「派生」，记录当时文件名的路径字面（`npm run acceptance`、`scripts/panel-acceptance.mjs` 等历史实施记录）保持原样。长期文档按本 Spec 更新：`technical-architecture.md`（面板层 hover 聚焦的描述、关键依赖中的开发期测试依赖、数据库命名与术语）、`devops.md`（交互验收的运行方式改为框架入口、`DATABASE_PATH` 配置项、数据库命名与术语）、`data-model.md`（数据库术语统一，不改表结构与口径）、`product-brief.md` 与 `integration.md`（「WorkBuddy 数据库」称谓）；`docs/model-colors.md` 不涉及：不改色表。
+`docs/delivery/v1.0.0/` 归档三份文档完全保留原样；其余交付文档只统一「数据库 / WorkBuddy 数据库」术语、去掉「派生」，记录当时文件名的路径字面（`npm run acceptance`、`scripts/panel-acceptance.mjs` 等历史实施记录）保持原样。前置改动已完成（`6afb3b8`）：五份长期文档（`technical-architecture.md`、`devops.md`、`data-model.md`、`product-brief.md`、`integration.md`）的命名与术语同步、`DATABASE_PATH` 配置项说明；本交付待改的长期文档只有 `devops.md` 的「交互验收」章节，以及 `technical-architecture.md` 的开发期测试依赖、测试分层与面板层 hover 聚焦描述；`docs/model-colors.md` 不涉及：不改色表。
 
 **本次订正扩大交付范围**：本 Spec 已由开发者确认并提交，现经开发者确认把交互验收框架化并入同一交付，topic 仍为 `hover-model-focus`，不新建交付文档。hover 聚焦的 R1–R7 与 AC1–AC7 判定口径不变；AC1–AC7 中「验收脚本」一词统一指迁移后的 e2e 用例，判定方式按框架重写。此前 `usage-panel-polish-plan.md` 记录的「不引入 DOM 测试框架、不引入新依赖」取舍由此反转，历史 Plan 不改写，实施时以本 Spec 与后续 Plan 为准。
 
@@ -35,8 +35,8 @@
 - 引入 Playwright 作为 e2e 框架（版本与配置在 Plan 阶段确定），替代自研 CDP 驱动，承担全部交互验收。
 - `scripts/panel-acceptance.mjs` 的 24 项验收覆盖逐项保留、判定标准不放宽；用例按框架重写为可见行为断言，不复刻旧脚本的白盒读法；旧脚本退役，`npm run acceptance` 指向新入口。
 - 交互验收改用固定样本数据：构造临时 `WORKBUDDY_HOME`，并通过 `DATABASE_PATH` 把数据库建在同一临时目录，不再依赖真实 `~/.workbuddy` 用量数据。
-- 数据库命名统一：文件 `.data/index.db` → `.data/database.db`，模块 `src/etl/index-db.ts` → `src/etl/database.ts`，`openIndex` / `closeIndex` → `openDatabase` / `closeDatabase`，测试 `tests/index-db.test.ts` → `tests/database.test.ts`，字段 `indexPath` → `databasePath`，新增可选环境变量 `DATABASE_PATH`；全项目术语统一为「数据库」（本项目）与「WorkBuddy 数据库」（`workbuddy.db`），去掉「派生」，保留「表上的索引」这一独立含义。
-- 同步 `devops.md`、`technical-architecture.md`、`data-model.md`。
+- 前置改动已完成的数据库命名重构、术语统一与 `DATABASE_PATH` 实现不再列入本交付范围，详见「已确认决策」。
+- 同步 `devops.md` 的「交互验收」章节与 `technical-architecture.md` 的开发期测试依赖、测试分层与 hover 聚焦描述。
 
 **非目标**
 
@@ -85,7 +85,7 @@
 指针离开色段命中区 / 行 / 图表即解除聚焦；切换 tab、改变任一筛选、刷新数据、数据重新加载或组件重新渲染时清除聚焦，不把上一个模型残留到新的模型集合上。两个 tab 的趋势图与「按分组」列表各持一份状态，视图之间不联动、不广播；无聚焦时所有块、段、行一律 1.0。状态切换不引入新的动效或延迟，与现有 hover 反馈同步。
 
 **R6 口径不变与分层**
-全部为面板层展示层生成：不新增或修改 API、不改服务层聚合、不写数据库、不改颜色映射与筛选值。聚焦只读取已经渲染出来的模型业务键，不重新取数、不自行求和或换算。
+全部由展示层生成：不新增或修改 API、不改服务层聚合、不写数据库、不改颜色映射与筛选值。聚焦只读取已经渲染出来的模型业务键，不重新取数、不自行求和或换算。
 
 **R7 兼容与回归**
 0 值隐藏、8 行截断、段宽之和等于原单色条宽、段色与趋势图 / 色点逐值一致、tooltip 过滤与排序、点击筛选、明细折叠与排序、指标卡、请求明细、数值单位、刷新时间等既有行为不变。
@@ -100,7 +100,7 @@
 所选框架必须提供：测试运行器与用例组织、定位器与自动等待、断言与逐项结果报告、无头 Chromium、页面内 JS 求值（用于读 DOM 与计算样式，不用于调用图表内部 option / formatter）、无头环境下的焦点模拟或等价能力（既有键盘 focus 浮层断言依赖它）、失败时可诊断的截图或追踪；兼容 Node ≥ 24 与仓库 TypeScript 工具链，与 `npm run typecheck`、`npm test`、`npm run build` 共存且互不干扰。首次安装与浏览器二进制获取方式须写入 `devops.md`。这些是需求约束，具体版本与配置不在本 Spec 指定。
 
 **R11 入口与文档同步**
-`npm run acceptance` 指向新框架入口，`scripts/panel-acceptance.mjs` 从仓库移除；`devops.md` 的「交互验收」章节按新运行方式重写（不再要求手工启动调试 Chrome 与手工指定调试端口，补 `DATABASE_PATH`），`technical-architecture.md` 补记开发期测试依赖。长期文档与未归档交付文档统一「数据库」与「WorkBuddy 数据库」术语、去掉「派生」，并区分「表上的索引」；归档文档保留原样，已完成交付文档中的历史路径字面保留为当时事实。
+`npm run acceptance` 指向新框架入口，`scripts/panel-acceptance.mjs` 从仓库移除；`devops.md` 的「交互验收」章节按新运行方式重写（不再要求手工启动调试 Chrome 与手工指定调试端口，补 `DATABASE_PATH`），`technical-architecture.md` 补记开发期测试依赖。命名与术语统一已由前置改动完成；本交付只重写 `devops.md` 交互验收章节并补 `technical-architecture.md` 的开发期测试依赖、测试分层与 hover 聚焦描述；归档文档保留原样，已完成交付文档中的历史路径字面保留为当时事实。
 
 ## 边界情况
 
@@ -138,7 +138,7 @@
 - **AC5 强度唯一值**：四处减淡强度由同一常量给出，纯函数单测断言该常量为 0.4 且四处共用；e2e 断言四处可见的常态 / 减淡状态与移出恢复，不因视图或模型色值不同而出现其它强度。
 - **AC6 独立与解除**：图表 hover 不改变「按分组」列表，反之亦然；同一视图至多一个聚焦模型；切 tab、改筛选、刷新与数据重载后无残留聚焦；两个 tab 行为一致。
 - **AC7 回归**：统计口径与五个 API 端点响应结构不变；0 值隐藏、8 行截断、颜色按业务键、明细折叠与排序、指标卡、请求明细、数值单位、刷新时间等既有验收项继续通过；「按对话」「按模型」列表与单色条无变化；`usage-panel-polish`、`time-range-group-split`、`group-normalization`、`model-color-binding` 的既有 AC 继续通过。
-- **AC8 检查与文档**：`npm run typecheck`、`npm test`、`npm run build` 通过；`npm run acceptance` 由新框架执行并通过；`devops.md`、`technical-architecture.md`、`data-model.md` 按实际实现同步，文档与代码无已知矛盾。
+- **AC8 检查与文档**：`npm run typecheck`、`npm test`、`npm run build` 通过；`npm run acceptance` 由新框架执行并通过；`devops.md` 与 `technical-architecture.md` 按实际实现同步（命名、术语与 `DATABASE_PATH` 已由前置改动完成，不重复验收），文档与代码无已知矛盾。
 - **AC9 框架化**：交互验收由一个成熟 e2e 框架驱动；仓库中不再存在自研 CDP 客户端，也不存在以固定时长 `wait()` 与字符串拼接 `Runtime.evaluate` 为主体的用例；从用例与配置可核验框架提供的运行器、定位器与自动等待、断言与逐项报告。
 - **AC10 覆盖等价**：原脚本 24 项验收覆盖逐项对照有记录且全部 PASS、退出码 0；对照的是覆盖项与判定标准，不是旧脚本的实现方式或数值结果；无删除覆盖、跳过断言或放宽标准；旧脚本从仓库移除，`npm run acceptance` 指向新入口。
 - **AC11 一条命令与可复现**：`npm run acceptance` 单命令完成样本准备、服务与浏览器启停、用例执行与清理，无需手工启动 `npm run dev` 或调试 Chrome；连续运行两次逐项结果一致。
@@ -159,7 +159,7 @@
 - 既有 24 项验收覆盖**全量保留**：逐项迁移到框架用例，`scripts/panel-acceptance.mjs` 退役，`npm run acceptance` 改指向新入口，标准不放宽。
 - 交互验收改用**固定样本数据**，不再依赖真实 `~/.workbuddy` 数据与「全量区间」取数方式。
 - 原「不引入新依赖」的非目标修订为「不改产品运行时依赖」：e2e 框架作为开发期依赖引入。
-- **框架选 Playwright**，服务形态为 `npm run build && npm start` 单端口，允许首次联网下载浏览器二进制；三项原待确认问题已由开发者确认。
+- **框架选 Playwright**，服务形态为 `npm run build && npm start` 单端口，允许首次联网下载浏览器二进制；框架选型、服务形态、浏览器二进制获取三项原待确认问题已由开发者确认。
 - **断言按 Playwright 重写为可见行为断言**：保留 24 项覆盖清单且标准不放宽，但判定方式不照搬旧脚本；不读 ECharts 实例、不加产品代码测试钩子、不从 `/api` 现场反推期望值；格式化与图表内部状态的数值正确性由 Vitest 单测锁定。
 - **数据库命名方案已确认并实施**：文件 `.data/database.db`、模块 `src/etl/database.ts`、函数 `openDatabase` / `closeDatabase`、测试 `tests/database.test.ts`、字段 `EtlConfig.databasePath`、可选环境变量 `DATABASE_PATH`（默认值 `.data/database.db`）；术语统一为「数据库」与「WorkBuddy 数据库」，归档文档不动。
 - 固定样本复用 `tests/helpers/` 的构造器，期望值固定在样本里，样本规模以覆盖所需场景为下限。
@@ -167,4 +167,4 @@
 ## 待确认问题
 
 1. **是否接入 CI 或定时执行**：当前项目无 CI，本 Spec 默认不引入；若需要，须补充运行环境的验收标准。
-2. **是否保留真实数据的手动回归入口**：自动用例只用固定样本（已确认）；另需确认是否额外提供真实数据的手动核对入口，以及失败时截图 / 追踪是否默认开启、输出到哪里。
+2. **是否保留真实数据的手动回归入口**：自动用例只用固定样本（已确认）；另需确认是否额外提供真实数据的手动核对入口。失败时 trace 与截图默认保留在 `.data/e2e-results/`，见 Plan「默认处理与待确认」。

@@ -316,7 +316,7 @@ providerData: { conversationRequestId, credit, source, stageId, messageId }
 | 自定义模型标识重名 | 自定义模型与原生模型使用同一 `model` 标识 | 当前原始日志无可区分字段，暂按同一模型合并；待 WorkBuddy 提供来源字段后再扩展维表 |
 | 子代理目录结构变化 | 路径不再是 `subagents/agent-*.jsonl` | 扫描改为递归查找 `*.jsonl`，以路径特征判断归属 |
 | `credit_json` 结构变化 | 值由数字变为对象 | 解析时判型，非数字按无积分处理并记录告警 |
-| 会话被清理 | jsonl 或 db 行消失 | 数据库按文件存在性与 `source_file` 对账，删除对应请求；积分随 `session_usage` 行消失，按无积分处理且不补齐 |
+| 会话被清理 | jsonl 或 db 行消失 | 数据库按文件存在性与 `source_files` 对账，删除对应请求；积分随 `session_usage` 行消失，按无积分处理且不补齐 |
 | 自动目录命名格式变化 | 新的自动工作目录不再匹配 `.../WorkBuddy/yyyy-MM-dd-HH-mm-ss`，被判为手动分组，筛选下拉重新出现条目 | 更新解析层的形态规则并递增 `schema_version` 删库重建，不静默猜测，也不依赖增量刷新纠正存量行 |
 
 字段命名分两层：**内部字段**（TypeScript 类型、索引列名、API 返回）由本项目命名，可自由调整；**外部键名**（jsonl 与 `workbuddy.db` 的字段）由 WorkBuddy 决定，只能适配。当前实测字段固定为 `message.usage` 下的 `input_tokens` / `output_tokens` / `cache_read_input_tokens` / `total_tokens`，以及 `providerData` 下的 `conversationRequestId` / `model` / `requestModelName`；本项目只统计本机 WorkBuddy 单一来源，v1 不引入参考项目那套多来源别名表，字段映射集中在解析层。

@@ -5,9 +5,8 @@
 ## 系统边界
 
 - **输入**：`~/.workbuddy/projects/**/*.jsonl`（会话事件流）与 WorkBuddy 数据库 `~/.workbuddy/workbuddy.db`（会话元信息与积分）。全部只读。字段与表结构见 [integration.md](./integration.md)。
-- **输出**：本地浏览器面板；仓库内的数据库 `.data/database.db`（可删除重建，不入库）。
-**命名说明**：本项目数据库现为 `.data/database.db`，实现位于 `src/etl/database.ts`；早期交付文档与 `docs/delivery/v1.0.0/` 归档文档中出现的 `.data/index.db`、`src/etl/index-db.ts`、`openIndex()` 是当时的文件名，保留为历史事实。
-
+- **输出**：本地浏览器面板；本项目数据库默认 `.data/database.db`（相对进程工作目录，可由 `DATABASE_PATH` 覆盖；可删除重建，不入库）。
+- **命名说明**：本项目数据库默认 `.data/database.db`，实现位于 `src/etl/database.ts`；早期交付文档与 `docs/delivery/v1.0.0/` 归档文档中出现的 `.data/index.db`、`src/etl/index-db.ts`、`openIndex()` 是当时的文件名，保留为历史事实。
 - **不跨越的边界**：不向网络发送任何数据，不写 `~/.workbuddy` 下任何文件，不修改 WorkBuddy 配置。不追溯补齐本地已不可读的数据。**明确不接入云端官方计量接口**：2026-11-13 评估过 `POST /billing/meter/get-user-request-usage`，它只有请求级 `credit`、没有 `sessionId` / `groupId`（31 天内 58% 无法归属），四维统计不成立，接入成本与收益不匹配；对账改用仓库外的一次性脚本，证据见 [integration.md](./integration.md) 的「与官方账单的对比」。
 
 ## 模块划分
@@ -16,7 +15,7 @@
 | --- | --- | --- |
 | 解析层 | `src/etl/` | 扫描 jsonl、按请求归并步骤、把外部业务键换成内部 `id`，产出请求级记录并维护维表 |
 | 积分挂接 | `src/etl/` | 每次刷新无条件重读 `session_usage`，只更新当前映射中存在的请求，与文件增量解耦 |
-| 数据库层 | `.data/database.db` | SQLite 数据库：请求事实表 + 分组/会话/模型维表 + 扫描状态表，按文件 mtime/大小增量更新 |
+| 数据库层 | 默认 `.data/database.db` | SQLite 数据库：请求事实表 + 分组/会话/模型维表 + 扫描状态表，按文件 mtime/大小增量更新 |
 | 服务层 | `server/` | 读数据库做聚合查询，LEFT JOIN 维表补业务键与展示名，提供 HTTP API，生产模式下兼作静态资源服务器 |
 | 面板层 | `src/web/` | React + ECharts，Token 与积分分两个 tab、共用一组筛选栏，不承担统计口径；模型配色按业务键静态映射，规则见 [model-colors.md](./model-colors.md) |
 
@@ -40,7 +39,7 @@
 
 ```
 ~/.workbuddy/projects/**/*.jsonl ──→ 文件增量解析 ────┐
-~/.workbuddy/workbuddy.db ─┬─→ 积分挂接（每次刷新）──┼─→ .data/database.db ─→ 服务层聚合 ─→ HTTP API ─→ React 面板
+~/.workbuddy/workbuddy.db ─┬─→ 积分挂接（每次刷新）──┼─→ .data/database.db（默认） ─→ 服务层聚合 ─→ HTTP API ─→ React 面板
                            └─→ 元信息同步（维表）────┘
 ```
 

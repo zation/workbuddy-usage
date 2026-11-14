@@ -4,7 +4,7 @@
 
 本 Plan 依据 [hover-model-focus-spec.md](./hover-model-focus-spec.md)，其 R1–R11、AC1–AC14 不在此重复。交付包含两部分：两处按模型分色展示的 hover 聚焦（R1–R7 / AC1–AC7），以及交互验收从手写 CDP 脚本迁移到成熟 e2e 框架（R8–R11 / AC8–AC14）。两部分共用同一份样本数据与同一次验收运行，不新增第二套验收机制。
 
-开发者已确认：框架为 **Playwright**、服务形态为 **`npm run build && npm start` 单端口**、**允许首次联网下载浏览器二进制**、**测试用临时数据库并由环境变量指向**、**断言按新框架重写**、**数据库命名为 `database.db` / `database.ts` / `openDatabase` / `databasePath` / `DATABASE_PATH`**。命名重构、`DATABASE_PATH` 实现与全项目术语统一已在前置提交完成并通过 typecheck / test / build；本 Plan 后续任务从验收基础设施与 hover 聚焦功能开始。Spec 已同步订正，需重新确认。
+开发者已确认：框架为 **Playwright**、服务形态为 **`npm run build && npm start` 单端口**、**允许首次联网下载浏览器二进制**、**测试用临时数据库并由环境变量指向**、**断言按新框架重写**、**数据库命名为 `database.db` / `database.ts` / `openDatabase` / `databasePath` / `DATABASE_PATH`**。命名重构、`DATABASE_PATH` 实现与全项目术语统一已在前置改动完成并通过 typecheck / test / build；本 Plan 后续任务从验收基础设施与 hover 聚焦功能开始。Spec 已同步订正，需重新确认。
 
 ## 现状分析
 
@@ -21,7 +21,7 @@
 - 24 项验收覆盖按性质分五类：DOM / ARIA 结构、数值与口径、图表配置与配色、hover / focus 与几何、网络请求。名称清单可从脚本 24 处 `check()` 提取，只作为 AC10 的覆盖对照，**不作为新用例的实现模板**。
 - 旧脚本期望值从 `/api` 现场读取、图表断言靠动态 import Vite dev 的 echarts 资源 URL 调 `getOption()`，这两点都是它为「真实数据 + dev 形态」付出的代价，固定样本与 build 形态下都不再沿用。
 
-### 命名与术语统一（前置提交已完成）
+### 命名与术语统一（前置改动已完成）
 
 - 本项目数据库：文件 `.data/database.db`（原 `.data/index.db`）、模块 `src/etl/database.ts`（原 `index-db.ts`）、`openDatabase` / `closeDatabase`（原 `openIndex` / `closeIndex`）、测试 `tests/database.test.ts`、配置字段 `EtlConfig.databasePath`、可选环境变量 `DATABASE_PATH`（未设置时默认值 `.data/database.db`）。
 - 术语：本项目数据库统一叫「数据库」，WorkBuddy 的 `~/.workbuddy/workbuddy.db` 统一叫「WorkBuddy 数据库」；全项目去掉「派生」，原「纯展示派生 / 日期派生 / 派生规则」分别改为「展示层生成 / 日期折算 / 生成规则」等准确说法；表上的 `CREATE INDEX` 仍叫「索引」。
@@ -64,7 +64,7 @@
 
 ### AD-4 断言按 Playwright 重写为可见行为
 
-不再读 ECharts 实例、不给 `EChart.tsx` 加测试钩子。用例断言用户可见的渲染结果：
+不再读 ECharts 实例、不给 `EChart.tsx` 加测试钩子——此处限制的是**验收用例的断言方式**；产品代码为聚焦功能监听图表实例的 hover 事件不受此限。用例断言用户可见的渲染结果：
 
 | 验收内容 | 新框架的判定方式 |
 | --- | --- |
@@ -90,7 +90,7 @@
 
 - 单一常量 `FOCUS_DIM_OPACITY = 0.4` 放在 `src/shared/constants.ts`，四处（趋势图系列、趋势图 tooltip 行、分组条色段、分组浮层行）共用，AC5 的「唯一值」由常量与纯函数单测保证。
 - 聚焦状态放在 `TrendChart` 与 `BreakdownList` 组件内部各自的 `useState`，用模型**业务键**作值；`App.tsx` 不持有，避免跨视图联动。状态在 `option` / `rows` / `activeTab` 变化时由 effect 清空，覆盖 R5 的切 tab、改筛选、刷新与重载。
-- 趋势图：`buildTrendChartOption` 增加 `focusedModel` 参数，柱系列通过 blur 状态配置把非聚焦系列不透明度设为 0.4（具体字段以 ECharts 6 实际行为为准，由单测断言生成的配置），保留 `focus: 'series'` 语义；tooltip formatter 按业务键给非聚焦模型行加行内 opacity，日期行与「无数据」不加。hover 事件由图表实例的 `mouseover` / `mouseout` 提供，只接受 `componentType === 'series'` 的柱段，`seriesId` 即业务键；图例、坐标轴、空白类目不触发。
+- 趋势图：`buildTrendChartOption` 增加 `focusedModel` 参数，柱系列通过 blur 状态配置把非聚焦系列不透明度设为 0.4（具体字段以 ECharts 6 实际行为为准，由单测断言生成的配置），保留 `focus: 'series'` 语义；tooltip formatter 按业务键给非聚焦模型行加行内 opacity，日期行与「无数据」不加。hover 事件由图表实例的 `mouseover` / `mouseout` 提供，只接受 `componentType === 'series'` 的柱段，`seriesId` 即业务键；图例、坐标轴、空白类目不触发。链路：`EChart.tsx` 注册可选事件回调 → 过滤 `componentType` → 以 `seriesId`（业务键）调用 `onFocusChange` → `TrendChart` 内部 `useState` 持有 → 回灌 option 与 tooltip 行样式；这是产品功能，不是测试钩子。
 - 浮层：`BreakdownTooltip` 接收 `focusedModel`，逐行按业务键加 opacity；内容、降序、0 值过滤、格式、定位与 `pointer-events: none` 不变。
 
 ### AD-7 极窄段的最小命中区
@@ -111,7 +111,7 @@
 
 ### 顺序约束（影响正确性，必须按此顺序）
 
-1. **前置提交已完成**：数据库命名重构、`DATABASE_PATH` 实现与全项目术语统一已落地并通过 `npm run typecheck`、`npm test`、`npm run build`；Tasks 从验收基础设施与 hover 聚焦功能开始，不重复这部分工作。
+1. **前置改动已完成**：数据库命名重构、`DATABASE_PATH` 实现与全项目术语统一已落地并通过 `npm run typecheck`、`npm test`、`npm run build`；Tasks 从验收基础设施与 hover 聚焦功能开始，不重复这部分工作。
 2. 验收运行时：生成样本（含固定期望值）→ `npm run build`（前后端同次构建）→ 启动服务（首次刷新读样本、按 `DATABASE_PATH` 建临时数据库）→ 执行用例 → 清理。顺序不可颠倒：服务启动前样本未就绪会刷出空库，构建晚于启动会出现前后端版本错配，`DATABASE_PATH` 未生效会污染日常实例。
 3. 24 项覆盖清单**先固化**，再逐项重写用例；旧脚本在对照完成前不得删除。
 4. 聚焦实现：常量与业务键判定 → 四处渲染与状态清除 → hover 事件与命中区 → e2e 断言。先定 0.4 与业务键，避免各处用展示名或不同强度导致 AC5 回归。
@@ -121,13 +121,13 @@
 
 **新增**：`playwright.config.ts`、`tests/e2e/`（用例、页面对象与样本期望数据）、`scripts/e2e-fixture.mjs`、`docs/delivery/hover-model-focus-plan.md`（本文件）。
 
-**前置提交已完成**：`src/etl/config.ts`（`databasePath` + `DATABASE_PATH`）、`server/index.ts`、`src/etl/database.ts`、构造 `EtlConfig` 的测试 / helper、全项目文档术语与命名。
+**前置改动已完成**：`src/etl/config.ts`（`databasePath` + `DATABASE_PATH`）、`server/index.ts`、`src/etl/database.ts`、构造 `EtlConfig` 的测试 / helper、全项目文档术语与命名。
 
-**修改（后续任务）**：`package.json`（devDependencies 加 `@playwright/test`、scripts 改 `acceptance`）、`tsconfig.json`（include 补配置文件）、`src/web/trend-chart-option.ts`（`focusedModel` 与 blur / tooltip 行样式）、`src/web/components/TrendChart.tsx`、`src/web/components/BreakdownList.tsx`、`src/web/components/BreakdownTooltip.tsx`、`src/web/styles.css`（命中层与行内减淡）、`src/shared/constants.ts`、`tests/trend-chart-option.test.ts` 等既有单测、`docs/devops.md`、`docs/technical-architecture.md`、`docs/data-model.md`。
+**修改（后续任务）**：`package.json`（devDependencies 加 `@playwright/test`、scripts 改 `acceptance`）、`tsconfig.json`（include 补配置文件）、`src/web/trend-chart-option.ts`（`focusedModel` 与 blur / tooltip 行样式）、`src/web/components/TrendChart.tsx`、`src/web/components/EChart.tsx`（hover 事件回调，非测试钩子）、`src/web/components/BreakdownList.tsx`、`src/web/components/BreakdownTooltip.tsx`、`src/web/styles.css`（命中层与行内减淡）、`src/shared/constants.ts`、`tests/trend-chart-option.test.ts` 等既有单测`、`docs/devops.md`（仅交互验收章节）、`docs/technical-architecture.md`（开发期测试依赖、测试分层与 hover 聚焦描述）；`docs/data-model.md`、`product-brief.md`、`integration.md` 的命名与术语已由前置改动完成，本交付仅核对。
 
 **删除**：`scripts/panel-acceptance.mjs`（对照完成、新入口通过之后）。
 
-**不改**：`src/web/components/EChart.tsx`（不加测试钩子）、`tests/*.test.ts` 的服务层聚合断言与 `vitest.config.ts`、`server/query.ts` 与 `server/app.ts` 的聚合与端点、数据库表结构与 `schema_version`、`src/etl/refresh.ts` 的刷新流程、`src/web/model-colors.ts` 的色表、已完成交付文档与归档文档中记录当时文件名的路径字面、`docs/model-colors.md`。
+**不改**：`tests/*.test.ts` 的服务层聚合断言与 `vitest.config.ts`、`server/query.ts` 与 `server/app.ts` 的聚合与端点、数据库表结构与 `schema_version`、`src/etl/refresh.ts` 的刷新流程、`src/web/model-colors.ts` 的色表、已完成交付文档与归档文档中记录当时文件名的路径字面、`docs/model-colors.md`。
 
 ## 数据或接口变化
 
@@ -138,9 +138,9 @@
 ## 兼容与迁移方案
 
 - 24 项覆盖按 AD-9 逐项对照；hover 聚焦 AC1–AC7 的新断言与既有覆盖写在同一套用例里，按 tab 与视图分组，不另起脚本。
-- 命名重构与 `DATABASE_PATH` 已在前置提交完成并通过 typecheck / test / build；未设置 `DATABASE_PATH` 时行为与原来一致。
+- 命名重构与 `DATABASE_PATH` 已在前置改动完成并通过 typecheck / test / build；未设置 `DATABASE_PATH` 时行为与原来一致。
 - 入口切换完成后 `npm run acceptance` 仍是一个命令；`npm test`、`npm run typecheck`、`npm run build` 的命令与覆盖范围不变，typecheck 是独立必需项，不能被 lint / build / 测试代替（仓库无 lint）。
-- 已完成交付文档只统一术语词、保留当时的路径字面与实施记录；`v1.0.0/` 归档三份完全不动；长期文档已同步新名字。
+- 已完成交付文档只统一术语词、保留当时的路径字面与实施记录；`v1.0.0/` 归档三份完全不动；长期文档的命名与术语已在前置改动同步，`devops.md` 交互验收章节与 `technical-architecture.md` 测试分层待 T010。
 - Node 24 要求不变；Playwright 自身支持 22 / 24 / 26，但产品服务只接受 ≥24，验收命令必须运行在 Node 24 下，`devops.md` 写清 PATH 首位是 22 时的处理方式。
 
 ## 测试策略
@@ -149,7 +149,7 @@
 - **纯函数单测**：`buildTrendChartOption` 增加 `focusedModel` 后的 tooltip 行 opacity、日期行与「无数据」分支、0 值过滤与降序、blur 强度 0.4 与常量唯一性、价格比率折线结构；`segmentWidths` / `visibleSegments` 的既有断言继续通过；新增按业务键计算行不透明度的纯函数单测。
 - **交互验收**：`npm run acceptance` 一条命令跑 24 项既有覆盖 + AC1–AC7 新增断言；连续运行两次结果一致（AC11）；失败输出用例名、断言与 trace / 截图。
 - **必需检查**：`npm run typecheck`（独立）、`npm test`、`npm run build`、`npm run acceptance`；全量检查集中在收尾任务，各任务记录相关验证。当前沙箱的 vitest runner 环境差异见 `docs/backlog/vitest-runner-context.md`，正式回归证据以开发者本地实跑为准，不得通过删测试或放宽标准规避。
-- **文档同步检查**：`devops.md` 交互验收章节重写（不再要求手工起调试 Chrome、补 `npx playwright install chromium` 与 `DATABASE_PATH`）、`technical-architecture.md` 关键依赖表补开发期测试依赖与测试分层、`data-model.md` 区分「数据库」与「表上的索引」，文档与代码无已知矛盾。
+- **文档同步检查**：`devops.md` 交互验收章节重写（不再要求手工起调试 Chrome、补 `npx playwright install chromium`；`DATABASE_PATH` 已在前置改动记录，本交付只核对）、`technical-architecture.md` 关键依赖表补开发期测试依赖与测试分层、面板层补 hover 聚焦描述，文档与代码无已知矛盾。
 
 ## 风险与回滚方式
 
@@ -171,7 +171,7 @@
 
 ## 默认处理与待确认
 
-- **命名与术语统一已确认完成**：`database.db` / `database.ts` / `openDatabase` / `closeDatabase` / `databasePath` / `DATABASE_PATH`，归档文档保留原样，不再作为待确认项。
+- **命名与术语统一已确认完成**：见「命名与术语统一」一节与 Spec「已确认决策」，归档文档保留原样，不再作为待确认项。
 - **默认不引入 CI 或定时执行**：本机一条命令可跑，未来接入只需在 CI 里补浏览器安装与 `npm run acceptance`。如需本次接入，请提出并补充运行环境验收标准。
 - **默认不保留真实数据手动回归入口**：自动用例只用固定样本；失败时 trace 与截图默认保留在 `.data/e2e-results/`。如需额外入口或改变产物位置，请提出。
-- **样本构造方式**：复用 `tests/helpers/`，样本规模以覆盖所需场景为下限，不追求与真实数据量级一致；期望值由 fixture 固定给出，不逐条从 API 反推。
+- **样本构造方式**：按 Spec「已确认决策」复用 `tests/helpers/`，细节见 AD-5，此处不重复。

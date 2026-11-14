@@ -121,7 +121,7 @@
 
 修改范围：`src/web/display.ts`、`tests/display.test.ts`
 
-实施结果：`display.ts` 新增 `segmentValue(segment, metric)`、`visibleSegments(row, metric, visibleModels)`（`> 0` 且可见、按数额降序、同值按模型业务键升序，复制数组后再排序）与 `segmentWidths(share, rowValue, segments, metric)`（条宽 `share * 100` 限幅 `[0, 100]`，按段占比分摊，最后一段用差值补齐浮点误差）。函数只做展示层生成，不读写聚合值。
+实施结果：`display.ts` 新增 `segmentValue(segment, metric)`、`visibleSegments(row, metric, visibleModels)`（`> 0` 且可见、按数额降序、同值按模型业务键升序，复制数组后再排序）与 `segmentWidths(share, rowValue, segments, metric)`（条宽 `share * 100` 限幅 `[0, 100]`，按段占比分摊，最后一段用差值补齐浮点误差）。函数只做展示层计算，不读写聚合值。
 
 验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/display.test.ts` 27 项通过（新增 `segmentValue` 1 项、`visibleSegments` 4 项、`segmentWidths` 5 项，覆盖 0 值 / 负值 / 不可见段 / 行值为 0 / 无段 / 单段 / 浮点补齐 / 超 100% 限幅）。
 

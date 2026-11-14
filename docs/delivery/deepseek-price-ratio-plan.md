@@ -21,7 +21,7 @@
 
 **AD-P2 闲时列在 ETL 一次计算。**
 新增 `src/shared/deepseek-offpeak.ts` 纯函数 `isDeepseekOffpeak(startedAt, holidays): boolean`，与 `date_key` 共用 `toDateKey` 的 UTC+8 折算，按 `started_at` 判定；节假日集合放 `src/shared/china-holidays.ts`（显式 `YYYY-MM-DD` 集合，只录已公布安排）。`parse.ts` 把结果写入 `ParsedRequest.isDeepseekOffpeak`，`refresh.ts` 的 INSERT 列与参数同步，`index-db.ts` 加 `is_deepseek_offpeak INTEGER NOT NULL DEFAULT 1` 并把 `SCHEMA_VERSION` 3→4。
-取舍：只固化时段事实、不固化费用，官方调价只改常量、无需重扫日志；所有请求都写 0/1（不引入 NULL 与额外分支），但列说明明确「非 DS 模型的值无业务含义，其他模型不得复用」；节假日表更新属于判定规则变更，必须递增 `SCHEMA_VERSION` 触发重建。`ON CONFLICT DO UPDATE` 分支同步更新该列（它随 `excluded.started_at` 一起走），避免已有请求换文件时留下旧值。
+取舍：只固化时段事实、不固化费用，官方调价只改常量、无需重扫日志；所有请求都写 0/1（不引入 NULL 与额外分支），但列说明明确「非 DS 模型的值无业务含义，其他模型不得复用」；节假日表更新属于生成规则变更，必须递增 `SCHEMA_VERSION` 触发重建。`ON CONFLICT DO UPDATE` 分支同步更新该列（它随 `excluded.started_at` 一起走），避免已有请求换文件时留下旧值。
 节假日表需同时给出 `COVERED_YEARS`（已收录放假安排的年份清单）与 `HOLIDAYS`（日期集合）：判定函数只在已覆盖年份内查表，未覆盖年份一律按「周一至周五」处理，避免空集合被误读成「该年无节假日」却与已覆盖年份混用。当前数据区间（2026-10-16 ~ 11-13）不含法定节假日，表可为空集合，但必须显式标注覆盖年份。
 
 **AD-P3 价格表、套餐与月度单价集中在 `src/shared/deepseek-pricing.ts`。**
@@ -74,7 +74,7 @@
 
 ## 兼容与迁移方案
 
-- 数据库可删可重建，重建成本为一次全量日志扫描（当前 483 请求 / 299 KB 数据库），无外部数据写入。
+- 数据库可删可重建，重建成本为一次全量日志扫描（当前 483 请求 / 299 KB 数据库文件），无外部数据写入。
 - **对当前 GMT+8 环境**：`date_key` 结果与改动前逐行一致，用重建前后的按天合计对照断言验证；非 GMT+8 环境的结果修正属于预期行为，跨时区测试覆盖。
 - API 只增字段，既有调用方（验收脚本、面板）不因新增字段受影响；`ratios` 为空数组是合法状态。
 - 前端 `metric === 'credit'` 路径、色表、0 值过滤、连续日期轴、100 天跨度上限等既有行为不变。

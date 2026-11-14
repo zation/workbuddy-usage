@@ -293,7 +293,7 @@ ORDER BY group_key ASC, total_tokens DESC, model ASC
 ## 文档同步
 
 - `product-brief.md`：范围段把「默认展示今天」改为「默认近 3 天，四个快捷区间 + 起止日期框，不提供本月 / 全部」，补「单次区间跨度不超过 100 天」；「图表堆叠只按模型着色」补「按分组数值条也按模型分段着色」。
-- `technical-architecture.md`：模块划分的面板层描述、筛选栏段落（时间不再是下拉、日期框由「更多」展开、按钮与日期双向联动）、**接口表 `/api/timeseries` 改为只返回 `rows`、`/api/breakdown` 补 `split=model` 与分段返回值、补四个读取筛选的端点共用的跨度上限 400 分支**、分层原则补「连续日期轴与分段颜色 / 段宽同属展示层生成，由面板层生成」；删除与 `days` 相关的旧表述。
+- `technical-architecture.md`：模块划分的面板层描述、筛选栏段落（时间不再是下拉、日期框由「更多」展开、按钮与日期双向联动）、**接口表 `/api/timeseries` 改为只返回 `rows`、`/api/breakdown` 补 `split=model` 与分段返回值、补四个读取筛选的端点共用的跨度上限 400 分支**、分层原则补「连续日期轴与分段颜色 / 段宽同属展示层生成，由面板层产出」；删除与 `days` 相关的旧表述。
 - `docs/model-colors.md`：色标覆盖视图增加「按分组数值条色段」，已知限制补「色段靠 1px 白色分隔」。
 - `docs/devops.md`：交互验收覆盖范围补时间联动、日期轴归位、跨度上限与分段提示断言；说明 `setWideRange` 从 `rows` 取最早日期、数据跨度超过 100 天时如何调整、以及前后端需同次构建的原因。
 - `data-model.md` / `integration.md`：不改（表结构与外部数据均未变化）。

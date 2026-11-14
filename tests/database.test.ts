@@ -9,7 +9,7 @@ import { DimensionWriter } from '../src/etl/dimensions.ts';
 const tempDirs: string[] = [];
 
 function makeDatabasePath(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'wb-usage-index-'));
+  const dir = mkdtempSync(join(tmpdir(), 'wb-usage-database-'));
   tempDirs.push(dir);
   return join(dir, '.data', 'database.db');
 }
