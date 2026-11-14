@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { serve } from '@hono/node-server';
 import { resolveEtlConfig } from '../src/etl/config.ts';
-import { openIndex } from '../src/etl/index-db.ts';
+import { openDatabase } from '../src/etl/database.ts';
 import { createRefresher } from '../src/etl/refresh.ts';
 import { createApp } from './app.ts';
 
@@ -25,10 +25,10 @@ if (!LOOPBACK_HOSTS.has(host)) {
 }
 
 const config = resolveEtlConfig();
-const index = openIndex(config.indexPath);
-console.log(`派生索引就绪：${config.indexPath}${index.rebuilt ? '（已重建）' : ''}`);
+const database = openDatabase(config.databasePath);
+console.log(`数据库就绪：${config.databasePath}${database.rebuilt ? '（已重建）' : ''}`);
 
-const refresher = createRefresher(index.db, config);
+const refresher = createRefresher(database.db, config);
 try {
   const result = await refresher.refresh();
   console.log(
@@ -37,12 +37,12 @@ try {
       `耗时 ${result.durationMs}ms`,
   );
 } catch (error) {
-  console.error('首次刷新失败，索引保持原状，可在面板中手动重试。', error);
+  console.error('首次刷新失败，数据库保持原状，可在面板中手动重试。', error);
 }
 
 const staticRoot = resolve('dist/web');
 const app = createApp({
-  db: index.db,
+  db: database.db,
   refresher,
   staticRoot: existsSync(resolve(staticRoot, 'index.html')) ? staticRoot : undefined,
 });

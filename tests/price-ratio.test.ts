@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { getTimeseries } from '../server/query.ts';
-import { SCHEMA_SQL } from '../src/etl/index-db.ts';
+import { SCHEMA_SQL } from '../src/etl/database.ts';
 import { DEEPSEEK_MODEL_KEYS } from '../src/shared/deepseek-pricing.ts';
 import type { Filters } from '../src/shared/types.ts';
 

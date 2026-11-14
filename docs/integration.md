@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | 会话事件流 | `~/.workbuddy/projects/<编码cwd>/<sessionId>.jsonl` | 消息、工具调用、token 用量 | 逐行读取 |
 | 子代理事件流 | `~/.workbuddy/projects/<编码cwd>/<sessionId>/subagents/agent-<uuid>.jsonl` | 子代理的独立对话与用量 | 逐行读取 |
-| 本地库 | `~/.workbuddy/workbuddy.db` | 会话元信息、积分、工作区 | SQLite 只读连接 |
+| WorkBuddy 数据库 | `~/.workbuddy/workbuddy.db` | 会话元信息、积分、工作区 | SQLite 只读连接 |
 
 `~/.workbuddy/usage-log.json` 只记录 skill 与 MCP 的使用天数，与 token / 积分无关，**不读取**。
 
@@ -97,11 +97,11 @@
 
 2026-11-13 实测（只读查询）：`sessions` 表 148 行，`group_id` / `group_title` / `project_id` 的非空行数**均为 0**，即三者全部为 NULL——没有可用的分组类型字段，只能按路径形态判定。同一快照里 16 行 `cwd` 为空（归入「未知分组」），81 行 `cwd` 是 `<...>/WorkBuddy/yyyy-MM-dd-HH-mm-ss` 形态（归入「默认」）。
 
-判据只看路径末两段：末段匹配 `yyyy-MM-dd-HH-mm-ss`、父段忽略大小写等于 `WorkBuddy` 即视为自动目录，`/` 与 `\` 都接受，不校验日期是否合法。末段形似日期但父目录不是 `WorkBuddy` 的路径、以及 `WorkBuddy` 下的非日期目录，都按手动分组处理。该判定只在解析层写入派生库时执行一次，结果存 `groups.is_auto`；WorkBuddy 若改变自动目录的命名格式，判定会失效，需要更新规则并递增 `schema_version` 重建索引（见兼容性风险）。
+判据只看路径末两段：末段匹配 `yyyy-MM-dd-HH-mm-ss`、父段忽略大小写等于 `WorkBuddy` 即视为自动目录，`/` 与 `\` 都接受，不校验日期是否合法。末段形似日期但父目录不是 `WorkBuddy` 的路径、以及 `WorkBuddy` 下的非日期目录，都按手动分组处理。该判定只在解析层写入数据库时执行一次，结果存 `groups.is_auto`；WorkBuddy 若改变自动目录的命名格式，判定会失效，需要更新规则并递增 `schema_version` 重建数据库（见兼容性风险）。
 
-## 本地库 `workbuddy.db`
+## WorkBuddy 数据库 `workbuddy.db`
 
-SQLite，由 WorkBuddy 管理。库内还有 `automations`、`automation_runs`、`workspaces` 等表，本项目只读取下列三张。
+SQLite，由 WorkBuddy 管理。该数据库内还有 `automations`、`automation_runs`、`workspaces` 等表，本项目只读取下列三张。
 
 ### `sessions`（40 列）
 
@@ -283,7 +283,7 @@ providerData: { conversationRequestId, credit, source, stageId, messageId }
 | requestId | 本地 | 接口 | 说明 |
 | --- | --- | --- | --- |
 | `e012efdd…`（agentPurpose `custom_agent:sheet-agent`） | 0 | 4.15 | 本地存在该请求、`is_subagent=1`，但无积分 |
-| `0dec73fe…`（同类） | 无记录 | 2.73 | 接口有、本地索引未收录 |
+| `0dec73fe…`（同类） | 无记录 | 2.73 | 接口有、本项目数据库未收录 |
 | `01a1caf9…` | 15.49 | 15.49 | 主请求，逐条 jsonl 只加到 3.36，说明本地累加值才是账单值 |
 
 结论修正：**主请求本地与账单一致**；Task 子代理（`hy4-free`）两边都是 0，不构成缺口；`custom_agent` 这类独立子代理接口有计费、本地 0，是真实缺口（31 天实测 4 条 / 10.20 分）。团队子代理的积分则并入父请求，见上。
@@ -316,7 +316,7 @@ providerData: { conversationRequestId, credit, source, stageId, messageId }
 | 自定义模型标识重名 | 自定义模型与原生模型使用同一 `model` 标识 | 当前原始日志无可区分字段，暂按同一模型合并；待 WorkBuddy 提供来源字段后再扩展维表 |
 | 子代理目录结构变化 | 路径不再是 `subagents/agent-*.jsonl` | 扫描改为递归查找 `*.jsonl`，以路径特征判断归属 |
 | `credit_json` 结构变化 | 值由数字变为对象 | 解析时判型，非数字按无积分处理并记录告警 |
-| 会话被清理 | jsonl 或 db 行消失 | 索引按文件存在性与 `source_file` 对账，删除对应请求；积分随 `session_usage` 行消失，按无积分处理且不补齐 |
+| 会话被清理 | jsonl 或 db 行消失 | 数据库按文件存在性与 `source_file` 对账，删除对应请求；积分随 `session_usage` 行消失，按无积分处理且不补齐 |
 | 自动目录命名格式变化 | 新的自动工作目录不再匹配 `.../WorkBuddy/yyyy-MM-dd-HH-mm-ss`，被判为手动分组，筛选下拉重新出现条目 | 更新解析层的形态规则并递增 `schema_version` 删库重建，不静默猜测，也不依赖增量刷新纠正存量行 |
 
 字段命名分两层：**内部字段**（TypeScript 类型、索引列名、API 返回）由本项目命名，可自由调整；**外部键名**（jsonl 与 `workbuddy.db` 的字段）由 WorkBuddy 决定，只能适配。当前实测字段固定为 `message.usage` 下的 `input_tokens` / `output_tokens` / `cache_read_input_tokens` / `total_tokens`，以及 `providerData` 下的 `conversationRequestId` / `model` / `requestModelName`；本项目只统计本机 WorkBuddy 单一来源，v1 不引入参考项目那套多来源别名表，字段映射集中在解析层。

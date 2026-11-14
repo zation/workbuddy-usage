@@ -55,7 +55,7 @@ describe('扫描会话事件流', () => {
   });
 });
 
-describe('外部库只读访问', () => {
+describe('WorkBuddy 数据库只读访问', () => {
   it('读取 sessions 与 credit_json，并记录异常积分告警', () => {
     const home = makeTempDir();
     createWorkbuddyDb(

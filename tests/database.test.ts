@@ -3,15 +3,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
-import { SCHEMA_VERSION, closeIndex, openIndex } from '../src/etl/index-db.ts';
+import { SCHEMA_VERSION, closeDatabase, openDatabase } from '../src/etl/database.ts';
 import { DimensionWriter } from '../src/etl/dimensions.ts';
 
 const tempDirs: string[] = [];
 
-function makeIndexPath(): string {
+function makeDatabasePath(): string {
   const dir = mkdtempSync(join(tmpdir(), 'wb-usage-index-'));
   tempDirs.push(dir);
-  return join(dir, '.data', 'index.db');
+  return join(dir, '.data', 'database.db');
 }
 
 function columnNames(db: DatabaseSync, table: string): string[] {
@@ -45,13 +45,13 @@ afterEach(() => {
   }
 });
 
-describe('派生索引 schema', () => {
+describe('数据库 schema', () => {
   it('首次打开创建六张表、索引与 meta 单行', () => {
-    const indexPath = makeIndexPath();
-    const { db, rebuilt } = openIndex(indexPath);
+    const databasePath = makeDatabasePath();
+    const { db, rebuilt } = openDatabase(databasePath);
 
     expect(rebuilt).toBe(true);
-    expect(existsSync(indexPath)).toBe(true);
+    expect(existsSync(databasePath)).toBe(true);
 
     const tables = (
       db
@@ -111,11 +111,11 @@ describe('派生索引 schema', () => {
     const journal = db.prepare('PRAGMA journal_mode').get() as { journal_mode: string };
     expect(journal.journal_mode).toBe('delete');
 
-    closeIndex(db);
+    closeDatabase(db);
   });
 
   it('业务键唯一约束与 meta 单行约束生效', () => {
-    const { db } = openIndex(makeIndexPath());
+    const { db } = openDatabase(makeDatabasePath());
     db.prepare('INSERT INTO groups (group_path, display_name) VALUES (?, ?)').run('/a', 'a');
     expect(() =>
       db.prepare('INSERT INTO groups (group_path, display_name) VALUES (?, ?)').run('/a', 'a'),
@@ -127,17 +127,17 @@ describe('派生索引 schema', () => {
         .run(SCHEMA_VERSION),
     ).toThrow();
 
-    closeIndex(db);
+    closeDatabase(db);
   });
 
   it('schema_version 不匹配时删除重建并重新分配内部 id', () => {
-    const indexPath = makeIndexPath();
-    const first = openIndex(indexPath);
+    const databasePath = makeDatabasePath();
+    const first = openDatabase(databasePath);
     first.db.prepare('INSERT INTO groups (group_path, display_name) VALUES (?, ?)').run('/a', 'a');
     first.db.prepare('UPDATE meta SET schema_version = ? WHERE id = 1').run(SCHEMA_VERSION - 1);
-    closeIndex(first.db);
+    closeDatabase(first.db);
 
-    const second = openIndex(indexPath);
+    const second = openDatabase(databasePath);
     expect(second.rebuilt).toBe(true);
 
     const meta = second.db.prepare('SELECT schema_version FROM meta WHERE id = 1').get() as {
@@ -152,30 +152,30 @@ describe('派生索引 schema', () => {
     };
     expect(row.id).toBe(1);
 
-    closeIndex(second.db);
+    closeDatabase(second.db);
   });
 
   it('结构版本一致时保留已有数据', () => {
-    const indexPath = makeIndexPath();
-    const first = openIndex(indexPath);
+    const databasePath = makeDatabasePath();
+    const first = openDatabase(databasePath);
     first.db.prepare('INSERT INTO groups (group_path, display_name) VALUES (?, ?)').run('/a', 'a');
-    closeIndex(first.db);
+    closeDatabase(first.db);
 
-    const second = openIndex(indexPath);
+    const second = openDatabase(databasePath);
     expect(second.rebuilt).toBe(false);
     expect(second.db.prepare('SELECT COUNT(*) AS n FROM groups').get()).toEqual({ n: 1 });
-    closeIndex(second.db);
+    closeDatabase(second.db);
   });
 
   it('groups.is_auto 默认 0', () => {
-    const { db } = openIndex(makeIndexPath());
+    const { db } = openDatabase(makeDatabasePath());
     db.prepare('INSERT INTO groups (group_path, display_name) VALUES (?, ?)').run('/a', 'a');
     expect(groupRows(db)).toEqual([{ group_path: '/a', display_name: 'a', is_auto: 0 }]);
-    closeIndex(db);
+    closeDatabase(db);
   });
 
   it('连续两次全量重建的 groups 行集合一致且与写入顺序无关', () => {
-    const indexPath = makeIndexPath();
+    const databasePath = makeDatabasePath();
     const paths = [
       '/work/beta',
       '/Users/x/WorkBuddy/2026-10-17-21-46-27',
@@ -183,16 +183,16 @@ describe('派生索引 schema', () => {
       'C:\\Users\\x\\WorkBuddy\\2026-10-18-09-00-00',
     ];
 
-    const first = openIndex(indexPath);
+    const first = openDatabase(databasePath);
     const firstWriter = new DimensionWriter(first.db);
     for (const path of paths) {
       firstWriter.ensureGroup(path);
     }
     const firstRows = groupRows(first.db);
     first.db.prepare('UPDATE meta SET schema_version = ? WHERE id = 1').run(SCHEMA_VERSION - 1);
-    closeIndex(first.db);
+    closeDatabase(first.db);
 
-    const second = openIndex(indexPath);
+    const second = openDatabase(databasePath);
     expect(second.rebuilt).toBe(true);
     const secondWriter = new DimensionWriter(second.db);
     for (const path of [...paths].reverse()) {
@@ -208,6 +208,6 @@ describe('派生索引 schema', () => {
       '/work/alpha': 0,
       'C:\\Users\\x\\WorkBuddy\\2026-10-18-09-00-00': 1,
     });
-    closeIndex(second.db);
+    closeDatabase(second.db);
   });
 });

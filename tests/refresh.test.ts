@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { EtlConfig } from '../src/etl/config.ts';
-import { closeIndex, openIndex } from '../src/etl/index-db.ts';
+import { closeDatabase, openDatabase } from '../src/etl/database.ts';
 import { createRefresher } from '../src/etl/refresh.ts';
 import type { RefreshResult } from '../src/shared/types.ts';
 import { createWorkbuddyDb } from './helpers/external-db.ts';
@@ -47,9 +47,9 @@ function setup(): Fixture {
   );
   const config: EtlConfig = {
     workbuddyHome: home,
-    indexPath: join(home, '.data', 'index.db'),
+    databasePath: join(home, '.data', 'database.db'),
   };
-  const { db } = openIndex(config.indexPath);
+  const { db } = openDatabase(config.databasePath);
   opened.push(db);
   return { home, config, db, refresh: createRefresher(db, config).refresh };
 }
@@ -94,7 +94,7 @@ afterEach(() => {
   while (opened.length > 0) {
     const db = opened.pop();
     if (db) {
-      closeIndex(db);
+      closeDatabase(db);
     }
   }
   cleanupTempDirs();

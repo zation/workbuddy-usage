@@ -86,7 +86,7 @@
 
 修改范围：`docs/model-colors.md`、`docs/technical-architecture.md`、`docs/product-brief.md`、`tests/model-colors.test.ts`。
 
-实施结果：新增 `docs/model-colors.md`，记录 12 项显式色表、系列前缀表、保留档位与兜底规则、FNV-1a 冻结、色表只增不改的扩表规则、已知限制与变更记录；`technical-architecture.md` 的面板层说明补上「配色按业务键静态映射、不来自 API、不写派生库、不额外请求模型集合」，并链接专题文档；`product-brief.md` 成功标准补「模型颜色长期稳定」；`tests/model-colors.test.ts` 增加文档一致性单测，解析文档色值表与 `MODEL_COLOR_TABLE` 逐项比对，防止双份维护漂移。
+实施结果：新增 `docs/model-colors.md`，记录 12 项显式色表、系列前缀表、保留档位与兜底规则、FNV-1a 冻结、色表只增不改的扩表规则、已知限制与变更记录；`technical-architecture.md` 的面板层说明补上「配色按业务键静态映射、不来自 API、不写数据库、不额外请求模型集合」，并链接专题文档；`product-brief.md` 成功标准补「模型颜色长期稳定」；`tests/model-colors.test.ts` 增加文档一致性单测，解析文档色值表与 `MODEL_COLOR_TABLE` 逐项比对，防止双份维护漂移。
 
 验证：`npm run typecheck` 通过；`npx vitest run tests/model-colors.test.ts` 9 项通过（含新增文档一致性用例）；`git diff --check` 通过。
 

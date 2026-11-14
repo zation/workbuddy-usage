@@ -16,7 +16,7 @@
 
 状态：done
 
-目标与完成条件：`src/etl/index-db.ts` 的 `groups` 表增加 `is_auto INTEGER NOT NULL DEFAULT 0`，`SCHEMA_VERSION` 由 2 递增 1 为 3；不写迁移脚本。`DimensionWriter.ensureGroup` 的插入改为携带 `is_auto = isAutoGroupPath(key)`，冲突仍为 `ON CONFLICT DO NOTHING`，**不加 `DO UPDATE`**：`is_auto` 是 `group_path` 的纯函数派生值、同一 UNIQUE 业务键恒定，重写无收益且会改变既有写入语义；判定规则变更靠 `SCHEMA_VERSION` 递增重建。`未知分组` 与空 `cwd` 的 `is_auto` 为 0。`tests/index-db.test.ts` 断言 `groups` 新列与默认值、版本递增后旧库删除重建、连续两次全量重建的 `groups` 行集合一致且与文件遍历顺序无关；`tests/dimensions.test.ts` 断言重复 `ensureGroup` 不新增行且 `is_auto` / `display_name` 保持不变。不写「同一路径二次刷新后 `is_auto` 变化」这类不可能成立的断言。对应 Spec R2、R3、AC8。
+目标与完成条件：`src/etl/index-db.ts` 的 `groups` 表增加 `is_auto INTEGER NOT NULL DEFAULT 0`，`SCHEMA_VERSION` 由 2 递增 1 为 3；不写迁移脚本。`DimensionWriter.ensureGroup` 的插入改为携带 `is_auto = isAutoGroupPath(key)`，冲突仍为 `ON CONFLICT DO NOTHING`，**不加 `DO UPDATE`**：`is_auto` 是 `group_path` 的纯函数计算值、同一 UNIQUE 业务键恒定，重写无收益且会改变既有写入语义；判定规则变更靠 `SCHEMA_VERSION` 递增重建。`未知分组` 与空 `cwd` 的 `is_auto` 为 0。`tests/index-db.test.ts` 断言 `groups` 新列与默认值、版本递增后旧库删除重建、连续两次全量重建的 `groups` 行集合一致且与文件遍历顺序无关；`tests/dimensions.test.ts` 断言重复 `ensureGroup` 不新增行且 `is_auto` / `display_name` 保持不变。不写「同一路径二次刷新后 `is_auto` 变化」这类不可能成立的断言。对应 Spec R2、R3、AC8。
 
 必要依赖：T001。
 
@@ -94,7 +94,7 @@
 
 实施结果：新增 `chooseOption`（展开与点选分两次 evaluate，等 React 重渲染）与 `readSelect`（按容器读 `data-value` 与选项），`setPreset` / `selectModel` 均改为调用前者；AC1 的读写改用 `dataset.value`，选项按 `#filter-*` 所属 `.select` 容器限定，避免四个列表同名选项互相干扰。`chartStateExpr` 增加 `formatter` 探针，用固定 params 调出「混合 0 值」与「全 0」两种结果。新增 6 项断言：AC9 在清空 resource entries 之前读取；AC2 用「下拉选项集合 == `/api/breakdown?dim=group` 业务键集合」同时覆盖有/无「默认」，并用 `custom` 预设把区间设到 2099-01-01 造出空范围验证不占位；AC4 以 `/api/requests` 为基准核对会话、模型、token 与另外三个端点一致；AC12 检查四个 trigger 的 role/haspopup/expanded/controls/activedescendant/aria-selected，在分组下拉上派发 ↑↓ / Enter / Esc / pointerdown；AC13 在两张图上各调一次 formatter。
 
-实施中遇到一次环境问题：派生库恰在「加列已生效、判定尚未写入」的中间态被重建，`is_auto` 全为 0；按既有约定删 `.data/index.db` 后重启重建即恢复（`默认` 聚合为一行、分组从 67 行降到 9 行）。这也验证了「判定规则变化必须整库重建」的必要性。
+实施中遇到一次环境问题：数据库恰在「加列已生效、判定尚未写入」的中间态被重建，`is_auto` 全为 0；按既有约定删 `.data/index.db` 后重启重建即恢复（`默认` 聚合为一行、分组从 67 行降到 9 行）。这也验证了「判定规则变化必须整库重建」的必要性。
 
 验证：`SCREENSHOT_DIR=.data/acceptance-shots node scripts/panel-acceptance.mjs` 实跑，16 项全 PASS（既有 10 项 + 新增 AC9 / AC2×2 / AC4 / AC12 / AC13），退出码 0；`npm run typecheck` 通过。
 
@@ -155,7 +155,7 @@ WorkBuddy 改变自动目录命名格式时判定会失效，已写入 `integrat
 
 **交付整体复核**
 
-全部任务完成后按层复核了一遍 diff：解析层的判定与写入、服务层的 CASE / WHERE / 明细展示名、面板的组件与样式、验收脚本的选择器与新增断言、四份长期文档。发现并修复两处 polish（`de3df65`）：`SCHEMA_VERSION` 的注释只提「展示名规则」，补成「派生规则（展示名、自动分组判定等）」，避免下次改判定时漏递增；日期输入框在收窄选择器时内边距从 10px 变成 8px，与下拉触发按钮不再对齐，改回 10px。未发现功能性缺陷。
+全部任务完成后按层复核了一遍 diff：解析层的判定与写入、服务层的 CASE / WHERE / 明细展示名、面板的组件与样式、验收脚本的选择器与新增断言、四份长期文档。发现并修复两处 polish（`de3df65`）：`SCHEMA_VERSION` 的注释只提「展示名规则」，补成「生成规则（展示名、自动分组判定等）」，避免下次改判定时漏递增；日期输入框在收窄选择器时内边距从 10px 变成 8px，与下拉触发按钮不再对齐，改回 10px。未发现功能性缺陷。
 
 验证：
 

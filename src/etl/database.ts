@@ -3,8 +3,8 @@ import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 /**
- * 派生库结构版本：改表结构、或改维表的派生规则（展示名、自动分组判定等）先递增该值，
- * 旧库会在下次启动时被删除重建。
+ * 数据库结构版本：改表结构、或改维表的生成规则（展示名、自动分组判定等）先递增该值，
+ * 旧数据库会在下次启动时被删除重建。
  */
 export const SCHEMA_VERSION = 4;
 
@@ -78,7 +78,7 @@ CREATE INDEX IF NOT EXISTS idx_requests_model_id ON requests(model_id);
 CREATE INDEX IF NOT EXISTS idx_requests_source_file_id ON requests(source_file_id);
 `;
 
-export interface OpenIndexResult {
+export interface OpenDatabaseResult {
   db: DatabaseSync;
   rebuilt: boolean;
 }
@@ -100,9 +100,9 @@ function readSchemaVersion(db: DatabaseSync): number | null {
   return typeof row?.schema_version === 'number' ? row.schema_version : null;
 }
 
-function removeIndexFiles(indexPath: string): void {
+function removeDatabaseFiles(databasePath: string): void {
   for (const suffix of ['', '-wal', '-shm', '-journal']) {
-    const file = `${indexPath}${suffix}`;
+    const file = `${databasePath}${suffix}`;
     if (existsSync(file)) {
       rmSync(file, { force: true });
     }
@@ -117,19 +117,19 @@ export function initSchema(db: DatabaseSync): void {
 }
 
 /**
- * 打开派生索引；结构版本不符或文件损坏时删除重建，不写迁移脚本。
+ * 打开数据库；结构版本不符或文件损坏时删除重建，不写迁移脚本。
  * 新库会直接记录 last_full_scan_at，用于区分首次全量重建。
  */
-export function openIndex(indexPath: string): OpenIndexResult {
-  mkdirSync(dirname(indexPath), { recursive: true });
+export function openDatabase(databasePath: string): OpenDatabaseResult {
+  mkdirSync(dirname(databasePath), { recursive: true });
 
-  const existed = existsSync(indexPath);
+  const existed = existsSync(databasePath);
   let rebuilt = !existed;
 
   if (existed) {
     let probe: DatabaseSync | null = null;
     try {
-      probe = new DatabaseSync(indexPath);
+      probe = new DatabaseSync(databasePath);
       rebuilt = readSchemaVersion(probe) !== SCHEMA_VERSION;
     } catch {
       rebuilt = true;
@@ -138,17 +138,17 @@ export function openIndex(indexPath: string): OpenIndexResult {
     }
     if (rebuilt) {
       try {
-        removeIndexFiles(indexPath);
+        removeDatabaseFiles(databasePath);
       } catch (error) {
         throw new Error(
-          `旧索引结构版本不匹配且无法删除 ${indexPath}，请确认没有其它进程正在使用后重试。`,
+          `旧数据库结构版本不匹配且无法删除 ${databasePath}，请确认没有其它进程正在使用后重试。`,
           { cause: error },
         );
       }
     }
   }
 
-  const db = new DatabaseSync(indexPath);
+  const db = new DatabaseSync(databasePath);
   initSchema(db);
   if (rebuilt) {
     db.prepare('UPDATE meta SET last_full_scan_at = ? WHERE id = 1').run(Date.now());
@@ -156,6 +156,6 @@ export function openIndex(indexPath: string): OpenIndexResult {
   return { db, rebuilt };
 }
 
-export function closeIndex(db: DatabaseSync): void {
+export function closeDatabase(db: DatabaseSync): void {
   db.close();
 }

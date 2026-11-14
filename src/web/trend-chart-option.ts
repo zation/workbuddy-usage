@@ -33,7 +33,7 @@ interface TooltipParam {
   marker?: string;
 }
 
-/** 图表配置是纯展示派生：柱口径不变，价格比率折线只叠加在 Token 图上。 */
+/** 图表配置由已聚合数据生成：柱口径不变，价格比率折线只叠加在 Token 图上。 */
 export function buildTrendChartOption(
   data: TrendChartData | null,
   metric: 'tokens' | 'credit',

@@ -4,7 +4,7 @@
 
 ## 现状分析
 
-**数据链路**：ETL（`src/etl/` 解析 jsonl + 只读 `workbuddy.db`）→ 派生 sqlite 索引 `.data/index.db` → Hono 服务层（`server/query.ts`）→ React + ECharts 面板（`/api/*` + `src/web/`）。口径只在解析层与服务层，前端只渲染 API 返回值。
+**数据链路**：ETL（`src/etl/` 解析 jsonl + 只读 `workbuddy.db`）→ SQLite 数据库 `.data/index.db` → Hono 服务层（`server/query.ts`）→ React + ECharts 面板（`/api/*` + `src/web/`）。口径只在解析层与服务层，前端只渲染 API 返回值。
 
 **可直接复用的部分**：`requests` 表已有 `input_tokens / output_tokens / cache_read_tokens` 三列，请求级同源（C2），且 `TimeseriesRow`、`SummaryResponse`、`getTimeseries` 的 SQL 已把三列贯通到 API；`buildWhere(filters)` 让四个筛选条件在所有端点复用；`model-colors.ts` 提供了「按模型业务键的显式静态参数表 + 规则文档 + 一致性单测」的现成范式；`SCHEMA_VERSION` 不匹配即删库重建，加列无迁移成本。实测规模 483 请求 / 11 模型 / DS 254 请求，按天二次聚合的代价可忽略。
 
@@ -19,9 +19,9 @@
 取舍：不用 `Intl` + `Asia/Shanghai`，避免引入 ICU 数据库与历史时区规则依赖，中国自 1991 年后无夏令时，固定 +8 等价且可测；不用纯 UTC 作业务日期，否则北京时间晚间用量落到前一天，破坏「今天花了多少」（AD-6 的原始理由仍成立，只换实现方式）。
 **职责分离（易错点）**：`toDateKey(ts)` 是「绝对时间 → UTC+8 业务日期」的唯一入口；`formatDateKey(date)` 改为纯 UTC 日期键语义，只服务 `parseDateKey` / `addDays` / `isValidDateKey` 的日期键算术，不再用于当前时间。`todayKey()` 必须改为 `toDateKey(Date.now())`——若沿用 `formatDateKey(new Date())`，改成 UTC 语义后会取到 UTC 日期，北京时间 00:00–08:00 会显示前一天。`src/web/format.ts` 两个格式化函数用同一常量按 UTC+8 取字段。`scripts/panel-acceptance.mjs` 保持脚本独立（不 import `.ts`），在脚本内实现同一 +8 折算的 `today()`，与文件里已有的 UTC 日期算术统一。
 
-**AD-P2 闲时列在 ETL 一次派生。**
+**AD-P2 闲时列在 ETL 一次计算。**
 新增 `src/shared/deepseek-offpeak.ts` 纯函数 `isDeepseekOffpeak(startedAt, holidays): boolean`，与 `date_key` 共用 `toDateKey` 的 UTC+8 折算，按 `started_at` 判定；节假日集合放 `src/shared/china-holidays.ts`（显式 `YYYY-MM-DD` 集合，只录已公布安排）。`parse.ts` 把结果写入 `ParsedRequest.isDeepseekOffpeak`，`refresh.ts` 的 INSERT 列与参数同步，`index-db.ts` 加 `is_deepseek_offpeak INTEGER NOT NULL DEFAULT 1` 并把 `SCHEMA_VERSION` 3→4。
-取舍：只固化时段事实、不固化费用，官方调价只改常量、无需重扫日志；所有请求都写 0/1（不引入 NULL 与索引分支），但列说明明确「非 DS 模型的值无业务含义，其他模型不得复用」；节假日表更新属于派生规则变更，必须递增 `SCHEMA_VERSION` 触发重建。`ON CONFLICT DO UPDATE` 分支同步更新该列（它随 `excluded.started_at` 一起走），避免已有请求换文件时留下旧值。
+取舍：只固化时段事实、不固化费用，官方调价只改常量、无需重扫日志；所有请求都写 0/1（不引入 NULL 与额外分支），但列说明明确「非 DS 模型的值无业务含义，其他模型不得复用」；节假日表更新属于判定规则变更，必须递增 `SCHEMA_VERSION` 触发重建。`ON CONFLICT DO UPDATE` 分支同步更新该列（它随 `excluded.started_at` 一起走），避免已有请求换文件时留下旧值。
 节假日表需同时给出 `COVERED_YEARS`（已收录放假安排的年份清单）与 `HOLIDAYS`（日期集合）：判定函数只在已覆盖年份内查表，未覆盖年份一律按「周一至周五」处理，避免空集合被误读成「该年无节假日」却与已覆盖年份混用。当前数据区间（2026-10-16 ~ 11-13）不含法定节假日，表可为空集合，但必须显式标注覆盖年份。
 
 **AD-P3 价格表、套餐与月度单价集中在 `src/shared/deepseek-pricing.ts`。**
@@ -55,7 +55,7 @@
 | `src/shared/china-holidays.ts`（新） | 法定节假日日期集合与维护说明 |
 | `src/shared/deepseek-pricing.ts`（新） | 模型白名单、价目表、套餐参数、单价与官方费用纯函数 |
 | `src/shared/types.ts` | `ParsedRequest` 加 `isDeepseekOffpeak`；`TimeseriesResponse` 加 `ratios`；新增 `PriceRatioRow` |
-| `src/etl/parse.ts` | 由 `startedAt` 派生闲时标记 |
+| `src/etl/parse.ts` | 由 `startedAt` 计算闲时标记 |
 | `src/etl/refresh.ts` | `INSERT_REQUEST_SQL` 列清单、参数、`ON CONFLICT` 分支 |
 | `src/etl/index-db.ts` | 新列；`SCHEMA_VERSION` 3→4 |
 | `server/query.ts` | `getTimeseries` 增加按天 × 闲时的第二条聚合与比率计算 |
@@ -67,18 +67,18 @@
 
 ## 数据或接口变化
 
-- **派生库**：`requests` 增加 `is_deepseek_offpeak INTEGER NOT NULL DEFAULT 1`；`SCHEMA_VERSION` 3→4。旧库在 `openIndex()` 比对不匹配后按既有逻辑删除 `-wal/-shm/-journal` 并重建，不写迁移脚本、不碰 `workbuddy.db`。
+- **数据库**：`requests` 增加 `is_deepseek_offpeak INTEGER NOT NULL DEFAULT 1`；`SCHEMA_VERSION` 3→4。旧库在 `openIndex()` 比对不匹配后按既有逻辑删除 `-wal/-shm/-journal` 并重建，不写迁移脚本、不碰 `workbuddy.db`。
 - **API**：`GET /api/timeseries` 响应新增顶层 `ratios: Array<{ date: string; ratio: number | null; wbCost: number; officialCost: number }>`；`rows` 的字段、顺序、粒度完全不变。其余四个端点不变。
 - **前端类型**：`TrendChartData` 不变，`TrendChart` 新增可选 `ratios` prop；`metric === 'credit'` 的积分图不传该 prop，行为不变。
-- **常量与文档**：新增 `docs/deepseek-pricing.md`（价目表版本与来源、模型映射、套餐参数与原确认口径、缓存假设与敏感性、节假日表维护方式）；同步 `product-brief.md`（非目标 `:38` 改写；`:41`「不关注余额与赠送额度」保持不变——面板仍不展示余额/有效期，套餐参数只作换算常量）、`technical-architecture.md`（AD-6 改写、接口表 `/api/timeseries` 返回值、分层原则）、`data-model.md`（`date_key` 列说明与保留理由、新列说明、C5、`schema_version`）、`devops.md`（验收覆盖、节假日表更新需重建索引）。
+- **常量与文档**：新增 `docs/deepseek-pricing.md`（价目表版本与来源、模型映射、套餐参数与原确认口径、缓存假设与敏感性、节假日表维护方式）；同步 `product-brief.md`（非目标 `:38` 改写；`:41`「不关注余额与赠送额度」保持不变——面板仍不展示余额/有效期，套餐参数只作换算常量）、`technical-architecture.md`（AD-6 改写、接口表 `/api/timeseries` 返回值、分层原则）、`data-model.md`（`date_key` 列说明与保留理由、新列说明、C5、`schema_version`）、`devops.md`（验收覆盖、节假日表更新需重建数据库）。
 
 ## 兼容与迁移方案
 
-- 派生库纯派生、可删可重建，重建成本为一次全量日志扫描（当前 483 请求 / 299 KB 索引），无外部数据写入。
+- 数据库可删可重建，重建成本为一次全量日志扫描（当前 483 请求 / 299 KB 数据库），无外部数据写入。
 - **对当前 GMT+8 环境**：`date_key` 结果与改动前逐行一致，用重建前后的按天合计对照断言验证；非 GMT+8 环境的结果修正属于预期行为，跨时区测试覆盖。
 - API 只增字段，既有调用方（验收脚本、面板）不因新增字段受影响；`ratios` 为空数组是合法状态。
 - 前端 `metric === 'credit'` 路径、色表、0 值过滤、连续日期轴、100 天跨度上限等既有行为不变。
-- 节假日表更新或派生规则调整，一律递增 `SCHEMA_VERSION`；官方调价只改 `deepseek-pricing.ts` 常量，不触发重建。
+- 节假日表更新或生成规则调整，一律递增 `SCHEMA_VERSION`；官方调价只改 `deepseek-pricing.ts` 常量，不触发重建。
 
 ## 测试策略
 
@@ -97,9 +97,9 @@
 | 缓存等价性假设不成立 | 比率方向可能反转（官方费用放大约一个数量级） | Spec 已定案按命中计；假设与敏感性写入 `docs/deepseek-pricing.md`，界面不提示 |
 | 节假日表未覆盖年份 | 节假日被误判为高峰，官方费用偏高、比率偏低（保守方向） | 只录已公布安排；年度更新并递增 `SCHEMA_VERSION` |
 | 官方调价 | 历史数据统一套当前价目表，存在时点误差 | 价目表标注抓取日期；改一处常量即可，不重扫 |
-| 时区改动 | 非 GMT+8 环境历史 `date_key` 变化 | 重建后按固定 UTC+8 重新派生；当前环境逐行对照断言；跨时区单测 |
+| 时区改动 | 非 GMT+8 环境历史 `date_key` 变化 | 重建后按固定 UTC+8 重新计算；当前环境逐行对照断言；跨时区单测 |
 | tooltip 混用格式化 | 比率被显示成 token 缩写或积分小数 | AD-P5 按 `seriesId` 分流，验收脚本断言 |
 | 按天比率波动大（实测 0～17×） | 折线视觉抖动 | 按 Spec 如实绘制，不平滑、不裁剪、不加说明 |
-| 派生库重建 | 首次启动需全量重扫；若原始日志已被 WorkBuddy 清理，重建后请求数会少于当前 | 沿用既有「不追溯补齐已不可读数据」约定；重建前记录当前按天合计作为对照，对照结论只在日志未变化的前提下成立 |
+| 数据库重建 | 首次启动需全量重扫；若原始日志已被 WorkBuddy 清理，重建后请求数会少于当前 | 沿用既有「不追溯补齐已不可读数据」约定；重建前记录当前按天合计作为对照，对照结论只在日志未变化的前提下成立 |
 
 **回滚**：按任务粒度 `git revert` 对应提交（不做 `reset --hard`）；删除 `.data/index.db*` 让旧版本按 `SCHEMA_VERSION` 自动重建；整个过程不修改、不移动、不备份 `~/.workbuddy` 下任何文件，外部数据无副作用。回滚后 `SCHEMA_VERSION` 回退同样会触发重建，属预期行为。

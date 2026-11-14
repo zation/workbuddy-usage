@@ -24,7 +24,7 @@
 
 - `enumerateDays(from, to)` 有固定 `guard < 3700`（约 10.1 年）循环上限。旧「全部」不传 `from / to`、`start` 取数据最早日期，不会触发；移除「全部」后用户或验收脚本手选很早的起始日期时，`days` 会被截断到前 3700 天（如 2000-01-01 起只到 2010-02-16），2026 年的 `rows` 全部落在轴外。
 - 开发者确认改用**输入约束**解决：区间跨度上限 100 天（含首尾），超限直接报错，不做降级展示。这样前端补轴最多产出 100 项，3700 guard 永远不可达，**`enumerateDays` 本身与其 guard 不改**；也不再需要「按周 / 月聚合」「只显示有数据日期 + 提示」这类展示层降级。
-- 实测派生库（只读查询 `.data/index.db`）：最早 `2026-09-28`、最晚 `2026-11-13`，含首尾 47 天、其中 33 天有数据。远小于 100 天，因此验收脚本用「数据最早日期 → 今天」的宽区间仍能一次覆盖全量，无需拆分请求。若将来数据跨度超过 100 天，需要全量的断言改为直接读不带日期参数的 API（见风险 1）。
+- 实测数据库（只读查询 `.data/index.db`）：最早 `2026-09-28`、最晚 `2026-11-13`，含首尾 47 天、其中 33 天有数据。远小于 100 天，因此验收脚本用「数据最早日期 → 今天」的宽区间仍能一次覆盖全量，无需拆分请求。若将来数据跨度超过 100 天，需要全量的断言改为直接读不带日期参数的 API（见风险 1）。
 
 **拆分链路**
 
@@ -32,7 +32,7 @@
 - `src/web/components/BreakdownList.tsx` 三个维度共用：按当前 metric 排序、截前 8 行，条宽 `Math.min(100, share * 100)%`，单色 `.breakdown-fill { background: var(--accent) }`；每行是 `<button title={row.key}>`。
 - 颜色由 `src/web/model-colors.ts` 的 `modelColor(modelKey)` 提供，趋势图系列、`ModelDot`、请求明细色点已逐值一致（`docs/model-colors.md`）。`TrendChart` 的 tooltip 是 ECharts HTML formatter（过滤 `> 0`、按值降序、`escapeHtml`），与 DOM 列表不共用。
 - `EChart.tsx` 是 canvas 图表实例，其 tooltip 无法直接复用到 DOM 行；拆分列表需要自己的浮层。
-- 派生库 `requests` 已有 `group_id / model_id / total_tokens / credit / date_key`（`src/etl/index-db.ts`，`SCHEMA_VERSION = 3`），交叉聚合不需要改表。实测规模 11 模型 × 66 分组、471 请求，结果集很小。
+- 数据库 `requests` 已有 `group_id / model_id / total_tokens / credit / date_key`（`src/etl/index-db.ts`，`SCHEMA_VERSION = 3`），交叉聚合不需要改表。实测规模 11 模型 × 66 分组、471 请求，结果集很小。
 
 ## 技术方案与关键取舍
 
@@ -47,7 +47,7 @@
 
 **取舍**
 
-- **不再保留 `preset` / `custom` 两份状态**：`filters.from / to` 是唯一真相，日期框 value 与按钮高亮都由它派生，双向联动天然一致，也不存在「预设与日期不同步」的中间态。
+- **不再保留 `preset` / `custom` 两份状态**：`filters.from / to` 是唯一真相，日期框 value 与按钮高亮都由它计算，双向联动天然一致，也不存在「预设与日期不同步」的中间态。
 - **按钮确认为四个**，保留「今天」并新增「3 天」：默认改成 3 天后若没有对应按钮，首屏四个按钮会全灭、看起来像自定义区间；删掉「今天」则是用户没要求的删减。四档都不超过 100 天上限。
 - **反向匹配用精确比对**，不做「按跨度天数猜预设」：`[today-2, today]` 与 `[yesterday-2, yesterday]` 跨度相同但语义不同，按天数猜会误高亮。
 
@@ -141,7 +141,7 @@ export function buildTimeseriesAxis(
 - **不改 `enumerateDays` 的 3700 guard**：100 ≪ 3700，上限不可达；给它打补丁反而会把「输入约束」这件事散到两处。`src/shared/dates.ts` 只新增 `daySpan()`。
 - **不引入按周 / 月聚合**：`product-brief.md` 明确「时间粒度只有天」，改粒度属业务口径变更；超限直接报错比悄悄改粒度更可解释。
 - **两端都校验**，规则单一实现、文案一致：前端负责即时反馈与避免无效请求，API 负责契约与防绕过。
-- 轴是纯展示派生，不参与任何聚合；`enumerateDays` 仍是前后端共享函数，没有重复实现。
+- 轴由展示层生成，不参与任何聚合；`enumerateDays` 仍是前后端共享函数，没有重复实现。
 
 ### 5. 服务层：附加交叉聚合
 
@@ -252,7 +252,7 @@ ORDER BY group_key ASC, total_tokens DESC, model ASC
 - 四个筛选端点的 `readFilters` 新增校验：`from` 与 `to` 都存在且含首尾跨度 > 100 天时返回 `400 { error: '时间跨度不能超过 100 天' }`；缺失任一日期时不校验并放行。其余响应语义不变。
 - `GET /api/breakdown` 新增可选参数 `split=model`，仅 `dim=group` 生效；响应 `rows[].models` 为可选附加字段（`BreakdownSegment[]`）。其余两个维度、不带 `split` 的响应结构不变。
 - `Filters` 结构不变；`PresetKey` 删除 `month / all / custom`，新增 `threeDays`。
-- **无数据库迁移**：表结构、派生规则、`SCHEMA_VERSION = 3` 都不变，不需要删库重建；静态资源随构建重新生成。
+- **无数据库迁移**：表结构、生成规则、`SCHEMA_VERSION = 3` 都不变，不需要删库重建；静态资源随构建重新生成。
 - **兼容性**：`/api/breakdown` 的附加字段向后兼容（旧前端忽略、新前端在 `models` 缺失时回退单色条）；`/api/timeseries` 是破坏性变更，但前后端同仓同次构建、无外部消费者，不提供兼容层。旧前端配新后端会拿到没有 `days` 的响应，只可能出现在开发期前后端版本错配，重启 `npm run dev` 或重新 `npm run build` 即可。
 
 ## 顺序约束
@@ -288,12 +288,12 @@ ORDER BY group_key ASC, total_tokens DESC, model ASC
 8. **受控日期框清空回弹**：空值分支不 setState 时 React 可能不触发重渲染；用验收脚本实际清空并断言 value 恢复，必要时显式 `event.target.value = filters.from`。
 9. **跨零点**：`todayKey()` 页面加载时取一次，长时间开页面后「3 天」仍按加载当天算；沿用既有行为，记为已知限制，不在本交付引入定时器。
 10. **响应体积**：新增 `models` 后 group 响应最多数百组合，实测数据量可忽略；`days` 移除反而让 timeseries 响应变小。
-11. **回滚**：无数据迁移、无索引重建。按 commit 原子回退即可；需注意 `/api/timeseries` 的 `days` 字段与前端补轴是配套的，回退时前后端必须一起回退，不能只回退一侧。跨度校验是新增 400 分支，回退后前端也不再拦截，行为自然恢复。
+11. **回滚**：无数据迁移、无数据库重建。按 commit 原子回退即可；需注意 `/api/timeseries` 的 `days` 字段与前端补轴是配套的，回退时前后端必须一起回退，不能只回退一侧。跨度校验是新增 400 分支，回退后前端也不再拦截，行为自然恢复。
 
 ## 文档同步
 
 - `product-brief.md`：范围段把「默认展示今天」改为「默认近 3 天，四个快捷区间 + 起止日期框，不提供本月 / 全部」，补「单次区间跨度不超过 100 天」；「图表堆叠只按模型着色」补「按分组数值条也按模型分段着色」。
-- `technical-architecture.md`：模块划分的面板层描述、筛选栏段落（时间不再是下拉、日期框由「更多」展开、按钮与日期双向联动）、**接口表 `/api/timeseries` 改为只返回 `rows`、`/api/breakdown` 补 `split=model` 与分段返回值、补四个读取筛选的端点共用的跨度上限 400 分支**、分层原则补「连续日期轴与分段颜色 / 段宽同属展示派生，由面板层生成」；删除与 `days` 相关的旧表述。
+- `technical-architecture.md`：模块划分的面板层描述、筛选栏段落（时间不再是下拉、日期框由「更多」展开、按钮与日期双向联动）、**接口表 `/api/timeseries` 改为只返回 `rows`、`/api/breakdown` 补 `split=model` 与分段返回值、补四个读取筛选的端点共用的跨度上限 400 分支**、分层原则补「连续日期轴与分段颜色 / 段宽同属展示层生成，由面板层生成」；删除与 `days` 相关的旧表述。
 - `docs/model-colors.md`：色标覆盖视图增加「按分组数值条色段」，已知限制补「色段靠 1px 白色分隔」。
 - `docs/devops.md`：交互验收覆盖范围补时间联动、日期轴归位、跨度上限与分段提示断言；说明 `setWideRange` 从 `rows` 取最早日期、数据跨度超过 100 天时如何调整、以及前后端需同次构建的原因。
 - `data-model.md` / `integration.md`：不改（表结构与外部数据均未变化）。
