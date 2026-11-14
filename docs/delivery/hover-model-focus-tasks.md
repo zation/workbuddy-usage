@@ -57,11 +57,23 @@
 
 # T002 Playwright 运行器与验收入口骨架
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Plan AD-1、AD-2、AD-8 建立配置与运行器隔离，`npm run acceptance` 串起样本生成、构建、`webServer` 启停、用例执行与清理；用例目录不被 Vitest 收集、被 typecheck 覆盖；失败保留 trace 与截图。完成条件：单命令能启动服务并跑到用例（可先用一个最小用例验证启停与清理），满足 AC9 的框架化要求与 AC11 的一条命令要求。本任务只建配置骨架，验收入口的最终指向与旧脚本摘除统一归 T009。
 
 修改范围：`package.json`、`playwright.config.ts`、`tsconfig.json`。
+
+实施结果：`@playwright/test` 1.65.1 以精确版本加入 devDependencies，`dependencies` 未变。`playwright.config.ts`：`testDir: tests/e2e`、`testMatch: **/*.spec.ts`、`workers: 1`、`fullyParallel: false`、`reuseExistingServer: false`、视口 1400×1100、`deviceScaleFactor: 1`（供 canvas 像素断言）、`trace: retain-on-failure`、`screenshot: only-on-failure`、`outputDir: .data/e2e-results`；`webServer` 以 `npm start` 起单端口，`PORT=4630`（避开日常 4620）、`DATABASE_PATH=.data/e2e/database.db`。`tsconfig.json` 的 include 补 `playwright.config.ts`，`tests` 原已在列，因此 e2e 用例与配置都被独立类型检查覆盖。`npm run acceptance` 指向新增的 `scripts/e2e-run.mjs`：按「生成样本 → 构建 → playwright test → 清理」顺序编排，`finally` 保证失败也清理。最小用例 `tests/e2e/panel.spec.ts` 断言标题、2 个 tab、6 个指标卡、4 个快捷区间与无 pageerror，并从 `src/web/filters.ts` 导入 `QUICK_PRESETS`，同时验证 Playwright 能直接加载仓库内的 `.ts` 源码。
+
+必要的问题与决策：Plan AD-8 原定用 `globalTeardown` 清理 `.data/e2e/`，实测不成立——teardown 执行时 `/api/health` 仍返回 200，webServer 尚未回收，服务持有 sqlite 文件，Windows 下删除被占用文件必然失败（重试 5 次均失败）。改为入口脚本在 Playwright 进程退出后清理；Plan AD-8 与「影响范围」已按实际实现同步。为此新增 `scripts/e2e-run.mjs`（原「修改范围」未列，属运行器接线，不是需求变更）。
+
+验证：
+- `npm run typecheck`：退出码 0。
+- `npm test`：18 个文件 163 passed / 1 skipped，`tests/e2e/*.spec.ts` 未被 Vitest 收集。
+- `npm run acceptance`：退出码 0，输出顺序为样本目录就绪 → 构建 → `面板监听 http://127.0.0.1:4630` → `1 passed`；结束后 `.data/e2e/` 已删除，`.data/e2e-results/` 仅留 `.last-run.json`。
+- 前置：`node_modules/@playwright/test` 1.65.1 已装；Chromium 二进制经 `PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright` 下载成功（默认 CDN 在本机不可达，处理方式写 T010）。验收命令要求 Node 24 在 PATH 首位，本次以 `PATH=/e/Software/nodejs:$PATH` 调用。
+
+提交：
 
 # T003 固定样本与期望值生成
 

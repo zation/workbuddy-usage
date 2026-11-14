@@ -102,7 +102,7 @@
 - `playwright.config.ts`：`testDir: 'tests/e2e'`、`testMatch: '**/*.spec.ts'`，避免把 Vitest 的 `*.test.ts` 当 e2e 用例；`workers: 1`、`fullyParallel: false`。理由：26 项覆盖共享同一份样本、同一个服务实例与同一份筛选状态，并行会引入竞态。
 - 用例按验收主题用 `test.describe` 分组（tab 与 ARIA、筛选与时间区、拆分列表与明细、趋势图与 tooltip、hover 聚焦、网络与只读），每个用例通过 `beforeEach` 自准备前置状态（打开页面、冻结时间、等首屏数据），不依赖前一个用例留下的状态；定位器集中封装在页面对象里，避免选择器散落。
 - `tsconfig.json` 的 include 补 `playwright.config.ts`，让独立类型检查覆盖配置与 `tests/e2e/`；`vitest.config.ts` 不改。
-- 失败时保留 trace 与截图（`trace: 'retain-on-failure'`、`screenshot: 'only-on-failure'`），输出到 `.data/e2e-results/`；成功不留产物。`globalTeardown` 清理 `.data/e2e/`。
+- 失败时保留 trace 与截图（`trace: 'retain-on-failure'`、`screenshot: 'only-on-failure'`），输出到 `.data/e2e-results/`；成功不留产物。`.data/e2e/` 的清理由运行入口脚本在 Playwright 进程退出后执行：`globalTeardown` 早于 webServer 回收，服务仍持有临时数据库，Windows 下删除被占用文件必然失败。
 - `npm run acceptance` 一条命令串起「生成样本 → 构建 → playwright test」，`package.json` 只改 devDependencies 与 scripts，`dependencies` 不变（对应 Spec「不改产品运行时依赖」）。
 
 ### AD-9 与旧脚本的关系
@@ -119,7 +119,7 @@
 
 ## 影响范围
 
-**新增**：`playwright.config.ts`、`tests/e2e/`（用例、页面对象与样本期望数据）、`scripts/e2e-fixture.mjs`、`docs/delivery/hover-model-focus-plan.md`（本文件）。
+**新增**：`playwright.config.ts`、`tests/e2e/`（用例、页面对象与样本期望数据）、`scripts/e2e-fixture.mjs`、`scripts/e2e-run.mjs`（顺序编排与清理）、`docs/delivery/hover-model-focus-plan.md`（本文件）。
 
 **前置改动已完成**：`src/etl/config.ts`（`databasePath` + `DATABASE_PATH`）、`server/index.ts`、`src/etl/database.ts`、构造 `EtlConfig` 的测试 / helper、全项目文档术语与命名。
 

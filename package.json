@@ -17,7 +17,7 @@
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "acceptance": "node scripts/panel-acceptance.mjs"
+    "acceptance": "node scripts/e2e-run.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.7",
@@ -27,6 +27,7 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.1",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
