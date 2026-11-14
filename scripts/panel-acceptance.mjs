@@ -86,7 +86,8 @@ const results = [];
 
 function check(name, ok, detail = '') {
   results.push({ name, ok });
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` :: ${detail}` : ''}`);
+  const label = ok === 'skip' ? 'SKIP' : ok ? 'PASS' : 'FAIL';
+  console.log(`${label} ${name}${detail ? ` :: ${detail}` : ''}`);
 }
 
 /** 展开下拉并点选指定业务键；点击与读取分两次 evaluate，等 React 完成重渲染。 */
@@ -292,8 +293,8 @@ function chartStateExpr() {
       if (!instance) continue;
       const option = instance.getOption();
       const axis = option.yAxis?.[0]?.axisLabel?.formatter;
-      const tip = option.tooltip?.[0]?.valueFormatter;
       const formatter = option.tooltip?.[0]?.formatter;
+      const hasValueFormatter = typeof option.tooltip?.[0]?.valueFormatter === 'function';
       const probe = (items) => {
         try {
           return String(formatter(items));
@@ -306,9 +307,12 @@ function chartStateExpr() {
           ? [0, 1000, 10000, 1000000, 1000000000].map((value) => String(axis(value)))
           : null,
         categories: Array.isArray(option.xAxis?.[0]?.data) ? option.xAxis[0].data : [],
-        tooltip: typeof tip === 'function'
-          ? [1000, 10000, 1000000].map((value) => String(tip(value)))
+        tooltip: typeof formatter === 'function'
+          ? [1000, 10000, 1000000].map((value) => probe([
+              { axisValue: '2026-11-12', seriesName: '模型甲', value, marker: '' },
+            ]))
           : null,
+        hasValueFormatter,
         formatter: typeof formatter === 'function'
           ? {
               mixed: probe([
@@ -337,7 +341,9 @@ function chartStateExpr() {
         legendData: Array.isArray(option.legend?.[0]?.data) ? option.legend[0].data : [],
         ratioTip: typeof formatter === 'function'
           ? probe([
-              { axisValue: '2026-11-12', seriesId: 'price-ratio', seriesName: '价格比率', value: 4.16, marker: '<i></i>' },
+              { axisValue: '2026-11-12', seriesId: 'model-a', seriesName: '模型甲', value: 1200, marker: '' },
+              { axisValue: '2026-11-12', seriesId: 'zero-model', seriesName: '模型乙', value: 0, marker: '' },
+              { axisValue: '2026-11-12', seriesId: 'price-ratio', seriesName: '价格比率', value: 4.16, marker: '' },
             ])
           : null,
       });
@@ -345,7 +351,7 @@ function chartStateExpr() {
       // 该资源不是 echarts core，继续找下一个
     }
   }
-  return JSON.stringify({ axis: null, tooltip: null, formatter: null, colors: {} });
+  return JSON.stringify({ axis: null, tooltip: null, formatter: null, hasValueFormatter: false, colors: {} });
 })()`;
 }
 
@@ -512,7 +518,9 @@ async function main() {
     chart.axis.some((text) => /[KMB]$/.test(text));
   const tooltipOk =
     Array.isArray(chart.tooltip) &&
-    chart.tooltip.every((text) => !text.includes('万') && !text.includes('亿'));
+    chart.tooltip.every(
+      (text) => !text.includes('万') && !text.includes('亿') && !text.includes('ERROR'),
+    );
   const rate = summary.token.inputTokens > 0 ? ((summary.token.cacheReadTokens / summary.token.inputTokens) * 100).toFixed(1) : null;
   check(
     'AC5 token 使用 K/M/B、趋势图刻度与 tooltip 无中文单位、页面无「万 / 亿」',
@@ -671,7 +679,7 @@ async function main() {
     Array.isArray(creditChart.axis) &&
     creditChart.axis.every((text) => !text.includes('k') && !text.includes('万') && !text.includes('亿')) &&
     Array.isArray(creditChart.tooltip) &&
-    creditChart.tooltip.every((text) => !text.includes('k'));
+    creditChart.tooltip.every((text) => !text.includes('k') && !text.includes('ERROR'));
 
   check(
     'AC7 0 值隐藏、下拉可切换、配色跨筛选稳定、积分刻度无 k',
@@ -1033,25 +1041,72 @@ async function main() {
   const hasRatios = Array.isArray(ratioApi.ratios) && ratioApi.ratios.length > 0;
   const ratioLines = ratioChart.ratioSeries ?? [];
   const ratioAxes = ratioChart.yAxes ?? [];
-  const ratioShown =
-    hasRatios
-      ? ratioAxes.length === 2 &&
-        ratioAxes[1]?.name === '×' &&
-        ratioLines.length === 1 &&
-        ratioLines[0].type === 'line' &&
-        ratioLines[0].yAxisIndex === 1 &&
-        ratioLines[0].connectNulls === false &&
-        ratioLines[0].data.length === ratioChart.categories.length &&
-        !(ratioChart.legendData ?? []).includes('价格比率')
-      : ratioAxes.length === 1 && ratioLines.length === 0;
+  const ratioShown = hasRatios
+    ? ratioAxes.length === 2 &&
+      ratioAxes[1]?.name === '×' &&
+      ratioLines.length === 1 &&
+      ratioLines[0].type === 'line' &&
+      ratioLines[0].yAxisIndex === 1 &&
+      ratioLines[0].connectNulls === false &&
+      ratioLines[0].data.length === ratioChart.categories.length &&
+      !(ratioChart.legendData ?? []).includes('价格比率') &&
+      ratioChart.hasValueFormatter === false
+    : ratioAxes.length === 1 && ratioLines.length === 0 && ratioChart.hasValueFormatter === false;
   check(
     'AC10 Token 图按 DS 数据叠加价格比率折线，无 DS 数据时隐藏',
-    ratioShown &&
-      typeof ratioChart.ratioTip === 'string' &&
-      ratioChart.ratioTip.includes('4.16×'),
+    ratioShown,
     `ratios=${ratioApi.ratios?.length ?? 0}、y 轴 ${ratioAxes.length} 个、折线 ${ratioLines.length} 条、` +
-      `右轴=${ratioAxes[1]?.name ?? '无'}、tooltip 比率=${ratioChart.ratioTip?.includes('4.16×') ?? false}`,
+      `右轴=${ratioAxes[1]?.name ?? '无'}、死配置已移除=${ratioChart.hasValueFormatter === false}`,
   );
+
+  const ratioTipOk =
+    typeof ratioChart.ratioTip === 'string' &&
+    ratioChart.ratioTip.includes('DeepSeek 费用比率：4.16×') &&
+    ratioChart.ratioTip.includes('1.2K') &&
+    !ratioChart.ratioTip.includes('模型乙') &&
+    !ratioChart.ratioTip.includes('ERROR');
+  check(
+    'AC10 tooltip 比率行带标题与 ×，柱子仍按原规则过滤排序',
+    hasRatios ? ratioTipOk : 'skip',
+    hasRatios
+      ? `标题=${ratioChart.ratioTip?.includes('DeepSeek 费用比率') ?? false}、` +
+        `柱子格式=${ratioChart.ratioTip?.includes('1.2K') ?? false}、` +
+        `0 值隐藏=${!(ratioChart.ratioTip ?? '').includes('模型乙')}`
+      : '当前区间无 DS 请求，比率 tooltip 未覆盖',
+  );
+
+  await clickQuick(evaluate, 'thirtyDays');
+  const ratioModelRows = (await fetchJson('/api/breakdown?dim=model')).rows.filter(
+    (row) => row.totalTokens > 0,
+  );
+  const ratioCandidates = await Promise.all(
+    ratioModelRows.map(async (row) => {
+      const body = await fetchJson(
+        `/api/timeseries?model=${encodeURIComponent(row.key)}&from=${addDays(today, -29)}&to=${today}`,
+      );
+      return { key: row.key, empty: Array.isArray(body.ratios) && body.ratios.length === 0 };
+    }),
+  );
+  const nonDsKey = ratioCandidates.find((item) => item.empty)?.key;
+  if (nonDsKey) {
+    await selectModel(evaluate, nonDsKey);
+    await wait(600);
+    const nonDsChart = await readChart(evaluate);
+    const pageText = await evaluate(`document.body.innerText`);
+    check(
+      'AC14 筛选非 DS 模型时比率折线整体隐藏，页面无新增文案',
+      (nonDsChart.yAxes ?? []).length === 1 &&
+        (nonDsChart.ratioSeries ?? []).length === 0 &&
+        !pageText.includes('DeepSeek 费用比率'),
+      `模型=${nonDsKey}、y 轴 ${(nonDsChart.yAxes ?? []).length} 个、` +
+        `折线 ${(nonDsChart.ratioSeries ?? []).length} 条、` +
+        `新增文案=${pageText.includes('DeepSeek 费用比率')}`,
+    );
+    await selectModel(evaluate, '');
+    await wait(600);
+  } else {
+    check('AC14 筛选非 DS 模型时比率折线整体隐藏，页面无新增文案', 'skip', '当前区间没有可筛的非 DS 模型');
+  }
 
   await clickQuick(evaluate, 'thirtyDays');
   await wait(1200);
@@ -1160,8 +1215,11 @@ async function main() {
 
   socket.close();
 
-  const failed = results.filter((item) => !item.ok);
-  console.log(`\n合计 ${results.length} 项，通过 ${results.length - failed.length} 项，失败 ${failed.length} 项`);
+  const failed = results.filter((item) => item.ok === false);
+  const skipped = results.filter((item) => item.ok === 'skip');
+  console.log(
+    `\n合计 ${results.length} 项，通过 ${results.length - failed.length - skipped.length} 项，失败 ${failed.length} 项，未覆盖 ${skipped.length} 项`,
+  );
   if (failed.length > 0) {
     process.exitCode = 1;
   }

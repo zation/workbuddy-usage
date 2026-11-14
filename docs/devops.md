@@ -8,6 +8,7 @@
   注意：PATH 首位是 WorkBuddy 托管的 v22.22.2（`~/.workbuddy/binaries/node/versions/`）。实测 22.22.2 也能直接加载 `node:sqlite`（22.13.0 起已取消 `--experimental-sqlite`），但会打印 `ExperimentalWarning`；项目仍要求 24，理由见 [technical-architecture.md](./technical-architecture.md)。若终端里 `node -v` 显示 22，用绝对路径调用，或把系统 Node 目录调到 PATH 前面。
 - 首次拉取后安装依赖：`npm install`。
 - 日常检查：`npm run typecheck`（独立类型检查）、`npm test`（Vitest）、`npm run build`（服务端 tsc + 前端 Vite）。项目未配置 lint（无 ESLint / Prettier 依赖），因此没有 lint 检查项。
+- 沙箱内曾出现 vitest 5.1.0 无法建立 runner 上下文（`Cannot read properties of undefined (reading 'config')`，最小探针即可复现，与项目代码、Node 版本、pool 模式、Vite 缓存和 `NODE_OPTIONS` 均无关），当时以开发者本地 `npm test` 输出作为正式回归证据；该环境差异已消失，当前环境可直接执行 `npm test`。若再次出现，仍按「本地补跑 + 沙箱等价断言」处理，不得删除测试或放宽标准。
 - 无需数据库服务、无需 Docker、无需 Python。
 
 ## 密钥与配置
@@ -46,7 +47,7 @@ dev 的 Vite proxy 只转发 `^/api/` 前缀。不要改回 `/api`：前端模�
 
 ## 交互验收
 
-交互类验收用 `scripts/panel-acceptance.mjs`：脚本通过 CDP 驱动本机 Chrome，核对 tab 与 ARIA 关联（含非激活面板 `hidden` 与 canvas 数）、筛选两入口一致、拆分列表行数与滚动、明细折叠与懒加载、token 单位、缓存命中率、0 值隐藏与模型下拉可切换。时间区核对四个快捷按钮与「更多」展开的起止框的双向联动、默认与重置为近 3 天、非法区间的错误提示与清空回弹、面板层补轴（近 7 天画满 7 格）、100 天可用与 101 天被前端和 API 一致拦截；分组列表核对按模型分段的段色与段宽之和、hover 与键盘 focus 的明细提示。趋势图部分从页面已加载的 ECharts 实例读取 y 轴刻度、tooltip、x 轴类目与 series 颜色，另核对单位无「万 / 亿」/ 积分 `k` 与配色跨筛选稳定。趋势图部分另核对 Token 图的价格比率折线（第二 Y 轴 `×`、单条折线、`null` 断线、不进图例、tooltip 按 `seriesId` 分流；区间内无 DS 数据时整条隐藏且不提示）。逐项打印 PASS/FAIL，失败时退出码为 1。
+交互类验收用 `scripts/panel-acceptance.mjs`：脚本通过 CDP 驱动本机 Chrome，核对 tab 与 ARIA 关联（含非激活面板 `hidden` 与 canvas 数）、筛选两入口一致、拆分列表行数与滚动、明细折叠与懒加载、token 单位、缓存命中率、0 值隐藏与模型下拉可切换。时间区核对四个快捷按钮与「更多」展开的起止框的双向联动、默认与重置为近 3 天、非法区间的错误提示与清空回弹、面板层补轴（近 7 天画满 7 格）、100 天可用与 101 天被前端和 API 一致拦截；分组列表核对按模型分段的段色与段宽之和、hover 与键盘 focus 的明细提示。趋势图部分从页面已加载的 ECharts 实例读取 y 轴刻度、tooltip、x 轴类目与 series 颜色，另核对单位无「万 / 亿」/ 积分 `k` 与配色跨筛选稳定。趋势图部分另核对 Token 图的价格比率折线（第二 Y 轴 `×`、单条折线、`null` 断线、不进图例、tooltip 按 `seriesId` 分流；比率行显示「DeepSeek 费用比率：`<数值>`×」，不参与柱子的 0 值过滤与降序；区间内无 DS 数据时整条隐藏且不提示）。AC14 会实际切换到非 DS 模型筛选，断言折线隐藏且页面无新增文案。数值格式断言从自定义 `formatter` 的真实输出取样，不读取 `tooltip.valueFormatter`。逐项打印 PASS / FAIL / SKIP，样本区间无 DS 请求时依赖折线数据的断言记为「未覆盖」而非通过；存在 FAIL 时退出码为 1。
 
 脚本取「全量区间」的方式是 `GET /api/timeseries`（不带日期参数）返回 `rows` 里的最早 `date` 到当天，所以**数据跨度不能超过 100 天**。当前样本约 47 天；若本机数据增长到超过 100 天，脚本会在建立宽区间前直接报错。此时把依赖全量区间的断言改为直接读取不带日期参数的 API，或临时用 `WORKBUDDY_HOME` 指向样本目录后重建索引再跑。
 
