@@ -98,13 +98,56 @@
 
 # T004 迁移既有 26 项覆盖为可见行为用例
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Plan AD-4、AD-9 与 Spec R8、AC10 逐项重写用例：断言 DOM 文本、计算样式、几何、tooltip 浮层与网络请求等用户可见结果，不读 ECharts 实例、不调用 option / formatter，格式化与刻度逻辑留在既有 Vitest 单测。逐项对照记录写进本任务实施记录，全部 PASS、退出码 0，无删除覆盖、跳过断言或放宽标准。
 
 必要依赖：T001、T002、T003。
 
 修改范围：`tests/e2e/`。
+
+实施结果：26 项覆盖按验收主题重写为 27 条框架用例（26 项覆盖 + 首屏 smoke + 样本自检），分布于 `tests/e2e/structure.spec.ts`（4）、`filters.spec.ts`（8）、`metrics.spec.ts`（5）、`trend.spec.ts`（6）、`breakdown.spec.ts`（2）。对照关系（基线序号见 T001 表）：
+
+| # | 新用例 | 判定方式 | 结果 |
+| --- | --- | --- | --- |
+| 1 | structure「不存在配色专用的全量模型请求」 | 页面生命周期内全部请求中，没有只带 `dim=model` 的 `/api/breakdown` | PASS |
+| 2 | structure「也不产生外部域名请求」 | 全部请求 hostname 为 `127.0.0.1` | PASS |
+| 3 | structure「两个 tab、默认激活 Token、aria 关联与单图表渲染」 | tab / tabpanel 属性与 `aria-controls` 指向、隐藏面板对应、`canvas` 计数 1 | PASS |
+| 4 | structure「明细默认折叠且不请求，展开后按时间降序并表内滚动」 | 折叠时无 `/api/requests`；展开后 1 次请求含 `sort=startedAt&order=desc`；15 行；`max-height: 440px`；`aria-sort=descending` | PASS |
+| 5 | structure「拆分列表最多 8 行、行高一致、无内部滚动且项数为全量」 | 3 个面板逐项核对行数 ≤8、行高单值、`scrollHeight ≤ clientHeight+1`、项数 10 ≥ shown 8 | PASS |
+| 6 | metrics「token 使用 K/M/B、页面与 tooltip 无中文单位」 | 指标卡数值正则、请求数整数、页面无「万 / 亿」、tooltip 柱子行按 K/M/B 且至少有单位缩写（比率行单列） | PASS |
+| 7 | metrics「缓存命中卡显示命中率，与样本手算一致」 | 卡片 suffix 等于样本手算 34.6%（1800 / 5208） | PASS |
+| 8 | filters「列表点击与下拉框写入同一份筛选」 | 点击分组行与下拉选择同一键后，最近一次 summary 请求 URL 完全相等 | PASS |
+| 9 | metrics「拆分色段首帧即最终色，重复读取与跨筛选都不变色」 | 首帧段色等于模型固定色；1.5s 后与切换 7 天再回 3 天后不变 | PASS |
+| 10 | metrics「色点跨趋势图、拆分、下拉与明细一致」 | 按模型色点、下拉选项色点、分组段色、明细色点、canvas 柱像素、筛选钮色点六处同色 | PASS |
+| 11 | metrics「0 值隐藏、下拉可切换、积分刻度无 k」 | 两个 tab 的模型选项集合等于可见模型（kimi / mimo 各自隐藏）、选中后仍可切换、积分两位小数且无 K/M/B 缩写 | PASS |
+| 12 | filters「分组下拉无日期目录条目且与聚合结果一致」 | 选项集合等于 `/api/breakdown?dim=group` 的键集合、无自动目录条目、「默认」两侧同时存在 | PASS |
+| 13 | filters「空范围内「默认」不占位」 | 空区间下拉仅空值项、接口 rows 为空 | PASS |
+| 14 | filters「选中「默认」后各视图只含自动分组数据」 | 分组列表 1 行「默认」、合计 500、模型 / 会话下拉各剩 1 项、趋势图 tooltip 仅 `Hy4：500`、明细 1 行且分组为「默认」 | PASS |
+| 15 | filters「三个维度下拉 ARIA 一致…」 | 三处 `role / haspopup / expanded / controls / activedescendant / selected`；ArrowDown → ArrowDown → Enter 选中、Escape 与外部点击关闭；时间区四按钮 + 两日期框 | PASS |
+| 16 | trend「两张趋势图 tooltip 过滤 0 值并保留日期与「无数据」」 | 两个 tab 的 tooltip 行序等于期望当日模型序列（0 值模型不出现）；空日 11-11 显示日期 + 「无数据」 | PASS |
+| 17 | filters「首屏默认近 3 天，日期框由「更多」展开」 | 四按钮顺序、threeDays 高亮、11-12 → 11-14、时间区无 select、日期框默认隐藏 | PASS |
+| 18 | filters「快捷按钮回填区间与查询串，手改日期按反向匹配重算高亮」 | 四个预设的 from / to / 高亮 / 查询串；手改回预设重新高亮；非预设不高亮 | PASS |
+| 19 | filters「起始晚于结束不写入筛选且不发请求，清空日期框回弹」 | 错误文案一致、起始框回弹、无新 summary 请求；清空结束日期回弹到生效值 | PASS |
+| 20 | trend「`/api/timeseries` 不含 days，近 7 天画满 7 格」 | 响应无 `days`；沿轴线逐类目取 tooltip 日期，7 天全部连续命中 | PASS |
+| 21 | trend「100 天区间正常生效，101 天被前端与 API 用同一文案拦截」 | 100 天首末类目分别为区间首末；101 天错误文案、无请求、API 400 同文案；不带日期 200 且有数据；恢复 7 天 | PASS |
+| 22 | trend「Token 图按 DS 数据叠加价格比率行，积分图没有」 | 11-12 / 11-13 的 tooltip 出现比率行且数值等于样本口径；积分图无比率行 | PASS |
+| 23 | trend「比率行带标题与 ×，柱子仍按原规则过滤排序」 | 比率行在柱子之后、含标题与 `×`；同日柱子降序、0 值模型不出现 | PASS |
+| 24 | trend「筛选非 DS 模型时比率整体隐藏，页面无新增文案」 | 选 `hy4` 后 tooltip 无比率行、`body.innerText` 无该文案 | PASS |
+| 25 | breakdown「分组条按模型分段，段色与趋势图一致，段宽之和等于原条宽」 | 段数 4、段色等于模型色、段宽和与 `share × 条宽` 相差 ≤1.5px、其它两个列表 0 段且保留单色条 | PASS |
+| 26 | breakdown「hover 与键盘 focus 都浮出分组明细…」 | 提示 key / title / 行序 / 数值、`pointer-events: none`、行高不变、移出关闭、focus 内容一致 | PASS |
+
+判定方式变化（覆盖项与标准保留，实现读法按框架重写）：趋势图 y 轴刻度与 series 结构无法在不读图表内部的情况下取得，改由既有 `trend-chart-option.test.ts` 与 `format` 单测锁定，e2e 只断言 tooltip、指标卡与明细的可见文本；「首帧颜色」改为「首帧即模型固定色 + 重复读取与跨筛选不变」；类目数改为「扫描 x 轴线像素定位类目中心后逐类目 hover 取日期」——7 天逐个枚举 7 个日期，100 天验证首末类目落在区间首末；整段空区间因面板不渲染图表，改由样本自检与接口断言覆盖，「无数据」分支用区间内的空日验证。
+
+验证：
+- `npm run typecheck`：退出码 0。
+- `npm test`：18 个文件 163 passed / 1 skipped，与迁移前一致。
+- `npm run acceptance`：27 passed，退出码 0，耗时约 29s；连续运行两次结果一致（另见 T011 汇总）。
+- 失败诊断：故意保留的断言信息包含用例名 + 断言上下文，失败产物在 `.data/e2e-results/`（本次调试期间已验证截图与 error-context 生成）。
+
+必要的问题与决策：用 canvas 像素定位而不是读图表实例——x 轴线 `#e6e8eb` 会被柱段遮断，取该颜色最左 / 最右像素得到绘图区边界，再按类目数均分定位；这是可见渲染结果，且比坐标估算稳定（估算版本曾把 3 个类目压到中间导致日期错位）。canvas 绘制无事件可等，`pollCanvas` 以 100ms 间隔重试至出图，仅用于绘制就绪，不替代网络等待。
+
+提交：
 
 # T005 聚焦强度常量与纯函数单测
 

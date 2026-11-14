@@ -63,7 +63,7 @@ export class PanelPage {
   }
 
   get trendTooltip(): Locator {
-    return this.page.locator('.trend-tooltip');
+    return this.page.locator('.chart .trend-tooltip, .chart div[style*="position: absolute"]').first();
   }
 
   get rowTooltip(): Locator {
@@ -94,17 +94,23 @@ export class PanelPage {
   }
 
   metric(label: string): Locator {
-    return this.page
-      .locator('.metric-card')
-      .filter({ has: this.page.locator('.metric-label', { hasText: label }) })
-      .locator('.metric-value');
+    return this.metricCard(label).locator('.metric-value');
+  }
+
+  /** 指标数值本身（不含后缀），与卡片渲染的文本节点一致。 */
+  async metricValue(label: string): Promise<string> {
+    return this.metric(label).evaluate((node) => node.firstChild?.textContent?.trim() ?? '');
   }
 
   metricSuffix(label: string): Locator {
+    return this.metricCard(label).locator('.metric-suffix');
+  }
+
+  private metricCard(label: string): Locator {
     return this.page
       .locator('.metric-card')
       .filter({ has: this.page.locator('.metric-label', { hasText: label }) })
-      .locator('.metric-suffix');
+      .first();
   }
 
   /** 等一次筛选变更落地：五个查询都会重取，等齐其中三类再断言。 */
@@ -128,6 +134,15 @@ export class PanelPage {
   async quick(key: string): Promise<void> {
     await this.applyFilter(() => this.page.locator(`[data-quick=${key}]`).click());
     await expect(this.page.locator(`[data-quick=${key}]`)).toHaveAttribute('aria-pressed', 'true');
+  }
+
+  async reset(): Promise<void> {
+    const button = this.page.getByRole('button', { name: '重置' });
+    if (await button.isDisabled()) {
+      return;
+    }
+    await this.applyFilter(() => button.click());
+    await expect(button).toBeDisabled();
   }
 
   async openDateRange(): Promise<void> {
@@ -292,8 +307,9 @@ export class PanelPage {
     await this.page.mouse.move(point.x, point.y);
   }
 
+  /** hover 行的名称区，避免指针落在数值条上而触发段级状态。 */
   async hoverRow(title: string, index = 0): Promise<void> {
-    await this.rows(title).nth(index).hover();
+    await this.rows(title).nth(index).locator('.breakdown-name').hover();
   }
 
   async focusRow(title: string, index = 0): Promise<void> {
@@ -363,6 +379,81 @@ export class PanelPage {
     await this.page.mouse.move(box.x + box.width * 0.5, box.y + 4);
   }
 
+  /** tooltip 按 `<br/>` 分行，innerText 会把行还原成换行。 */
+  async trendTooltipLines(): Promise<string[]> {
+    const tip = this.trendTooltip;
+    await expect(tip).toBeVisible();
+    const text = await tip.innerText();
+    return text
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  }
+
+  async trendTooltipDate(): Promise<string> {
+    return (await this.trendTooltipLines())[0] ?? '';
+  }
+
+  /** canvas 绘制没有可等待的事件，只能短间隔重试到出图。 */
+  private async pollCanvas<T>(read: () => Promise<T | null>): Promise<T> {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const value = await read();
+      if (value !== null) {
+        return value;
+      }
+      await this.page.waitForTimeout(100);
+    }
+    throw new Error('趋势图尚未完成绘制');
+  }
+
+  /**
+   * 日期轴类目均分在 x 轴线上。x 轴线颜色为 `#e6e8eb`，会被柱段遮住中断，
+   * 因此取该颜色在画布下半部的最左与最右像素作为绘图区边界，而不是最长连续段。
+   */
+  async axisBounds(): Promise<{ left: number; right: number }> {
+    return this.pollCanvas(async () =>
+      this.chart.locator('canvas').first().evaluate((node) => {
+        const canvas = node as HTMLCanvasElement;
+        const context = canvas.getContext('2d');
+        if (!context) {
+          return null;
+        }
+        const { width, height } = canvas;
+        const top = Math.floor(height / 2);
+        const rows = height - top;
+        const data = context.getImageData(0, top, width, rows).data;
+        let left = Number.POSITIVE_INFINITY;
+        let right = -1;
+        for (let y = 0; y < rows; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            const index = (y * width + x) * 4;
+            if (
+              data[index] === 230 &&
+              data[index + 1] === 232 &&
+              data[index + 2] === 235 &&
+              data[index + 3] === 255
+            ) {
+              left = Math.min(left, x);
+              right = Math.max(right, x);
+            }
+          }
+        }
+        return right - left > 100 ? { left, right } : null;
+      }),
+    );
+  }
+
+  /** 按类目序号 hover：`count` 为当前区间的天数。 */
+  async hoverAxisIndex(index: number, count: number): Promise<void> {
+    const box = await this.chartBox();
+    const bounds = await this.axisBounds();
+    const step = (bounds.right - bounds.left) / count;
+    await this.page.mouse.move(
+      box.x + bounds.left + (index + 0.5) * step,
+      box.y + box.height * 0.5,
+    );
+  }
+
   async moveAway(): Promise<void> {
     await this.page.mouse.move(2, 2);
   }
@@ -387,38 +478,40 @@ export class PanelPage {
    * 跳过底部图例区域并要求连续 10 像素以上：图例色点直径 8px，不会被误判成柱段。
    */
   async canvasPointOf(color: string): Promise<{ x: number; y: number }> {
-    const point = await this.chart.locator('canvas').first().evaluate((node, target) => {
-      const canvas = node as HTMLCanvasElement;
-      const context = canvas.getContext('2d');
-      if (!context) {
-        return null;
-      }
-      const hex = /^#([0-9a-f]{6})$/i.exec(target);
-      if (!hex) {
-        return null;
-      }
-      const value = Number.parseInt(hex[1] as string, 16);
-      const want = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
-      const { width, height } = canvas;
-      const data = context.getImageData(0, 0, width, height).data;
-      const maxY = height - 40;
-      for (let y = 0; y < maxY; y += 1) {
-        let run = 0;
-        for (let x = 0; x < width; x += 1) {
-          const index = (y * width + x) * 4;
-          const match =
-            data[index] === want[0] &&
-            data[index + 1] === want[1] &&
-            data[index + 2] === want[2] &&
-            data[index + 3] === 255;
-          run = match ? run + 1 : 0;
-          if (run === 10) {
-            return { x: x - 4, y };
+    const point = await this.pollCanvas(async () =>
+      this.chart.locator('canvas').first().evaluate((node, target) => {
+        const canvas = node as HTMLCanvasElement;
+        const context = canvas.getContext('2d');
+        if (!context) {
+          return null;
+        }
+        const hex = /^#([0-9a-f]{6})$/i.exec(target);
+        if (!hex) {
+          return null;
+        }
+        const value = Number.parseInt(hex[1] as string, 16);
+        const want = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+        const { width, height } = canvas;
+        const data = context.getImageData(0, 0, width, height).data;
+        const maxY = height - 40;
+        for (let y = 0; y < maxY; y += 1) {
+          let run = 0;
+          for (let x = 0; x < width; x += 1) {
+            const index = (y * width + x) * 4;
+            const match =
+              data[index] === want[0] &&
+              data[index + 1] === want[1] &&
+              data[index + 2] === want[2] &&
+              data[index + 3] === 255;
+            run = match ? run + 1 : 0;
+            if (run === 10) {
+              return { x: x - 4, y };
+            }
           }
         }
-      }
-      return null;
-    }, color);
+        return null;
+      }, color),
+    );
     if (!point) {
       throw new Error(`canvas 上找不到颜色 ${color} 的色块`);
     }

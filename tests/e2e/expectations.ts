@@ -67,7 +67,7 @@ export interface RangeExpectation {
   models: ModelTotal[];
   /** 当前主指标下可见（非 0）的模型业务键，集合语义与面板 0 值隐藏一致。 */
   visibleModelKeys: (metric: Metric) => string[];
-  /** 服务层返回顺序：主指标降序、同值按业务键升序。 */
+  /** 下拉与图表使用的模型顺序：先按 0 值隐藏过滤，再按主指标降序、同值按业务键升序。 */
   orderedModels: (metric: Metric) => ModelTotal[];
   groupRows: (metric: Metric) => GroupTotal[];
   sessionRows: (metric: Metric) => SessionTotal[];
@@ -99,6 +99,16 @@ const GROUP_BY_SESSION: Record<string, { key: string; name: string }> = {
 
 function value(item: { tokens: number; credit: number }, metric: Metric): number {
   return metric === 'tokens' ? item.tokens : item.credit;
+}
+
+/** 计算样式返回 `rgb(r, g, b)`，色表返回十六进制，比较前统一格式。 */
+export function rgbOf(hex: string): string {
+  const numeric = Number.parseInt(hex.replace('#', ''), 16);
+  return `rgb(${(numeric >> 16) & 255},${(numeric >> 8) & 255},${numeric & 255})`;
+}
+
+export function normalizeColor(color: string): string {
+  return color.replace(/\s+/gu, '');
 }
 
 function sessionName(session: SampleSession): string {
@@ -254,7 +264,12 @@ export function expectRange(from: string, to: string): RangeExpectation {
     },
     models,
     visibleModelKeys,
-    orderedModels: (metric) => sortByValueDesc(models, metric, (model) => model.key),
+    orderedModels: (metric) =>
+      sortByValueDesc(
+        models.filter((model) => value(model, metric) !== 0),
+        metric,
+        (model) => model.key,
+      ),
     groupRows: (metric) => {
       const visible = new Set(visibleModelKeys(metric));
       return sortByValueDesc(
