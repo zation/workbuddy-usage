@@ -6,6 +6,7 @@ import {
   buildTimeseriesAxis,
   cacheHitRate,
   focusOpacity,
+  hitZoneWidths,
   segmentValue,
   segmentWidths,
   visibleBreakdownRows,
@@ -297,5 +298,33 @@ describe('聚焦不透明度', () => {
   it('按业务键判定，展示名重名不影响结果', () => {
     expect(focusOpacity('hy4', 'hy4-free')).toBe(FOCUS_DIM_OPACITY);
     expect(focusOpacity('hy4-free', 'hy4')).toBe(FOCUS_DIM_OPACITY);
+  });
+});
+
+describe('段级命中区宽度', () => {
+  it('窄段扩到最小命中宽度，宽段按可让出宽度等比例扣除，总和不变', () => {
+    const widths = [74, 25, 0.7];
+    const zones = hitZoneWidths(widths, 3);
+    expect(zones[2]).toBeCloseTo(3, 10);
+    expect(zones[0]).toBeLessThan(74);
+    expect(zones[1]).toBeLessThan(25);
+    expect(zones[1]).toBeGreaterThanOrEqual(3);
+    expect(zones.reduce((sum, width) => sum + width, 0)).toBeCloseTo(99.7, 10);
+  });
+
+  it('没有窄段时原样返回，命中区与视觉段宽一致', () => {
+    expect(hitZoneWidths([50, 40], 3)).toEqual([50, 40]);
+  });
+
+  it('全部窄于最小命中宽度时按平均值均分，总和不变且相邻不重叠', () => {
+    const zones = hitZoneWidths([1, 1, 2], 8);
+    expect(zones).toEqual([4 / 3, 4 / 3, 4 / 3]);
+    expect(zones.reduce((sum, width) => sum + width, 0)).toBeCloseTo(4, 10);
+  });
+
+  it('空段、零总量与非正阈值都原样返回', () => {
+    expect(hitZoneWidths([], 8)).toEqual([]);
+    expect(hitZoneWidths([0, 0], 8)).toEqual([0, 0]);
+    expect(hitZoneWidths([10, 20], 0)).toEqual([10, 20]);
   });
 });

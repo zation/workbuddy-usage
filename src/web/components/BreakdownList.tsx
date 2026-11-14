@@ -1,7 +1,7 @@
-import { useId, useState } from 'react';
-import type { CSSProperties } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import type { BreakdownRow } from '../../shared/types.ts';
-import { segmentWidths, visibleBreakdownRows, visibleSegments } from '../display.ts';
+import { focusOpacity, hitZoneWidths, segmentWidths, visibleBreakdownRows, visibleSegments } from '../display.ts';
 import type { ModuleTab } from '../display.ts';
 import { formatCredit, formatPercent, formatTokens } from '../format.ts';
 import { modelColor } from '../model-colors.ts';
@@ -25,6 +25,8 @@ interface BreakdownListProps {
 
 const MAX_VISIBLE_ROWS = 8;
 const TOOLTIP_FLIP_THRESHOLD = 220;
+/** 段级命中区的最小宽度（像素）：视觉段宽不变，只把过窄的段扩展成可稳定 hover 的区域。 */
+const MIN_HIT_WIDTH_PX = 8;
 
 export function BreakdownList({
   title,
@@ -40,13 +42,34 @@ export function BreakdownList({
 }: BreakdownListProps) {
   const metricKey: ModuleTab = metric === 'tokens' ? 'token' : 'credit';
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [focusedModel, setFocusedModel] = useState<string | null>(null);
   const [placement, setPlacement] = useState<'top' | 'bottom'>('top');
+  const [barWidth, setBarWidth] = useState(0);
+  const barRef = useRef<HTMLSpanElement | null>(null);
   const tooltipId = useId();
 
   const sorted = [...rows].sort((left, right) =>
     metric === 'tokens' ? right.totalTokens - left.totalTokens : right.credit - left.credit,
   );
   const visible = visibleBreakdownRows(sorted, MAX_VISIBLE_ROWS);
+
+  // 命中区宽度用百分比表达，需要知道数值条的实际像素宽度
+  useEffect(() => {
+    const node = barRef.current;
+    if (!stackByModel || !node) {
+      return;
+    }
+    const update = () => setBarWidth(node.getBoundingClientRect().width);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [stackByModel, visible.length]);
+
+  // 换筛选、换 tab 的数据后不把上一个模型残留到新的模型集合上
+  useEffect(() => {
+    setFocusedModel(null);
+  }, [rows, metric]);
 
   const activate = (key: string, element: HTMLElement) => {
     setActiveKey(key);
@@ -55,7 +78,28 @@ export function BreakdownList({
     );
   };
 
-  const deactivate = () => setActiveKey(null);
+  const deactivate = () => {
+    setActiveKey(null);
+    setFocusedModel(null);
+  };
+
+  const handleZoneOver = (event: ReactMouseEvent<HTMLElement>) => {
+    const zone = (event.target as HTMLElement).closest('.breakdown-hit-zone');
+    const model = zone instanceof HTMLElement ? zone.dataset.model : undefined;
+    if (model) {
+      setFocusedModel(model);
+    }
+  };
+
+  const handleZoneOut = (event: ReactMouseEvent<HTMLElement>) => {
+    const next = event.relatedTarget;
+    if (next instanceof HTMLElement && next.closest('.breakdown-hit-zone')) {
+      return;
+    }
+    setFocusedModel(null);
+  };
+
+  const minHitPercent = barWidth > 0 ? (MIN_HIT_WIDTH_PX / barWidth) * 100 : 0;
 
   return (
     <div className="panel breakdown">
@@ -81,13 +125,14 @@ export function BreakdownList({
           className="breakdown-list"
           style={{ '--rows': visible.length } as CSSProperties}
         >
-          {visible.map((row) => {
+          {visible.map((row, rowIndex) => {
             const value = metric === 'tokens' ? row.totalTokens : row.credit;
             const share = metric === 'tokens' ? row.tokenShare : row.creditShare;
             const segments = stackByModel
               ? visibleSegments(row, metricKey, visibleModels ?? new Set())
               : [];
             const widths = segmentWidths(share, value, segments, metricKey);
+            const hitWidths = minHitPercent > 0 ? hitZoneWidths(widths, minHitPercent) : widths;
             const active = stackByModel && activeKey === row.key;
 
             return (
@@ -122,20 +167,38 @@ export function BreakdownList({
                     </span>
                   </span>
                   <span className="breakdown-meter">
-                    <span className="breakdown-bar">
+                    <span className="breakdown-bar" ref={rowIndex === 0 ? barRef : undefined}>
                       {widths.length > 0 ? (
-                        <span className="breakdown-segments">
-                          {segments.map((segment, index) => (
-                            <span
-                              key={`${segment.model}-${index}`}
-                              className="breakdown-segment"
-                              style={{
-                                width: `${widths[index] ?? 0}%`,
-                                backgroundColor: modelColor(segment.model),
-                              }}
-                            />
-                          ))}
-                        </span>
+                        <>
+                          <span className="breakdown-segments">
+                            {segments.map((segment, index) => (
+                              <span
+                                key={`${segment.model}-${index}`}
+                                className="breakdown-segment"
+                                data-model={segment.model}
+                                style={{
+                                  width: `${widths[index] ?? 0}%`,
+                                  backgroundColor: modelColor(segment.model),
+                                  opacity: focusOpacity(focusedModel, segment.model),
+                                }}
+                              />
+                            ))}
+                          </span>
+                          <span
+                            className="breakdown-hit-layer"
+                            onMouseOver={handleZoneOver}
+                            onMouseOut={handleZoneOut}
+                          >
+                            {segments.map((segment, index) => (
+                              <span
+                                key={`hit-${segment.model}-${index}`}
+                                className="breakdown-hit-zone"
+                                data-model={segment.model}
+                                style={{ width: `${hitWidths[index] ?? 0}%` }}
+                              />
+                            ))}
+                          </span>
+                        </>
                       ) : (
                         <span
                           className="breakdown-fill"
@@ -152,6 +215,7 @@ export function BreakdownList({
                     row={row}
                     metric={metricKey}
                     segments={segments}
+                    focusedModel={focusedModel}
                     placement={placement}
                   />
                 ) : null}

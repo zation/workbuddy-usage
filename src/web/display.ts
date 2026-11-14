@@ -86,6 +86,37 @@ export function visibleSegments(
 }
 
 /**
+ * R4：段级命中区宽度。视觉段宽不变，宽度不足的段扩到最小命中宽度，
+ * 缺口只从「本身宽于最小命中宽度」的段按各自可让出的宽度等比例扣除，总和保持不变，
+ * 因此同一指针位置只会落在一个段上。全部段都窄于最小宽度时按平均值均分。
+ */
+export function hitZoneWidths(widths: number[], minWidth: number): number[] {
+  const total = widths.reduce((sum, width) => sum + width, 0);
+  if (widths.length === 0 || total <= 0 || minWidth <= 0) {
+    return [...widths];
+  }
+
+  const deficits = widths.map((width) => Math.max(0, minWidth - width));
+  const needed = deficits.reduce((sum, deficit) => sum + deficit, 0);
+  if (needed === 0) {
+    return [...widths];
+  }
+
+  const spare = widths.map((width) => Math.max(0, width - minWidth));
+  const available = spare.reduce((sum, value) => sum + value, 0);
+  if (available < needed) {
+    const even = total / widths.length;
+    return widths.map(() => even);
+  }
+
+  return widths.map((width, index) =>
+    (deficits[index] ?? 0) > 0
+      ? minWidth
+      : width - ((spare[index] ?? 0) / available) * needed,
+  );
+}
+
+/**
  * R5：把行占比按各段数额分摊成条宽，各段之和等于原单色条宽。
  * 行值为 0、没有有效段或占比非正时不画色段；最后一段用差值补齐，避免浮点误差。
  */

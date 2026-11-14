@@ -192,13 +192,25 @@
 
 # T007 分组条与浮层聚焦
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R4、R5 与 Plan AD-7 实现段级 hover 聚焦、极窄段最小命中区、浮层模型行聚焦与状态清除；段集合、段序、段色、段宽之和与条长不变，同一指针位置只判定一个模型，整行 hover / 键盘 focus 的既有规则不变。完成条件：满足 AC3、AC4、AC6 的列表部分。
 
 必要依赖：T005。
 
 修改范围：`src/web/components/BreakdownList.tsx`、`src/web/components/BreakdownTooltip.tsx`、`src/web/styles.css`。
+
+实施结果：新增纯函数 `hitZoneWidths(widths, minWidth)`（`src/web/display.ts`）：视觉段宽不变，窄于最小命中宽度的段扩到阈值，缺口只从「本身宽于阈值」的段按各自可让出的宽度等比例扣除，总和保持不变，因此命中区首尾相接、同一指针位置只会落在一个段上；全部段都窄于阈值时按平均值均分。`BreakdownList` 用 `ResizeObserver` 量出首行数值条的像素宽度，把 8px 阈值换算成百分比；色段加 `data-model` 并按 `focusOpacity` 写内联 opacity；色段之上叠一层透明命中区（`.breakdown-hit-layer` / `.breakdown-hit-zone`，层 `pointer-events: none`、区域 `auto`），用事件委托在 `mouseover` / `mouseout` 时设置与清除聚焦；`rows` / `metric` 变化时清空聚焦，行 `mouseleave` 同时清整行状态与聚焦，整行 hover / focus 浮出提示与点击筛选取值均不变。`BreakdownTooltip` 新增 `focusedModel`，按业务键给每个模型行写 opacity，内容、降序、0 值过滤、`pointer-events: none` 与定位不变。`styles.css` 把 `.breakdown-bar` 改为 `position: relative` 并新增命中区样式。
+
+必要的问题与决策：最小命中宽度取 8px（实现细节，Plan 允许在 Tasks 阶段按实测确定）：样本极窄段视觉宽度为 1.44px，扩到 8px 后足够稳定命中，同时相邻宽段只让出约 3px，视觉无感。命中区做成独立覆盖层而不是给色段加伪元素，是为了让「扩展量」能按相邻段可让出的宽度精确扣除，保证不越过边界、不覆盖条上未着色的空白部分。
+
+验证：
+- `npm run typecheck`：退出码 0。
+- `npm test`：18 个文件 176 passed / 1 skipped（新增 `hitZoneWidths` 4 条）。
+- `npm run acceptance`：27 passed，退出码 0。
+- 探针实测（验证后已删除）：首行视觉段宽 145.31 / 58.13 / 24.22 / 1.44px，命中区宽 140.89 / 56.50 / 23.69 / 8.00px、左界 0 / 140.89 / 197.39 / 221.08（首尾相接、无重叠），总宽 229.08 与视觉段宽之和 229.10 一致；hover 极窄段后四个色段 opacity 为 0.4 / 0.4 / 0.4 / 1，浮层四个模型行为 0.4 / 0.4 / 0.4 / 1，移出后全部回到 1。
+
+提交：
 
 # T008 hover 聚焦的 e2e 断言
 

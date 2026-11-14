@@ -1,4 +1,5 @@
 import type { BreakdownRow, BreakdownSegment } from '../../shared/types.ts';
+import { focusOpacity } from '../display.ts';
 import type { ModuleTab } from '../display.ts';
 import { formatCredit, formatTokens } from '../format.ts';
 import { ModelDot } from './ModelDot.tsx';
@@ -8,11 +9,19 @@ interface BreakdownTooltipProps {
   row: BreakdownRow;
   metric: ModuleTab;
   segments: BreakdownSegment[];
+  focusedModel: string | null;
   placement: 'top' | 'bottom';
 }
 
 /** 整行浮出明细：分组名与合计在上，逐模型数额按降序在下；不接收指针事件。 */
-export function BreakdownTooltip({ id, row, metric, segments, placement }: BreakdownTooltipProps) {
+export function BreakdownTooltip({
+  id,
+  row,
+  metric,
+  segments,
+  focusedModel,
+  placement,
+}: BreakdownTooltipProps) {
   const total = metric === 'token' ? formatTokens(row.totalTokens) : formatCredit(row.credit);
 
   return (
@@ -27,7 +36,11 @@ export function BreakdownTooltip({ id, row, metric, segments, placement }: Break
       ) : (
         <ul className="breakdown-tooltip-list">
           {segments.map((segment, index) => (
-            <li key={`${segment.model}-${index}`}>
+            <li
+              key={`${segment.model}-${index}`}
+              data-model={segment.model}
+              style={{ opacity: focusOpacity(focusedModel, segment.model) }}
+            >
               <ModelDot modelKey={segment.model} />
               <span className="breakdown-tooltip-model">{segment.modelName}</span>
               <span className="breakdown-tooltip-value">

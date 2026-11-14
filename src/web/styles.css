@@ -808,6 +808,7 @@ th[aria-sort='ascending'] .sort-button {
 }
 
 .breakdown-bar {
+  position: relative;
   flex: 1;
   height: 5px;
   border-radius: 999px;
@@ -836,6 +837,23 @@ th[aria-sort='ascending'] .sort-button {
 /* 相邻段用细白线分隔，色值本身不改，保证相近色可辨 */
 .breakdown-segment + .breakdown-segment {
   border-left: 1px solid #ffffff;
+}
+
+/*
+ * 段级命中区：透明覆盖在色段之上，宽度按最小命中宽度收敛且首尾相接，
+ * 因此同一指针位置只会落在一个模型上；不影响段色、段宽与条长。
+ */
+.breakdown-hit-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  pointer-events: none;
+}
+
+.breakdown-hit-zone {
+  height: 100%;
+  flex: 0 0 auto;
+  pointer-events: auto;
 }
 
 .breakdown-share {
