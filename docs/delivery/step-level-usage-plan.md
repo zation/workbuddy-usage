@@ -80,7 +80,7 @@
 | 解析层 | `src/etl/refresh.ts`、`src/etl/dimensions.ts` | 新增 steps 写入；C10 事务内双删；跨文件副本守卫改为按 `request_id` 只留一行并告警 |
 | 数据库 | `src/etl/database.ts` | `SCHEMA_VERSION` 4 → 5；新增 `steps` 表与 `request_id` / `source_file_id` 索引；删除 `requests.is_deepseek_offpeak` 列 |
 | 服务层 | `server/query.ts` | 仅 `getTimeseries` 的比率 SQL 改 JOIN steps 分桶、分子按请求去重；四个主聚合 SQL 与 `buildWhere` 不动 |
-| 共享层 | `src/shared/deepseek-pricing.ts`、`deepseek-offpeak.ts`、`constants.ts`、`types.ts` | 不改函数与常量；`types.ts` 仅在需要新增内部 Step 类型时扩展，API 契约类型不变 |
+| 共享层 | `src/shared/deepseek-pricing.ts`、`deepseek-offpeak.ts`、`constants.ts`、`types.ts` | 不改函数与常量；`types.ts` 新增内部 Step 类型、让 `ParsedRequest` 携带 Step 事实并移除请求级 `isDeepseekOffpeak`、扩展告警键，对外的 API 契约类型不变 |
 | 前端 | `src/web/App.tsx`、`src/web/components/ModuleSection.tsx` | Token 模块不再传 `description`；`description` 改为可选并条件渲染；积分模块与 `format.ts` 不动 |
 | 测试 | `tests/*.test.ts`、`tests/e2e/*`、`tests/helpers/*`、`scripts/e2e-fixture.mjs` | 期望值按新口径重算；e2e 样本扩展为多步骤 + 跨档 + DS / 非 DS；推导函数改按步 |
 | 长期文档 | `product-brief.md`、`technical-architecture.md`、`data-model.md`、`integration.md`、`deepseek-pricing.md`、`devops.md` | 按 Spec「与既有交付的关系」清单同步；含 `technical-architecture.md` 的「五张表 + 一张配置表」「测试分层里五个端点」两处表述 |
