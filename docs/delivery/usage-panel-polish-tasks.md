@@ -170,7 +170,7 @@
 
 - `product-brief.md`：范围段改为「Token 与积分分成两个 tab + 四个共用筛选 + 明细默认折叠按时间降序」；成功标准把「一次下钻到位」替换为「首屏可读」与「筛选即视图」两条。
 - `technical-architecture.md`：面板层改为「两个 tab、共用一组筛选栏」；分层原则补「0 值隐藏与列表截断只影响展示」；Hono 依赖行去掉「端点会随下钻增加」；`/api/summary` 接口表补 `lastRefreshAt`；开发部署说明补代理前缀 `^/api/` 的原因。
-- `data-model.md`：`models` 表说明补规范化后的重名冲突规则（组内按标识字典序，首项保留，其余 `规范化名 (标识)`）；C12 补冲突处理；版本管理补「展示名这类派生规则变化也需递增，本次 1 → 2」。
+- `data-model.md`：`models` 表说明补规范化后的重名冲突规则（组内按标识字典序，首项保留，其余 `规范化名 (标识)`）；C12 补冲突处理；版本管理补「展示名这类生成规则变更也需递增，本次 1 → 2」。
 - `devops.md`：开发与生产入口分开（dev 为 5173、生产为 4620），补 Vite proxy 只转发 `^/api/` 的约束与原因，并注明项目未配置 lint。
 - `docs/backlog/subagent-credit-reconciliation.md` 与本交付无关，未改动；`integration.md` 本交付不涉及。
 

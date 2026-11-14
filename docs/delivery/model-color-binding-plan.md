@@ -14,7 +14,7 @@ Spec（`model-color-binding-spec.md`）已确认，业务规则 R1–R7、验收
 - `src/web/components/RequestTable.tsx` 模型列是 `<td className="truncate" title={row.model}>`，`.truncate` 有 `max-width: 190px; overflow: hidden; text-overflow: ellipsis`。
 - `src/web/components/FilterBar.tsx` 的三个下拉都是原生 `<select><option>`，`renderOptions` 为三者共用；模型下拉 id 为 `filter-model`。
 - `scripts/panel-acceptance.mjs` 的 `readModelOptions`（第 344 行）直接读 `select.options`，并在第 353、361 行用 `select.value = ...; select.dispatchEvent(new Event('change'))` 改写筛选；`chartStateExpr`（第 123 行）用 `s.name`（展示名）作 key 收集系列颜色；第 340 行脚本自身 fetch 了一次不带参数的 `/api/breakdown?dim=model`。
-- `docs/technical-architecture.md` 第 21 行规定「面板层只渲染 API 返回值，不自行求和或换算」。颜色是纯展示派生、不参与任何聚合，加入面板层不违反该原则，但需在架构文档中说明配色不来自 API、也不写回派生库。
+- `docs/technical-architecture.md` 第 21 行规定「面板层只渲染 API 返回值，不自行求和或换算」。颜色由展示层生成、不参与任何聚合，加入面板层不违反该原则，但需在架构文档中说明配色不来自 API、也不写回数据库。
 - 现有交互验收没有 DOM 测试框架，纯逻辑靠 Vitest，DOM / ECharts 靠 CDP 脚本。本交付不引入新依赖。
 
 ## 技术方案
@@ -33,7 +33,7 @@ Spec（`model-color-binding-spec.md`）已确认，业务规则 R1–R7、验收
 
 ### 趋势图与首帧稳定
 
-`TrendChart` 删除 `colorIndex` prop，系列颜色直接取 `modelColor(modelKey)`；给每个 series 设 `id: modelKey`，让验收脚本可以按业务键而不是展示名读颜色。删除顶层 `color: PALETTE`（或改为新色表派生值），避免 ECharts 在未显式着色的元素上回落旧色板。legend 仍跟随 series 颜色，无需改动 `legend` 配置。
+`TrendChart` 删除 `colorIndex` prop，系列颜色直接取 `modelColor(modelKey)`；给每个 series 设 `id: modelKey`，让验收脚本可以按业务键而不是展示名读颜色。删除顶层 `color: PALETTE`（或改为新色表计算值），避免 ECharts 在未显式着色的元素上回落旧色板。legend 仍跟随 series 颜色，无需改动 `legend` 配置。
 
 同系列相邻堆叠块用 `borderColor: '#fff'`、`borderWidth: 1` 的细白色描边区分边界；描边不改变色相与档位值，也不影响图例（图例色点仍取 series 颜色）。`emphasis.focus: 'series'` 保持不变。
 
@@ -71,7 +71,7 @@ Spec（`model-color-binding-spec.md`）已确认，业务规则 R1–R7、验收
 
 **删除**：`src/web/palette.ts`、`tests/palette.test.ts`。
 
-**不改**：`server/` 全部、`src/etl/` 全部、`src/shared/types.ts`、五个 API 端点、派生库结构与 `SCHEMA_VERSION`、`useQuery`、0 值隐藏与列表截断逻辑、依赖清单、`~/.workbuddy` 下任何原始数据。
+**不改**：`server/` 全部、`src/etl/` 全部、`src/shared/types.ts`、五个 API 端点、数据库结构与 `SCHEMA_VERSION`、`useQuery`、0 值隐藏与列表截断逻辑、依赖清单、`~/.workbuddy` 下任何原始数据。
 
 ## 数据与接口变化
 
@@ -131,7 +131,7 @@ Spec（`model-color-binding-spec.md`）已确认，业务规则 R1–R7、验收
 | 删除 `palette.ts` 后残留引用 | 构建失败 | `typecheck` + 全仓搜索 `MODEL_COLORS` / `palette` |
 | 脚本自身 fetch 污染网络断言 | AC3 误判 | 断言前置或排除该请求 |
 
-**回滚**：`git revert` 本交付提交 → `npm run typecheck && npm test && npm run build` 验证。无外部状态、无派生库迁移。
+**回滚**：`git revert` 本交付提交 → `npm run typecheck && npm test && npm run build` 验证。无外部状态、无数据库迁移。
 
 ## 执行上的问题与待决点
 

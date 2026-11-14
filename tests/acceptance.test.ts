@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { EtlConfig } from '../src/etl/config.ts';
-import { closeIndex, openIndex } from '../src/etl/index-db.ts';
+import { closeDatabase, openDatabase } from '../src/etl/database.ts';
 import { createRefresher } from '../src/etl/refresh.ts';
 import type { RequestRow, RefreshResult } from '../src/shared/types.ts';
 import { getBreakdown, getRequests, getSummary, getTimeseries } from '../server/query.ts';
@@ -14,7 +14,7 @@ import { cleanupTempDirs, makeTempDir } from './helpers/temp.ts';
 interface AcceptanceFixture {
   home: string;
   config: EtlConfig;
-  db: ReturnType<typeof openIndex>['db'];
+  db: ReturnType<typeof openDatabase>['db'];
   refresh: () => Promise<RefreshResult>;
   close: () => void;
 }
@@ -38,15 +38,15 @@ function externalDb(home: string): DatabaseSync {
 function openFixture(home: string): AcceptanceFixture {
   const config: EtlConfig = {
     workbuddyHome: home,
-    indexPath: join(home, '.data', 'index.db'),
+    databasePath: join(home, '.data', 'database.db'),
   };
-  const { db } = openIndex(config.indexPath);
+  const { db } = openDatabase(config.databasePath);
   const fixture: AcceptanceFixture = {
     home,
     config,
     db,
     refresh: createRefresher(db, config).refresh,
-    close: () => closeIndex(db),
+    close: () => closeDatabase(db),
   };
   opened.push(fixture);
   return fixture;
@@ -237,7 +237,7 @@ describe('AC4 增量刷新', () => {
 });
 
 describe('AC5 全量重建', () => {
-  it('固定夹具全量解析完成且索引可重建', async () => {
+  it('固定夹具全量解析完成且数据库可重建', async () => {
     const fixture = createFixture();
     const result = await fixture.refresh();
     expect(result.durationMs).toBeLessThan(30_000);
@@ -245,13 +245,13 @@ describe('AC5 全量重建', () => {
 
     fixture.close();
     opened.pop();
-    rmSync(fixture.config.indexPath, { force: true });
-    const reopened = openIndex(fixture.config.indexPath);
+    rmSync(fixture.config.databasePath, { force: true });
+    const reopened = openDatabase(fixture.config.databasePath);
     const refresher = createRefresher(reopened.db, fixture.config);
     const rebuilt = await refresher.refresh();
     expect(rebuilt.upsertedRequests).toBe(7);
     expect(getSummary(reopened.db, {}).token.totalTokens).toBe(2765);
-    closeIndex(reopened.db);
+    closeDatabase(reopened.db);
   });
 
   it('120 个文件 / 960 个请求的全量解析在 30 秒内完成', async () => {

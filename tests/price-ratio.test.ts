@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { getTimeseries } from '../server/query.ts';
-import { SCHEMA_SQL } from '../src/etl/index-db.ts';
+import { SCHEMA_SQL } from '../src/etl/database.ts';
 import { DEEPSEEK_MODEL_KEYS } from '../src/shared/deepseek-pricing.ts';
 import type { Filters } from '../src/shared/types.ts';
 
@@ -121,7 +121,7 @@ describe('timeseries 的 DS 价格比率', () => {
 
 function ratiosInTimezone(tz: string): string {
   const queryUrl = new URL('../server/query.ts', import.meta.url).href;
-  const schemaUrl = new URL('../src/etl/index-db.ts', import.meta.url).href;
+  const schemaUrl = new URL('../src/etl/database.ts', import.meta.url).href;
   const script = [
     `import { DatabaseSync } from 'node:sqlite';`,
     `import { getTimeseries } from '${queryUrl}';`,

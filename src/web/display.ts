@@ -12,7 +12,7 @@ export interface TrendChartData {
 
 /**
  * R10：按 from / to 生成含首尾的连续日期轴，缺失日期由调用方补 0。
- * 轴是展示派生，用原始 rows 计算，不受 0 值隐藏影响；区间无效或没有数据时不给轴。
+ * 轴由筛选区间生成，用原始 rows 计算，不受 0 值隐藏影响；区间无效或没有数据时不给轴。
  */
 export function buildTimeseriesAxis(
   from: string | undefined,

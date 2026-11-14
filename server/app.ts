@@ -127,7 +127,7 @@ export function createApp({ db, refresher, staticRoot }: AppOptions): Hono {
       return c.json(await refresher.refresh());
     } catch (error) {
       console.error('刷新失败', error);
-      return c.json({ error: '刷新失败，索引保持原状，请查看服务日志' }, 500);
+      return c.json({ error: '刷新失败，数据库保持原状，请查看服务日志' }, 500);
     }
   });
 

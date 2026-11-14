@@ -354,7 +354,7 @@ describe('请求级明细', () => {
     expect(body.rows.map((row) => row.requestId)).toEqual(['a2', 'c1', 'd1', 'a1', 'b1']);
   });
 
-  it('API 返回值不含派生库内部 id（C14）', async () => {
+  it('API 返回值不含数据库内部 id（C14）', async () => {
     const { app } = await setup();
     for (const path of [
       '/api/summary',

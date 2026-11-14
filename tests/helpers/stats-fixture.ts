@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { EtlConfig } from '../../src/etl/config.ts';
-import { closeIndex, openIndex } from '../../src/etl/index-db.ts';
+import { closeDatabase, openDatabase } from '../../src/etl/database.ts';
 import { createRefresher } from '../../src/etl/refresh.ts';
 import type { Refresher } from '../../src/etl/refresh.ts';
 import { createWorkbuddyDb } from './external-db.ts';
@@ -113,9 +113,9 @@ export async function createStatsFixture(): Promise<StatsFixture> {
 
   const config: EtlConfig = {
     workbuddyHome: home,
-    indexPath: join(home, '.data', 'index.db'),
+    databasePath: join(home, '.data', 'database.db'),
   };
-  const { db } = openIndex(config.indexPath);
+  const { db } = openDatabase(config.databasePath);
   const refresher = createRefresher(db, config);
-  return { home, config, db, refresher, close: () => closeIndex(db) };
+  return { home, config, db, refresher, close: () => closeDatabase(db) };
 }

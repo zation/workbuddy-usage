@@ -8,7 +8,7 @@
 
 - `groups` 只有 `id` / `group_path` / `display_name`，没有区分自动目录的字段（`src/etl/index-db.ts` 的 `SCHEMA_SQL`，当前 `SCHEMA_VERSION = 2`）。
 - `DimensionWriter.ensureGroup`（`src/etl/dimensions.ts`）按 `group_path` 插入，冲突时 `DO NOTHING`；`groupIds` 缓存只在一次刷新内有效（`src/etl/refresh.ts` 每次刷新新建 `DimensionWriter`）。
-- `group_path` 就是 `sessions.cwd` 原值（`src/etl/parse.ts` 的 `groupPath: session?.cwd ?? null`），带 UNIQUE 约束，因此任何由它纯函数派生的值在同一业务键上恒定。
+- `group_path` 就是 `sessions.cwd` 原值（`src/etl/parse.ts` 的 `groupPath: session?.cwd ?? null`），带 UNIQUE 约束，因此任何由它纯函数计算的值在同一业务键上恒定。
 - 服务层分组维度在 `dimensionColumns('group')`（`server/query.ts`）返回 `COALESCE(g.group_path, '未知分组')` 等三个表达式，`GROUP BY g.id` 保证每个原始路径一行；`buildWhere` 用 `g.group_path = ?`；`getRequests` 的展示名是 `COALESCE(g.display_name, g.group_path, '未知分组')`。三处都只认原始路径，因此 71 个日期目录会原样出现。
 - `readFilters`（`server/app.ts`）对 `group` 只做 `trim()`，无白名单或路径校验，虚拟业务键可原样透传；`/api/summary`、`/api/timeseries`、`/api/breakdown`、`/api/requests` 四个端点共用 `buildWhere`。
 - 分组筛选下拉的选项来自 `App` 的 `groupOptions`（`/api/breakdown?dim=group`，去掉 group 筛选但保留时间 / 对话 / 模型筛选），只由服务层聚合结果驱动，`FilterBar` 不参与口径；因此「默认」只在当前筛选范围内有自动分组请求时出现。
@@ -66,7 +66,7 @@ ON CONFLICT(group_path) DO NOTHING
 
 **取舍**
 
-- **不加 `ON CONFLICT DO UPDATE`**：`is_auto` 是 `group_path` 的纯函数派生值，而 `group_path` 带 UNIQUE，同一业务键永远算出同一个结果，每次刷新重写它没有收益，还会改变 `ensureGroup` 既有的 `DO NOTHING` 写入语义、与 `data-model.md` 第 10 行「业务键换 id」的通用原则冲突。维表保持快照（C7 / C11）；判定规则变更属于派生规则变更，按 `data-model.md`「数据库结构与迁移」的既有约定递增 `SCHEMA_VERSION` 删库重建，不依赖增量刷新纠正存量行。
+- **不加 `ON CONFLICT DO UPDATE`**：`is_auto` 是 `group_path` 的纯函数计算值，而 `group_path` 带 UNIQUE，同一业务键永远算出同一个结果，每次刷新重写它没有收益，还会改变 `ensureGroup` 既有的 `DO NOTHING` 写入语义、与 `data-model.md` 第 10 行「业务键换 id」的通用原则冲突。维表保持快照（C7 / C11）；判定规则变更按 `data-model.md`「数据库结构与迁移」的既有约定递增 `SCHEMA_VERSION` 删库重建，不依赖增量刷新纠正存量行。
 - `groupIds` 缓存只在单次刷新内有效（`refresh.ts` 的 `doRefresh` 每次 `new DimensionWriter(db)`），已存在的行由 `DO NOTHING` 跳过，不会因缓存绕过写入语义；外部会话被清理后原行与 `is_auto` 保留。
 - `is_auto` 用 INTEGER 0/1 而不是布尔列，与 `requests.is_subagent` / `has_credit` 的既有写法一致，SQLite 无需转换。
 - `未知分组` 与空 `cwd` 走 `UNKNOWN_GROUP` 分支，`isAutoGroupPath('未知分组')` 为 false，落 0。
@@ -113,7 +113,7 @@ interface SelectProps {
 }
 ```
 
-- 行为沿用现有 `ModelSelect`：`aria-haspopup="listbox"`、`aria-expanded`、`aria-controls`、`aria-activedescendant`、`aria-selected`，↑↓ / Enter / Space / Esc、点击外部关闭，`useId` 派生 listbox 与 option id（多实例唯一），当前值不在 `options` 时插到第 2 项兜底并以值本身作展示名。**不新增 Tab 键行为**，与 Spec 行为 7 / R10 一致。
+- 行为沿用现有 `ModelSelect`：`aria-haspopup="listbox"`、`aria-expanded`、`aria-controls`、`aria-activedescendant`、`aria-selected`，↑↓ / Enter / Space / Esc、点击外部关闭，`useId` 生成 listbox 与 option id（多实例唯一），当前值不在 `options` 时插到第 2 项兜底并以值本身作展示名。**不新增 Tab 键行为**，与 Spec 行为 7 / R10 一致。
 - `className` 加在容器 `.select` 上，`.filter-time-controls .select-compact` 的选择器需下钻到 `.select-trigger` 才设置 `width: auto` / `min-width: 112px`，否则时间预设的紧凑宽度会失效（AC12）。
 - `FilterBar` 负责 `'' ↔ undefined` 映射：`Select` 用空字符串表示「全部」，`Filters` 用 `undefined`；`onChange` 里用 `value || undefined` 写回，取值时用 `filters.group ?? ''`。四个下拉的空值文案分别是「全部分组 / 全部对话 / 全部模型」，时间预设的空值项由 `PRESETS` 决定。
 - 触发按钮与每个选项加 `data-value`（业务键），供验收脚本读取与点击；原 `data-model` 只服务模型，统一后由 `data-value` 取代。`renderLeading` 保持现有视觉：非空键渲染 `<ModelDot />`，选项的空键渲染空环 `span.model-dot.is-empty`，触发按钮的空键不渲染图标。
@@ -162,7 +162,7 @@ tooltip: {
 - 新增断言：
   - **AC2**：服务层聚合结果驱动的分组选项不含 `YYYY-MM-DD-HH-MM-SS` 形态条目（断言排除当前值兜底项，见 Spec 边界表）；API 返回「默认」时下拉必须含该项，API 不含时下拉也不含该项（不占位）。
   - **AC4**：选中「默认」后 summary 请求带 `group=%E9%BB%98%E8%AE%A4` 且触发值回显；并分别请求 `/api/summary`、`/api/timeseries`、`/api/breakdown?dim=group|session|model`、`/api/requests`，断言各视图数据只含自动分组、不含手动分组业务键。
-  - **AC9**：页面 resource entries 中不出现外部域名请求；外部库文件指纹不变由既有只读单测 + 人工实测记录。
+  - **AC9**：页面 resource entries 中不出现外部域名请求；WorkBuddy 数据库文件指纹不变由既有只读单测 + 人工实测记录。
   - **AC12**：四个 trigger 的 `role` 与 `aria-expanded` / `aria-controls` / `aria-activedescendant` / `aria-selected` 组合全量检查；在一个代表性下拉上用页面上下文派发 `KeyboardEvent`（↑↓ / Enter / Esc）与 `pointerdown` 断言移动、选中、关闭、点击外部关闭；时间预设紧凑宽度与「自定义」日期框行为不变。
   - **AC13**：分别在 Token 与积分图上取 formatter 结果断言 0 项被剔除、非 0 项保留、全 0 时同时含日期与「无数据」；两张图结果一致。
 - 既有 10 项断言语义与阈值不放宽，只换选择器；AC14 要求脚本实际运行，环境不具备时记为未验证风险。
@@ -183,7 +183,7 @@ tooltip: {
 
 ## 数据与接口变化
 
-- **派生库**：`groups` 多一列；`SCHEMA_VERSION` 递增，旧库删除重建，内部 `id` 重新分配。API 仍只用业务键（C14）。`is_auto` 在插入时确定后不变。
+- **数据库**：`groups` 多一列；`SCHEMA_VERSION` 递增，旧库删除重建，内部 `id` 重新分配。API 仍只用业务键（C14）。`is_auto` 在插入时确定后不变。
 - **API 参数**：`group` 新增虚拟值「默认」，映射 `g.is_auto = 1`；其它取值语义不变（含日期路径的旧参数仍按原路径精确匹配）。`readFilters` 无白名单，无需改动。
 - **API 返回**：`/api/breakdown?dim=group` 不再返回日期路径行，改为一行 `key = name = 默认`，且仅在当前筛选范围存在自动分组请求时出现；手动分组展示名撞「默认」时仍返回 `display_name`，可与虚拟键同名但业务键不同。`/api/requests` 的 `groupName` 对自动分组返回「默认」，`group` 仍是原始 `group_path`。字段结构不变，无需前端类型改动。
 - **面板**：下拉 DOM 由原生 `select` 变为 button + listbox，`id` 与筛选值不变；筛选状态只在内存，无本地持久化迁移。明细分组列 hover 仍显示原始路径。
@@ -211,7 +211,7 @@ tooltip: {
 | 风险 | 影响 | 应对 |
 | --- | --- | --- |
 | WorkBuddy 改变自动目录命名 | 新目录被判为手动分组，下拉重新出现条目 | 已写入 `integration.md` 兼容性风险；更新规则并递增 `SCHEMA_VERSION` 重建，不依赖增量刷新 |
-| 判定规则变更但未递增版本号 | 存量 `is_auto` 不更新，聚合结果错误 | 派生规则变更必须递增 `SCHEMA_VERSION`（`data-model.md` 既有约定）；T002 单测覆盖重建 |
+| 判定规则变更但未递增版本号 | 存量 `is_auto` 不更新，聚合结果错误 | 判定规则变更必须递增 `SCHEMA_VERSION`（`data-model.md` 既有约定）；T002 单测覆盖重建 |
 | `GROUP BY` 与 `key` 表达式不一致 | 「默认」被拆成多行、占比失真 | 表达式由同一常量拼装；AC3 单测断言求和与行数 |
 | 下拉出现两个同名「默认」项 | 用户可能分不清 | 已确认不做去重；`key` 不同、筛选互不影响，边界表记录 |
 | 自定义下拉替换导致验收脚本选择器失效 | 验收失败，可能掩盖真实回归 | 脚本同批改造；断言语义不放宽，只换选择器 |

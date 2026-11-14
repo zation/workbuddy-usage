@@ -116,7 +116,7 @@ App 按 `activeTab` 计算 `visibleModelKeys`，统一作用于三处：按模�
 
 ## 兼容与迁移方案
 
-- **派生库**：不写迁移脚本，`schema_version` 不匹配直接删库重建；实施与验收时需手动删除 `.data/index.db` 后再全量解析一次。切换 `WORKBUDDY_HOME` 同样先删索引。
+- **数据库**：不写迁移脚本，`schema_version` 不匹配直接删库重建；实施与验收时需手动删除 `.data/index.db` 后再全量解析一次。切换 `WORKBUDDY_HOME` 同样先删库。
 - **API 兼容**：追加字段，前端按可选值处理（`null` 显示「尚未刷新」），旧客户端忽略即可。
 - **回归**：`getSummary` 多读一行 `meta`，测试夹具由 `openIndex()` 建表，表一定存在；`last_refresh_at` 为 NULL 时返回 `null`，不抛错。
 - **Node / 依赖**：不改 `engines`、不增删 npm 包，`node:sqlite` 仍是唯一实验性依赖。
@@ -145,7 +145,7 @@ App 按 `activeTab` 计算 `visibleModelKeys`，统一作用于三处：按模�
 | 条件渲染让 `useQuery` 被条件调用 | React Hooks 报错、状态错乱 | 顺序约束第 4 条；所有 hooks 固定顶层，`npm run typecheck` 与构建兜底 |
 | ECharts 在隐藏 / 新挂载容器尺寸为 0 | 图表空白或宽度异常 | 只挂载激活 tab 的模块内容，tabpanel 空壳常驻；`EChart` 已有 `ResizeObserver`；验收脚本核对两个 tab 的图表与 canvas 数 |
 | 增量刷新把 `Hy4 (hy4-free)` 回退成 `Hy4` | 重名问题复现 | 依赖 `upsertModel` 的幂等保护 + 新增回归测试；必要时删库重建 |
-| `schema_version` 与后续分组归一化交付冲突 | 旧索引不触发重建，展示名 / 分组结果错误 | Plan 明确 1→2→3 与实施顺序；两份交付分别验收重建 |
+| `schema_version` 与后续分组归一化交付冲突 | 旧数据库不触发重建，展示名 / 分组结果错误 | Plan 明确 1→2→3 与实施顺序；两份交付分别验收重建 |
 | 0 值隐藏后已选模型不在下拉项里 | 筛选值看似丢失 | 保留 `renderOptions` 的当前值兜底；判定集合改用不含模型筛选的结果；验收脚本核对选中后仍可切换 |
 | 折叠 / 展开反复请求导致 loading 闪烁 | 体验抖动 | `path: null` 时强制 `loading: false`；折叠态不渲染表格与骨架 |
 | K / M / B 丢失精度 | 无法读到精确 token 数 | Spec 已确认不需要精确值；API 仍返回原始数值，随时可恢复 |

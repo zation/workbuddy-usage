@@ -7,7 +7,7 @@ export interface HolidayCalendar {
 
 /**
  * 只录已公布的中国法定节假日安排。空集合不表示「该年无节假日」，而是尚未收录；
- * 补充年份时同时更新 coveredYears，并递增 SCHEMA_VERSION 触发派生库重建。
+ * 补充年份时同时更新 coveredYears，并递增 SCHEMA_VERSION 触发数据库重建。
  */
 export const CHINA_HOLIDAYS: HolidayCalendar = {
   coveredYears: [],

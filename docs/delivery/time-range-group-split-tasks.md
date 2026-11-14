@@ -45,7 +45,7 @@
 
 状态：done
 
-目标与完成条件：按 Spec R4 与 Plan「服务层：附加交叉聚合」实现 `split=model`（仅 `dim=group` 生效，非法值 400），复用同一 `where / params / GROUP_KEY` 追加第二条查询，把按模型分段挂到 `BreakdownRow.models`；不改原聚合 SQL、不改 `tokenShare / creditShare`、不改派生库结构与 `SCHEMA_VERSION`。完成条件含「每行段之和 = 行值」、其它维度与不带 `split` 时无 `models`、模型筛选时段收敛、C14 不含内部 id。
+目标与完成条件：按 Spec R4 与 Plan「服务层：附加交叉聚合」实现 `split=model`（仅 `dim=group` 生效，非法值 400），复用同一 `where / params / GROUP_KEY` 追加第二条查询，把按模型分段挂到 `BreakdownRow.models`；不改原聚合 SQL、不改 `tokenShare / creditShare`、不改数据库结构与 `SCHEMA_VERSION`。完成条件含「每行段之和 = 行值」、其它维度与不带 `split` 时无 `models`、模型筛选时段收敛、C14 不含内部 id。
 
 必要依赖：T001
 
@@ -85,7 +85,7 @@
 
 修改范围：`src/web/App.tsx`、`src/web/components/FilterBar.tsx`、`src/web/styles.css`
 
-实施结果：`App` 删除 `preset` / `custom` 状态，`filters` 初始化为 `rangeForPreset(DEFAULT_PRESET, today)`；`handleQuick()` 走 `applyPresetRange` 保留三个维度筛选，`handleRange()` 对空值直接返回、`from > to` 与 `daySpan > MAX_RANGE_DAYS` 只设 `rangeError` 不写状态，`handleReset()` 回到近 3 天并清空维度筛选，`activePreset` 由 `matchPreset(filters.from, filters.to, today)` 派生。`FilterBar` 时间字段改为 `role="group"` 内的四个 `data-quick` 按钮（`aria-pressed` 表示选中）+ 常驻 `.date-range` 两个原生日期框，删除时间 `Select` 与 `label[for=filter-preset]`；日期框清空时同步把 DOM 值恢复为当前生效值。`styles.css` 新增 `.quick-button` 与其 `[aria-pressed='true']` 态、`.filter-label`，移除时间下拉专用规则。
+实施结果：`App` 删除 `preset` / `custom` 状态，`filters` 初始化为 `rangeForPreset(DEFAULT_PRESET, today)`；`handleQuick()` 走 `applyPresetRange` 保留三个维度筛选，`handleRange()` 对空值直接返回、`from > to` 与 `daySpan > MAX_RANGE_DAYS` 只设 `rangeError` 不写状态，`handleReset()` 回到近 3 天并清空维度筛选，`activePreset` 由 `matchPreset(filters.from, filters.to, today)` 计算。`FilterBar` 时间字段改为 `role="group"` 内的四个 `data-quick` 按钮（`aria-pressed` 表示选中）+ 常驻 `.date-range` 两个原生日期框，删除时间 `Select` 与 `label[for=filter-preset]`；日期框清空时同步把 DOM 值恢复为当前生效值。`styles.css` 新增 `.quick-button` 与其 `[aria-pressed='true']` 态、`.filter-label`，移除时间下拉专用规则。
 
 验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/filters.test.ts` 5 项通过。交互层断言留待 T009 的验收脚本与 T010 全量检查。
 
@@ -121,7 +121,7 @@
 
 修改范围：`src/web/display.ts`、`tests/display.test.ts`
 
-实施结果：`display.ts` 新增 `segmentValue(segment, metric)`、`visibleSegments(row, metric, visibleModels)`（`> 0` 且可见、按数额降序、同值按模型业务键升序，复制数组后再排序）与 `segmentWidths(share, rowValue, segments, metric)`（条宽 `share * 100` 限幅 `[0, 100]`，按段占比分摊，最后一段用差值补齐浮点误差）。函数只做展示派生，不读写聚合值。
+实施结果：`display.ts` 新增 `segmentValue(segment, metric)`、`visibleSegments(row, metric, visibleModels)`（`> 0` 且可见、按数额降序、同值按模型业务键升序，复制数组后再排序）与 `segmentWidths(share, rowValue, segments, metric)`（条宽 `share * 100` 限幅 `[0, 100]`，按段占比分摊，最后一段用差值补齐浮点误差）。函数只做展示层计算，不读写聚合值。
 
 验证：`npm run typecheck` 通过（0 错）；`npx vitest run tests/display.test.ts` 27 项通过（新增 `segmentValue` 1 项、`visibleSegments` 4 项、`segmentWidths` 5 项，覆盖 0 值 / 负值 / 不可见段 / 行值为 0 / 无段 / 单段 / 浮点补齐 / 超 100% 限幅）。
 
@@ -173,13 +173,13 @@
 
 修改范围：`docs/`、`docs/delivery/time-range-group-split-tasks.md`
 
-实施结果：`product-brief.md` 交付形态段改为四个快捷区间 + 常驻起止框、默认近 3 天、不提供「本月 / 全部」、单次跨度不超过 100 天，成功标准补「按分组数值条色段」；`technical-architecture.md` 分层原则把连续日期轴与分段颜色 / 段宽列为展示派生、重写筛选栏段落、接口表改为 `/api/timeseries` 只返回 `rows` 与 `/api/breakdown` 的 `split=model` / `models`、补四个读取筛选端点的 400 分支；`model-colors.md` 补分组数值条段色与 1px 白线限制。校正 Spec / Plan 中「五个端点」的表述为「四个读取筛选的端点」（`/api/refresh` 不解析筛选），删除已落定的「待确认问题 / 待确认取舍」与「Plan 待确认」提示，修正 Plan 测试策略里 `tests/shared.test.ts` 的落点描述。`docs/backlog/` 只有 `subagent-credit-reconciliation.md`，与本交付无关，无需改动。已一次性回填 T001–T009 的提交字段（T004 / T005 合并为同一提交 `a96b460`）。
+实施结果：`product-brief.md` 交付形态段改为四个快捷区间 + 常驻起止框、默认近 3 天、不提供「本月 / 全部」、单次跨度不超过 100 天，成功标准补「按分组数值条色段」；`technical-architecture.md` 分层原则把连续日期轴与分段颜色 / 段宽列为展示层生成、重写筛选栏段落、接口表改为 `/api/timeseries` 只返回 `rows` 与 `/api/breakdown` 的 `split=model` / `models`、补四个读取筛选端点的 400 分支；`model-colors.md` 补分组数值条段色与 1px 白线限制。校正 Spec / Plan 中「五个端点」的表述为「四个读取筛选的端点」（`/api/refresh` 不解析筛选），删除已落定的「待确认问题 / 待确认取舍」与「Plan 待确认」提示，修正 Plan 测试策略里 `tests/shared.test.ts` 的落点描述。`docs/backlog/` 只有 `subagent-credit-reconciliation.md`，与本交付无关，无需改动。已一次性回填 T001–T009 的提交字段（T004 / T005 合并为同一提交 `a96b460`）。
 
 验证：`npm run typecheck` 通过（0 错）；`npm test` 12 个文件、136 项通过（1 项跳过）；`npm run build` 通过（仅既有的 chunk 体积提示）；`npm run acceptance` 23 项全部通过。AC 对照：AC1 / AC2 / AC3 由验收脚本同名断言覆盖（另含 AC12 的时间区布局）；AC4 / AC5 由「分组条按模型分段」「hover 与 focus 浮出明细」两项覆盖；AC6 由 `tests/api.test.ts`、`tests/group-normalization.test.ts`、`tests/acceptance.test.ts` 与既有 AC1 / AC4 / AC7 / AC13 断言覆盖；AC7 即本条全量检查与文档同步；AC8 由「不含 days、近 7 天画满 7 格」覆盖；AC9 由「100 天可用 / 101 天一致拦截」与 API 单测覆盖。
 
 ## 交付后调整（2026-11-13）
 
-开发者确认后的一次小范围调整，不改统计口径、接口与派生库；T001–T010 的实施记录保留原样。
+开发者确认后的一次小范围调整，不改统计口径、接口与数据库；T001–T010 的实施记录保留原样。
 
 - **自定义日期框改为「更多」展开**：起止框默认 `hidden`，筛选栏收起时只占一行；展开后日期框换到时间字段第二行，`.filter-row` 改为 `align-items: flex-start`，右侧三个维度下拉与「重置」靠上对齐。「重置」外包一层与其它字段同构的标签占位容器，避免对齐引入硬编码偏移。日期框收起态仍留在 DOM 中，受控值与验收脚本的取数入口不变。改 `src/web/components/FilterBar.tsx`、`src/web/styles.css`。
 - **错误态下的「重置」**：`isDefault` 加入 `!rangeError`，跨度 / 顺序错误出现时重置保持可用，点击后清除错误并回到近 3 天，兑现 Spec R11「重置…会清除已有错误」。改 `src/web/components/FilterBar.tsx`。

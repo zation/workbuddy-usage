@@ -4,7 +4,7 @@
 
 ## 背景
 
-WorkBuddy 在本地记录每次对话的用量：会话内容与 token 用量写在 `~/.workbuddy/projects/<编码cwd>/<会话>.jsonl`，积分与上下文占用写在 `~/.workbuddy/workbuddy.db`。这些数据面向运行而非面向使用者，没有跨会话的汇总视图。想知道"这段时间花了多少、花在哪些分组上"，只能逐个会话翻看，无法按时间、分组或模型横向比较。
+WorkBuddy 在本地记录每次对话的用量：会话内容与 token 用量写在 `~/.workbuddy/projects/<编码cwd>/<会话>.jsonl`，积分与上下文占用写在 WorkBuddy 数据库 `~/.workbuddy/workbuddy.db`。这些数据面向运行而非面向使用者，没有跨会话的汇总视图。想知道"这段时间花了多少、花在哪些分组上"，只能逐个会话翻看，无法按时间、分组或模型横向比较。
 
 ## 目标用户
 
@@ -25,7 +25,7 @@ WorkBuddy 在本地记录每次对话的用量：会话内容与 token 用量写
 
 ## 范围
 
-- 解析本地 WorkBuddy 数据：会话 jsonl（token、模型、时间、所属分组）与 `workbuddy.db`（积分、会话元信息）。
+- 解析本地 WorkBuddy 数据：会话 jsonl（token、模型、时间、所属分组）与 WorkBuddy 数据库 `workbuddy.db`（积分、会话元信息）。
 - 统计维度：日期、分组、对话（会话）、模型。
 - 统计指标：输入 token、输出 token、缓存命中 token、合计 token、积分、请求数、会话数。
 - 交付形态：本地 Web 面板，**Token 与积分分成两个 tab**，共用时间、分组、对话、模型四个筛选条件；时间粒度只有天，时间区为「今天 / 3 天 / 7 天 / 30 天」四个快捷区间加「更多」展开的起止日期框（默认收起，筛选栏保持一行），默认展示近 3 天，不提供「本月 / 全部」，**单次区间跨度不超过 100 天（含首尾）**；趋势图按模型堆叠着色，「按分组」数值条也按模型分段着色。每个 tab 各有一张请求明细表，默认折叠、按时间降序。
@@ -48,7 +48,7 @@ WorkBuddy 在本地记录每次对话的用量：会话内容与 token 用量写
 - **请求（request）**：一次用户输入触发的完整模型调用链，由 `conversationRequestId` 标识，内部包含多次工具调用步骤。积分的记录粒度就是请求。
 - **步骤（step）**：请求内的一次模型调用，对应 jsonl 中一条带 `usage` 的记录。
 - **累计用量**：同一请求内各步骤的 `usage` 是累计值而非增量，取 `total_tokens` 最大的那条代表该请求的总量；按时间排序的最后一条不一定是最大值那条。把各步骤相加会重复计算数十倍（本次实测约 40 倍，随请求步骤数变化）。
-- **积分（credit）**：WorkBuddy 记录的消耗单位，存于 `session_usage.credit_json`，键为 `conversationRequestId`。积分为 0 与没有积分记录是两回事。
+- **积分（credit）**：WorkBuddy 记录的消耗单位，存于 WorkBuddy 数据库的 `session_usage.credit_json`，键为 `conversationRequestId`。积分为 0 与没有积分记录是两回事。
 - **会话（session）**：一次连续对话，通常对应一个 jsonl 文件（续写时可能多个），同时对应 `sessions` 表中的一行；子代理会话归入父会话统计。
 
 ## 成功标准

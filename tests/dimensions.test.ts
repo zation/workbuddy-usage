@@ -7,16 +7,16 @@ import {
   lastPathSegment,
   sessionDisplayName,
 } from '../src/etl/dimensions.ts';
-import { closeIndex, openIndex } from '../src/etl/index-db.ts';
+import { closeDatabase, openDatabase } from '../src/etl/database.ts';
 import { UNKNOWN_GROUP, UNKNOWN_MODEL } from '../src/shared/constants.ts';
 import type { ModelNameCandidate, SessionMeta, SourceFileRef } from '../src/shared/types.ts';
 import { cleanupTempDirs, makeTempDir } from './helpers/temp.ts';
 
-const openDbs: Array<ReturnType<typeof openIndex>['db']> = [];
+const openDbs: Array<ReturnType<typeof openDatabase>['db']> = [];
 
-function setup(): { db: ReturnType<typeof openIndex>['db']; writer: DimensionWriter } {
+function setup(): { db: ReturnType<typeof openDatabase>['db']; writer: DimensionWriter } {
   const dir = makeTempDir();
-  const { db } = openIndex(join(dir, '.data', 'index.db'));
+  const { db } = openDatabase(join(dir, '.data', 'database.db'));
   openDbs.push(db);
   return { db, writer: new DimensionWriter(db) };
 }
@@ -33,7 +33,7 @@ function meta(overrides: Partial<SessionMeta> = {}): SessionMeta {
   };
 }
 
-function rows<T>(db: ReturnType<typeof openIndex>['db'], sql: string): T[] {
+function rows<T>(db: ReturnType<typeof openDatabase>['db'], sql: string): T[] {
   return db.prepare(sql).all() as unknown as T[];
 }
 
@@ -41,7 +41,7 @@ afterEach(() => {
   while (openDbs.length > 0) {
     const db = openDbs.pop();
     if (db) {
-      closeIndex(db);
+      closeDatabase(db);
     }
   }
   cleanupTempDirs();

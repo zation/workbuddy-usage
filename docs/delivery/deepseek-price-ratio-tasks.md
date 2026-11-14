@@ -2,7 +2,7 @@
 
 ## 执行顺序与依赖
 
-- **T001 必须最先完成**：闲时判定（T002）与 `date_key` 共用同一套 UTC+8 折算，ETL 派生列（T004）依赖两者同时就绪；若先写闲时列再改时间口径，按天比率会与日期归属错位。这是 Plan「实施顺序约束」里的正确性要求。
+- **T001 必须最先完成**：闲时判定（T002）与 `date_key` 共用同一套 UTC+8 折算，ETL 计算列（T004）依赖两者同时就绪；若先写闲时列再改时间口径，按天比率会与日期归属错位。这是 Plan「实施顺序约束」里的正确性要求。
 - T002 依赖 T001；T003 无强类型依赖，但按 Plan 顺序在 T001 之后实施（共用 UTC 纯日期算术口径）。
 - T004 依赖 T001、T002；T005 依赖 T003、T004；T006 依赖 T005；T007 依赖 T006。
 - T001 覆盖全链路时间折算（含消费方与测试 fixture）作为一个原子提交，避免中间态出现「shared 已改、前端仍读机器时区」的语义不一致。
@@ -60,19 +60,19 @@
 
 提交：d5fdbaa
 
-# T004 ETL 派生列与派生库结构
+# T004 ETL 计算列与数据库结构
 
 状态：done
 
-目标与完成条件：按 Spec R2 / AC3 与 Plan AD-P2 把闲时标记接入 `ParsedRequest` 并在刷新时写入 `requests.is_deepseek_offpeak`，`SCHEMA_VERSION` 3→4；`ON CONFLICT DO UPDATE` 分支同步该列。完成条件：旧库自动删库重建后每行都有 0/1，`date_key` 与闲时标记由同一 `started_at` 派生；在原始日志未变化的前提下，重建前后当前 GMT+8 环境的按天合计一致（Plan「兼容与迁移方案」的对照要求）；相关 ETL 单测与 `npm run typecheck` 通过；`data-model.md` 同步新列说明、「节假日表更新需递增版本」的维护约束与版本号。
+目标与完成条件：按 Spec R2 / AC3 与 Plan AD-P2 把闲时标记接入 `ParsedRequest` 并在刷新时写入 `requests.is_deepseek_offpeak`，`SCHEMA_VERSION` 3→4；`ON CONFLICT DO UPDATE` 分支同步该列。完成条件：旧库自动删库重建后每行都有 0/1，`date_key` 与闲时标记由同一 `started_at` 折算；在原始日志未变化的前提下，重建前后当前 GMT+8 环境的按天合计一致（Plan「兼容与迁移方案」的对照要求）；相关 ETL 单测与 `npm run typecheck` 通过；`data-model.md` 同步新列说明、「节假日表更新需递增版本」的维护约束与版本号。
 
 必要依赖：T001、T002
 
 修改范围：`src/shared/types.ts`、`src/etl/parse.ts`、`src/etl/refresh.ts`、`src/etl/index-db.ts`、`tests/`、`docs/data-model.md`
 
-实施结果：`index-db.ts` 增加 `is_deepseek_offpeak INTEGER NOT NULL DEFAULT 1`（紧随 `date_key`），`SCHEMA_VERSION` 3→4；`ParsedRequest` 增加 `isDeepseekOffpeak`；`parse.ts` 用与 `date_key` 同一 `startedAt` 调 `isDeepseekOffpeak()` 派生；`refresh.ts` 的 INSERT 列、15 个占位符、`ON CONFLICT DO UPDATE` 分支与 `insert.run` 参数同步。`tests/index-db.test.ts` 列断言与 `tests/parse.test.ts` 的归并断言同步。`data-model.md` 补列说明、版本演进（3→4）与「节假日表更新必须递增版本」的维护约束。
+实施结果：`index-db.ts` 增加 `is_deepseek_offpeak INTEGER NOT NULL DEFAULT 1`（紧随 `date_key`），`SCHEMA_VERSION` 3→4；`ParsedRequest` 增加 `isDeepseekOffpeak`；`parse.ts` 用与 `date_key` 同一 `startedAt` 调 `isDeepseekOffpeak()` 计算；`refresh.ts` 的 INSERT 列、15 个占位符、`ON CONFLICT DO UPDATE` 分支与 `insert.run` 参数同步。`tests/index-db.test.ts` 列断言与 `tests/parse.test.ts` 的归并断言同步。`data-model.md` 补列说明、版本演进（3→4）与「节假日表更新必须递增版本」的维护约束。
 
-验证：`npm run typecheck` 通过（0 错）；`npm run build` 通过；Node 24 等价脚本从源码提取 `SCHEMA_SQL` 与 `INSERT_REQUEST_SQL` 在内存 sqlite 中实际建表、编译并执行 INSERT，断言 `SCHEMA_VERSION === 4`、新列 NOT NULL DEFAULT 1、高峰请求写 0 / 空闲请求写 1，且派生值与 `isDeepseekOffpeak()` 一致。沙箱内 `npm test` 仍受既有 runner 故障影响，正式回归以开发者本地 `npm test` 为准。重建前后按天合计对照（AC3）未在沙箱触发，避免在验证阶段全量重扫外部日志；派生库下次启动按既有机制自动重建，该对照由开发者本地首次刷新时确认。
+验证：`npm run typecheck` 通过（0 错）；`npm run build` 通过；Node 24 等价脚本从源码提取 `SCHEMA_SQL` 与 `INSERT_REQUEST_SQL` 在内存 sqlite 中实际建表、编译并执行 INSERT，断言 `SCHEMA_VERSION === 4`、新列 NOT NULL DEFAULT 1、高峰请求写 0 / 空闲请求写 1，且计算值与 `isDeepseekOffpeak()` 一致。沙箱内 `npm test` 仍受既有 runner 故障影响，正式回归以开发者本地 `npm test` 为准。重建前后按天合计对照（AC3）未在沙箱触发，避免在验证阶段全量重扫外部日志；数据库下次启动按既有机制自动重建，该对照由开发者本地首次刷新时确认。
 
 提交：085354f
 
@@ -114,13 +114,13 @@
 
 状态：done
 
-目标与完成条件：按 Spec AC5 / AC6 与 Plan「测试策略」在验收脚本补第二 Y 轴、单条折线、`null` 断线、非 DS 筛选隐藏且无提示文案、tooltip 比率带 `×` 的断言；既有验收项全部继续通过；`devops.md` 同步验收覆盖范围与「节假日表更新需重建索引」的操作说明。完成条件：`npm run acceptance` 通过；若本地服务或验收环境不可用，记录未执行原因并补跑等价的前端单测。
+目标与完成条件：按 Spec AC5 / AC6 与 Plan「测试策略」在验收脚本补第二 Y 轴、单条折线、`null` 断线、非 DS 筛选隐藏且无提示文案、tooltip 比率带 `×` 的断言；既有验收项全部继续通过；`devops.md` 同步验收覆盖范围与「节假日表更新需重建数据库」的操作说明。完成条件：`npm run acceptance` 通过；若本地服务或验收环境不可用，记录未执行原因并补跑等价的前端单测。
 
 必要依赖：T006
 
 修改范围：`scripts/panel-acceptance.mjs`、`src/web/trend-chart-option.ts`、`docs/devops.md`
 
-实施结果：验收脚本的 `readChart` 额外读取 `yAxes`、`ratioSeries`、`legendData` 与 `ratioTip`（用带 `seriesId: price-ratio` 的 probe 触发 tooltip 分流）；新增 AC10，按当前区间 `/api/timeseries` 的 `ratios` 是否非空做条件断言——有数据时要求双 Y 轴、右轴 `×`、单条 line 系列、`yAxisIndex: 1`、`connectNulls: false`、数据按日期轴对齐、折线不进图例；无数据时要求单轴且无折线；两种情形都校验 tooltip 比率行带 `×`。`devops.md` 补 AC10 的验收范围与「节假日表更新需递增 `SCHEMA_VERSION` 重建索引」的操作说明。**恢复 T006 移除的 `tooltip.valueFormatter`**：既有验收脚本从第 295 行读取它来断言数值格式，移除会让脚本内 AC5 / AC7 的 tooltip 数值格式断言失效（脚本内 AC6 是缓存命中率，与 tooltip 无关）；自定义 formatter 内仍显式用 `formatValue` 格式化柱子，行为不变。该恢复已在 T009 撤销，改为让验收脚本 probe `formatter` 的真实输出。
+实施结果：验收脚本的 `readChart` 额外读取 `yAxes`、`ratioSeries`、`legendData` 与 `ratioTip`（用带 `seriesId: price-ratio` 的 probe 触发 tooltip 分流）；新增 AC10，按当前区间 `/api/timeseries` 的 `ratios` 是否非空做条件断言——有数据时要求双 Y 轴、右轴 `×`、单条 line 系列、`yAxisIndex: 1`、`connectNulls: false`、数据按日期轴对齐、折线不进图例；无数据时要求单轴且无折线；两种情形都校验 tooltip 比率行带 `×`。`devops.md` 补 AC10 的验收范围与「节假日表更新需递增 `SCHEMA_VERSION` 重建数据库」的操作说明。**恢复 T006 移除的 `tooltip.valueFormatter`**：既有验收脚本从第 295 行读取它来断言数值格式，移除会让脚本内 AC5 / AC7 的 tooltip 数值格式断言失效（脚本内 AC6 是缓存命中率，与 tooltip 无关）；自定义 formatter 内仍显式用 `formatValue` 格式化柱子，行为不变。该恢复已在 T009 撤销，改为让验收脚本 probe `formatter` 的真实输出。
 
 验证：`npm run typecheck` 通过（0 错）；`node --check scripts/panel-acceptance.mjs` 语法检查通过；`npm run build` 通过；Node 24 等价断言 6 条全部通过（`valueFormatter` 恢复后 1000 → `1.0K`、1000000 → `1.0M`，tooltip 分流仍输出 `4.16×`，null 断线与图例隔离保持）。`npm run acceptance` 未执行成功：当前沙箱没有以 `--remote-debugging-port=9222` 启动的 Chrome，脚本报「未找到可调试页面」并以退出码 1 结束；需在开发者本地按 `docs/devops.md` 启动浏览器与面板后补跑。`npm test` 仍受沙箱 runner 故障影响，正式回归以开发者本地结果为准。
 
@@ -142,7 +142,7 @@
 
 验证：`npm run typecheck` 通过（0 错）；`npm run build` 通过（621 模块）；`node --check scripts/panel-acceptance.mjs` 通过。各任务另跑过 Node 24 等价断言：T001 18 条 + 三时区快照、T002 17 条、T003 14 条 + 254 请求真实数据对账、T004 schema/INSERT 动态执行、T005 11 条、T006 17 条、T007 6 条，全部通过。`npm test` 未通过：当前沙箱 vitest runner 故障，17 个测试文件全部在收集阶段失败（最小探针可复现，与代码无关）；开发者本地在 T001 阶段用同一依赖跑过 13 个文件 137 passed / 1 skipped。**`npm run acceptance` 未通过**：沙箱没有以 `--remote-debugging-port=9222` 启动的 Chrome，脚本报「未找到可调试页面」退出 1。两项都需在开发者本地按 `docs/devops.md` 补跑，未删除测试或降低标准。
 
-必要的问题与决策：剩余风险集中在两个尚未由沙箱完成的验收动作——本地补跑 `npm test`（17 个文件）与 `npm run acceptance`（含新增 AC10），以及派生库因 `SCHEMA_VERSION` 3→4 首次重建后按天合计对照。缓存等价性假设与价目表时点误差已写入 `docs/deepseek-pricing.md`，属已知且已确认的口径限制，不是本次遗留缺陷。
+必要的问题与决策：剩余风险集中在两个尚未由沙箱完成的验收动作——本地补跑 `npm test`（17 个文件）与 `npm run acceptance`（含新增 AC10），以及数据库因 `SCHEMA_VERSION` 3→4 首次重建后按天合计对照。缓存等价性假设与价目表时点误差已写入 `docs/deepseek-pricing.md`，属已知且已确认的口径限制，不是本次遗留缺陷。
 
 后续复核（2026-11-14）：收尾时发现上述两项验收动作当时均未在可验证环境通过，T005 承诺的跨时区比率序列断言也未落实、AC1 被记为架构论证即满足。本轮由 T009–T012 补齐：当前环境 `npm test` 已可正常执行（17 文件 / 160 passed），`npm run acceptance` 已由 CDP 驱动 Chrome 真正跑通（26 项中 25 项通过）。唯一失败项是既有 AC4 分组条段宽容差，在修改任何代码之前的基线上即以相同数值失败，与本次交付无关，按约定未删除测试、未放宽标准，转 `docs/backlog/` 记录。
 
@@ -202,6 +202,6 @@
 
 实施结果：逐项复核 Spec AC1–AC7：AC1 由 T001 三时区快照与 T010 服务层跨 TZ 比对覆盖；AC2 / AC3 / AC4 由 T002–T005 的实现与单测覆盖；AC5 由 T006 / T009 / T011 的双轴、标题与非 DS 筛选交互验收覆盖；AC6 由既有 `api.test.ts` 与验收脚本 AC5 / AC7 / AC13 继续通过覆盖；AC7 的四项检查已全部实际执行，结果见「验证」。回填 T009–T011 的 commit hash。沙箱 runner 差异结论并入 `docs/devops.md`，删除已结案的 `docs/backlog/vitest-runner-context.md` 并修正三处引用；新增 `docs/backlog/panel-acceptance-segment-width.md` 登记既有 AC4 段宽失败。Spec / Plan / Tasks / devops 与代码无已知矛盾；`product-brief.md`、`technical-architecture.md`、`data-model.md`、`deepseek-pricing.md` 本轮无事实变化，无需改写。
 
-验证：`npm run typecheck` 通过（0 错）；`npm test` 通过（17 个测试文件 / 160 passed / 0 failed）；`npm run build` 通过（服务端 tsc + 前端 Vite，622 模块，产物 781.19 kB）；`node --check scripts/panel-acceptance.mjs` 通过；`npm run acceptance` 由 CDP 驱动 Chrome 实际跑通，26 项中 25 PASS / 1 FAIL / 0 SKIP。唯一 FAIL 为既有 AC4 分组条段宽（224.9px vs 222.7px，容差 1.5px），在修改任何代码之前的基线即以相同数值失败，按 AGENTS.md 第 5 节如实记录为剩余风险，未删除测试、未放宽容差，转 `docs/backlog/panel-acceptance-segment-width.md`。派生库 `SCHEMA_VERSION` 3→4 首次重建后的按天合计对照仍需开发者本地首次刷新时确认。
+验证：`npm run typecheck` 通过（0 错）；`npm test` 通过（17 个测试文件 / 160 passed / 0 failed）；`npm run build` 通过（服务端 tsc + 前端 Vite，622 模块，产物 781.19 kB）；`node --check scripts/panel-acceptance.mjs` 通过；`npm run acceptance` 由 CDP 驱动 Chrome 实际跑通，26 项中 25 PASS / 1 FAIL / 0 SKIP。唯一 FAIL 为既有 AC4 分组条段宽（224.9px vs 222.7px，容差 1.5px），在修改任何代码之前的基线即以相同数值失败，按 AGENTS.md 第 5 节如实记录为剩余风险，未删除测试、未放宽容差，转 `docs/backlog/panel-acceptance-segment-width.md`。数据库 `SCHEMA_VERSION` 3→4 首次重建后的按天合计对照仍需开发者本地首次刷新时确认。
 
 必要的问题与决策：提交 `bbe01c9`（`[test]price-ratio-acceptance`）使用了 AGENTS.md `:178-185` 允许列表之外的 `test` type；历史提交不改写，本轮提交一律使用 `docs` / `feat` / `chore`。既有 AC4 段宽失败不通过调大容差或跳过断言处理（AGENTS.md 第 4 节），需先定位布局舍入与断言基准后再单独处理。

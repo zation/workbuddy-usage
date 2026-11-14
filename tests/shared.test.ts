@@ -5,7 +5,7 @@ import type { BreakdownRow, RefreshResult, RequestRow, SummaryResponse } from '.
 import { emptyWarnings } from '../src/shared/types.ts';
 
 describe('日期工具', () => {
-  it('按固定业务时区 UTC+8 派生日期', () => {
+  it('按固定业务时区 UTC+8 计算日期归属', () => {
     const beijing = (day: number, hour: number, minute: number) =>
       Date.UTC(2026, 10, day, hour, minute) - BUSINESS_TZ_OFFSET_MS;
     expect(toDateKey(beijing(12, 0, 5))).toBe('2026-11-12');

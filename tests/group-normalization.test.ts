@@ -4,7 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../server/app.ts';
 import type { EtlConfig } from '../src/etl/config.ts';
-import { closeIndex, openIndex } from '../src/etl/index-db.ts';
+import { closeDatabase, openDatabase } from '../src/etl/database.ts';
 import { createRefresher } from '../src/etl/refresh.ts';
 import { DEFAULT_GROUP, UNKNOWN_GROUP } from '../src/shared/constants.ts';
 import type {
@@ -85,8 +85,8 @@ async function setup(): Promise<Fixture> {
   writeSession(home, 'enc-u1/u1.jsonl', single('q5', day13, 500, 'model-a', 'Model-A'));
   writeSession(home, 'enc-c1/c1.jsonl', single('q6', day13, 600, 'model-b', 'Model-B'));
 
-  const config: EtlConfig = { workbuddyHome: home, indexPath: join(home, '.data', 'index.db') };
-  const { db } = openIndex(config.indexPath);
+  const config: EtlConfig = { workbuddyHome: home, databasePath: join(home, '.data', 'database.db') };
+  const { db } = openDatabase(config.databasePath);
   const refresher = createRefresher(db, config);
   await refresher.refresh();
 
@@ -100,7 +100,7 @@ async function setup(): Promise<Fixture> {
     close: () => {
       if (!closed) {
         closed = true;
-        closeIndex(db);
+        closeDatabase(db);
       }
     },
   };
@@ -300,7 +300,7 @@ describe('分组口径归一化', () => {
     first.db.prepare('UPDATE meta SET schema_version = schema_version - 1 WHERE id = 1').run();
     first.close();
 
-    const reopened = openIndex(first.config.indexPath);
+    const reopened = openDatabase(first.config.databasePath);
     const refresher = createRefresher(reopened.db, first.config);
     await refresher.refresh();
     const after = await getJson<BreakdownResponse>(
@@ -312,6 +312,6 @@ describe('分组口径归一化', () => {
     expect(
       reopened.db.prepare('SELECT COUNT(*) AS n FROM groups').get(),
     ).toEqual({ n: 6 });
-    closeIndex(reopened.db);
+    closeDatabase(reopened.db);
   });
 });
