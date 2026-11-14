@@ -29,7 +29,10 @@ export interface RowTooltipState {
 export interface TrendTooltipState {
   text: string;
   date: string;
+  /** 模型行，不含比率行。 */
   rows: Array<{ text: string; opacity: string }>;
+  /** 比率行不是模型行，单独返回。 */
+  ratioRows: Array<{ text: string; opacity: string }>;
 }
 
 export interface SegmentState {
@@ -374,9 +377,15 @@ export class PanelPage {
     );
   }
 
+  /** hover 到网格内、所有柱段上方的空白位置：仍有坐标轴浮层，但没有模型级聚焦。 */
   async hoverChartBlank(): Promise<void> {
     const box = await this.chartBox();
-    await this.page.mouse.move(box.x + box.width * 0.5, box.y + 4);
+    const x = box.x + box.width * 0.5;
+    const y = box.y + box.height * 0.15;
+    await this.page.mouse.move(box.x + 4, box.y + 4);
+    await this.page.mouse.move(x, y);
+    await this.page.waitForTimeout(80);
+    await this.page.mouse.move(x, y);
   }
 
   /**
@@ -484,58 +493,78 @@ export class PanelPage {
       nodes.map((node) => ({
         text: (node as HTMLElement).textContent ?? '',
         opacity: getComputedStyle(node).opacity,
+        ratio: node.classList.contains('is-ratio'),
       })),
     );
     return {
       text: (await tip.textContent()) ?? '',
       date: (await tip.locator('.trend-tip-date').textContent()) ?? '',
-      rows,
+      rows: rows.filter((row) => !row.ratio).map(({ text, opacity }) => ({ text, opacity })),
+      ratioRows: rows.filter((row) => row.ratio).map(({ text, opacity }) => ({ text, opacity })),
     };
   }
 
   /**
    * 在 canvas 上找某一颜色的连续像素段，返回该段中点（CSS 像素，dpr 固定为 1）。
    * 跳过底部图例区域并要求连续 10 像素以上：图例色点直径 8px，不会被误判成柱段。
+   * `from` 为 `bottom` 时从下往上找，用于取同一系列的其它日期。
    */
-  async canvasPointOf(color: string): Promise<{ x: number; y: number }> {
+  async canvasPointOf(
+    color: string,
+    from: 'top' | 'bottom' = 'top',
+  ): Promise<{ x: number; y: number }> {
     const point = await this.pollCanvas(async () =>
-      this.chart.locator('canvas').first().evaluate((node, target) => {
-        const canvas = node as HTMLCanvasElement;
-        const context = canvas.getContext('2d');
-        if (!context) {
-          return null;
-        }
-        const hex = /^#([0-9a-f]{6})$/i.exec(target);
-        if (!hex) {
-          return null;
-        }
-        const value = Number.parseInt(hex[1] as string, 16);
-        const want = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
-        const { width, height } = canvas;
-        const data = context.getImageData(0, 0, width, height).data;
-        const maxY = height - 40;
-        for (let y = 0; y < maxY; y += 1) {
-          let run = 0;
-          for (let x = 0; x < width; x += 1) {
-            const index = (y * width + x) * 4;
-            const match =
-              data[index] === want[0] &&
-              data[index + 1] === want[1] &&
-              data[index + 2] === want[2] &&
-              data[index + 3] === 255;
-            run = match ? run + 1 : 0;
-            if (run === 10) {
-              return { x: x - 4, y };
+      this.chart.locator('canvas').first().evaluate(
+        (node, payload) => {
+          const canvas = node as HTMLCanvasElement;
+          const context = canvas.getContext('2d');
+          if (!context) {
+            return null;
+          }
+          const hex = /^#([0-9a-f]{6})$/i.exec(payload.color);
+          if (!hex) {
+            return null;
+          }
+          const value = Number.parseInt(hex[1] as string, 16);
+          const want = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+          const { width, height } = canvas;
+          const data = context.getImageData(0, 0, width, height).data;
+          const maxY = height - 40;
+          for (let step = 0; step < maxY; step += 1) {
+            const y = payload.from === 'bottom' ? maxY - 1 - step : step;
+            let run = 0;
+            for (let x = 0; x < width; x += 1) {
+              const index = (y * width + x) * 4;
+              const match =
+                data[index] === want[0] &&
+                data[index + 1] === want[1] &&
+                data[index + 2] === want[2] &&
+                data[index + 3] === 255;
+              run = match ? run + 1 : 0;
+              if (run === 10) {
+                return { x: x - 4, y };
+              }
             }
           }
-        }
-        return null;
-      }, color),
+          return null;
+        },
+        { color, from },
+      ),
     );
     if (!point) {
       throw new Error(`canvas 上找不到颜色 ${color} 的色块`);
     }
     return point;
+  }
+
+  /** 图例区在画布底部中间：hover 这里不应产生模型级聚焦。 */
+  async hoverLegend(): Promise<void> {
+    const box = await this.chartBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height - 12;
+    await this.page.mouse.move(x, y);
+    await this.page.waitForTimeout(80);
+    await this.page.mouse.move(x, y);
   }
 
   async pixelAt(point: { x: number; y: number }): Promise<[number, number, number, number]> {
