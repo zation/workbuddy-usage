@@ -103,13 +103,22 @@
 
 # T006 跨时区与判档回归补强
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec AC7 与 Plan「跨时区」把逐步口径纳入回归。扩展 `tests/price-ratio.test.ts` 的既有用例，以至少两种 `TZ` 子进程比对同一组绝对时间戳下的 `date_key`、每步档位、比率序列与时间格式化结果一致，覆盖 UTC+8 零点与 09:00 / 12:00 / 14:00 / 18:00 峰谷边界；沿用固定 fixture，不依赖运行进程时区；`tests/timezone.test.ts` 的日期键与格式化用例按逐步档位同步，判档纯函数的边界用例仍由 `tests/deepseek-offpeak.test.ts` 覆盖、不重复改写。完成条件：`npm test` 中该跨 TZ 用例在多种 TZ 下均执行且通过，`npm run typecheck` 通过。
 
 必要依赖：T001、T003
 
 修改范围：`tests/price-ratio.test.ts`、`tests/timezone.test.ts`
+
+实施结果：`timezone.test.ts` 的快照扩到 9 个步骤级绝对时间戳（UTC+8 零点，以及 08:59 / 09:00 / 11:59 / 12:00 / 13:59 / 14:00 / 17:59 / 18:00 峰谷边界），每个输出 `toDateKey`、`isDeepseekOffpeak`、`formatDateTime`，三种 TZ 全量比对同一份硬编码期望。`price-ratio.test.ts` 的 `ratiosInTimezone` 子进程改用同一组时间戳写 `requests` / `steps`，且 `date_key` 与 `is_deepseek_offpeak` 在子进程内由 `toDateKey` / `isDeepseekOffpeak` 派生，输出 `dateKeys` / `offpeakFlags` / `formatted` / `rows` / `ratios` 的 JSON，UTC、Asia/Shanghai、America/Los_Angeles 三种 TZ 做字符串全量相等比对，另保留跨月请求覆盖自然月单价。`tests/deepseek-offpeak.test.ts` 未改，判档纯函数的边界仍由它独占覆盖。
+
+验证：`npm run typecheck` 退出码 0；`npx vitest run tests/timezone.test.ts tests/price-ratio.test.ts tests/deepseek-offpeak.test.ts` 14 passed；`npm test` 18 个文件 189 passed | 1 skipped。
+
+必要的问题与决策：
+
+- 跨 TZ 子进程不写死日期键与档位列值，而是按绝对时间戳现算：一旦 `toDateKey` 或 `isDeepseekOffpeak` 意外读机器时区，`dateKeys` / `offpeakFlags` / `ratios` 会随 TZ 漂移，用例立即失败，而不是只在结果一致时侥幸通过。
+- 两份用例共用同一组边界时间戳语义（北京时间 11-12 零点与峰谷边界），`timezone.test.ts` 负责日期键与格式化，`price-ratio.test.ts` 负责档位与比率序列，不重复改写 `deepseek-offpeak.test.ts`。
 
 # T007 长期文档同步
 

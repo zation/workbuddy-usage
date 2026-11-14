@@ -240,23 +240,39 @@ describe('timeseries 的 DS 价格比率', () => {
 function ratiosInTimezone(tz: string): string {
   const queryUrl = new URL('../server/query.ts', import.meta.url).href;
   const schemaUrl = new URL('../src/etl/database.ts', import.meta.url).href;
+  const datesUrl = new URL('../src/shared/dates.ts', import.meta.url).href;
+  const offpeakUrl = new URL('../src/shared/deepseek-offpeak.ts', import.meta.url).href;
+  const formatUrl = new URL('../src/web/format.ts', import.meta.url).href;
   const script = [
     `import { DatabaseSync } from 'node:sqlite';`,
     `import { getTimeseries } from '${queryUrl}';`,
     `import { SCHEMA_SQL } from '${schemaUrl}';`,
+    `import { toDateKey } from '${datesUrl}';`,
+    `import { isDeepseekOffpeak } from '${offpeakUrl}';`,
+    `import { formatDateTime } from '${formatUrl}';`,
     `const db = new DatabaseSync(':memory:');`,
     `db.exec(SCHEMA_SQL);`,
     `db.prepare('INSERT INTO models (model, model_name, display_name) VALUES (?, ?, ?)')`,
     `  .run('deepseek-v4.1-flash', 'DeepSeek', 'DeepSeek');`,
-    `const insertRequest = db.prepare('INSERT INTO requests (request_id, group_id, session_id, model_id, source_file_id, is_subagent, started_at, ended_at, date_key, input_tokens, output_tokens, cache_read_tokens, total_tokens, credit, has_credit, step_count) VALUES (?, 1, 1, 1, 1, 0, 0, 0, ?, ?, ?, ?, ?, ?, 1, ?)');`,
-    `const insertStep = db.prepare('INSERT INTO steps (request_id, source_file_id, step_index, timestamp, model, is_subagent, is_deepseek_offpeak, input_tokens, output_tokens, cache_read_tokens, total_tokens) VALUES (?, 1, ?, 0, ?, 0, ?, ?, ?, ?, ?)');`,
-    `insertRequest.run('peak', '2026-11-12', 1000000, 0, 0, 1000000, 100, 1);`,
-    `insertStep.run('peak', 0, 'deepseek-v4.1-flash', 0, 1000000, 0, 0, 1000000);`,
-    `insertRequest.run('offpeak', '2026-11-12', 1000000, 0, 0, 1000000, 50, 1);`,
-    `insertStep.run('offpeak', 0, 'deepseek-v4.1-flash', 1, 1000000, 0, 0, 1000000);`,
-    `insertRequest.run('cross-month', '2026-10-31', 1000000, 0, 0, 1000000, 20, 1);`,
-    `insertStep.run('cross-month', 0, 'deepseek-v4.1-flash', 1, 1000000, 0, 0, 1000000);`,
-    `console.log(JSON.stringify(getTimeseries(db, {}).ratios));`,
+    `const insertRequest = db.prepare('INSERT INTO requests (request_id, group_id, session_id, model_id, source_file_id, is_subagent, started_at, ended_at, date_key, input_tokens, output_tokens, cache_read_tokens, total_tokens, credit, has_credit, step_count) VALUES (?, 1, 1, 1, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)');`,
+    `const insertStep = db.prepare('INSERT INTO steps (request_id, source_file_id, step_index, timestamp, model, is_subagent, is_deepseek_offpeak, input_tokens, output_tokens, cache_read_tokens, total_tokens) VALUES (?, 1, ?, ?, ?, 0, ?, ?, ?, ?, ?)');`,
+    `const beijing = (day, hour, minute = 0) => Date.UTC(2026, 10, day, hour - 8, minute);`,
+    `const stamps = [beijing(12, 0, 0), beijing(12, 8, 59), beijing(12, 9, 0), beijing(12, 11, 59), beijing(12, 12, 0), beijing(12, 13, 59), beijing(12, 14, 0), beijing(12, 17, 59), beijing(12, 18, 0)];`,
+    `const cross = Date.UTC(2026, 9, 31, 2, 0);`,
+    `const write = (requestId, stamp, credit) => {`,
+    `  insertRequest.run(requestId, stamp, stamp, toDateKey(stamp), 1000000, 0, 0, 1000000, credit);`,
+    `  insertStep.run(requestId, 0, stamp, 'deepseek-v4.1-flash', Number(isDeepseekOffpeak(stamp)), 1000000, 0, 0, 1000000);`,
+    `};`,
+    `stamps.forEach((stamp, index) => write('edge-' + index, stamp, 10));`,
+    `write('cross-month', cross, 20);`,
+    `const series = getTimeseries(db, {});`,
+    `console.log(JSON.stringify({`,
+    `  dateKeys: stamps.map(toDateKey),`,
+    `  offpeakFlags: stamps.map((stamp) => Number(isDeepseekOffpeak(stamp))),`,
+    `  formatted: stamps.map(formatDateTime),`,
+    `  rows: series.rows.map((row) => [row.date, row.model, row.totalTokens]),`,
+    `  ratios: series.ratios,`,
+    `}));`,
     `db.close();`,
   ].join('\n');
   return execFileSync(process.execPath, ['--input-type=module', '-e', script], {
@@ -266,11 +282,18 @@ function ratiosInTimezone(tz: string): string {
 }
 
 describe('价格比率序列与机器时区无关', () => {
-  it('UTC / UTC+8 / UTC-8 得到同一组按天比率（含跨月单价）', () => {
+  it('UTC / UTC+8 / UTC-8 得到同一组业务日期、每步档位、比率与格式化', () => {
     const expected = ratiosInTimezone('UTC');
-    expect(expected).not.toBe('[]');
-    expect(expected).toContain('2026-10-31');
-    expect(expected).toContain('2026-11-12');
+    const parsed = JSON.parse(expected) as {
+      dateKeys: string[];
+      offpeakFlags: number[];
+      formatted: string[];
+      ratios: Array<{ date: string }>;
+    };
+    expect(parsed.dateKeys.every((key) => key === '2026-11-12')).toBe(true);
+    expect(parsed.offpeakFlags).toEqual([1, 1, 0, 0, 1, 1, 0, 0, 1]);
+    expect(parsed.formatted[0]).toBe('11-12 00:00');
+    expect(parsed.ratios.map((row) => row.date)).toEqual(['2026-10-31', '2026-11-12']);
     expect(ratiosInTimezone('Asia/Shanghai')).toBe(expected);
     expect(ratiosInTimezone('America/Los_Angeles')).toBe(expected);
   });
