@@ -111,6 +111,36 @@ test.describe('hover 聚焦', () => {
     expect(unfocused.rows.every((row) => row.opacity === '1'), '空白区悬浮全部 1.0').toBe(true);
   });
 
+  test('AC2 hover 价格比率折线时只高亮比率行，柱段与模型行同步减淡', async () => {
+    const points = await readPoints(panel);
+    await panel.hoverRatioLine();
+
+    const tip = await panel.trendTooltipState();
+    expect(tip.ratioRows.length, '当天存在比率行').toBeGreaterThan(0);
+    expect(tip.ratioRows.every((row) => row.opacity === '1'), '只有比率行常态').toBe(true);
+    expect(tip.rows.length, '当天存在模型行').toBeGreaterThan(0);
+    expect(tip.rows.every((row) => row.opacity === '0.4'), '模型行全部减淡').toBe(true);
+    expect(await alphaAt(panel, points.otherSeries), '柱系列同步减淡').toBeLessThanOrEqual(
+      DIM_ALPHA + ALPHA_TOLERANCE,
+    );
+
+    await panel.hoverBarOnRatioDay();
+    const barTip = await panel.trendTooltipState();
+    expect(barTip.ratioRows.length, '同一天仍有比率行').toBeGreaterThan(0);
+    expect(
+      barTip.ratioRows.every((row) => row.opacity === '0.4'),
+      '聚焦柱段时比率行减淡',
+    ).toBe(true);
+    expect(barTip.rows.some((row) => row.opacity === '1'), '聚焦的模型行常态').toBe(true);
+
+    await panel.hoverChartBlank();
+    const restored = await panel.trendTooltipState();
+    expect(
+      [...restored.rows, ...restored.ratioRows].every((row) => row.opacity === '1'),
+      '移出后全部恢复 1.0',
+    ).toBe(true);
+  });
+
   test('AC3 分组条按段减淡，极窄段可命中且视觉段宽与条长不变', async () => {
     const expectation = expectRange(FROM, TO);
     const segments = expectation.groupRows('tokens')[0]?.segments ?? [];
@@ -225,14 +255,15 @@ test.describe('hover 聚焦', () => {
     const ratio = (await alphaAt(panel, points.otherSeries)) / 255;
     expect(ratio).toBeGreaterThan(0.38);
     expect(ratio).toBeLessThan(0.42);
-    await panel.hoverCanvasPoint(points.otherSeries);
+    await panel.hoverBarOnRatioDay();
     const trendRows = await panel.trendTooltipState();
     expect(new Set(trendRows.rows.map((row) => row.opacity)), '趋势图 tooltip 同一强度').toEqual(
       new Set(['1', '0.4']),
     );
+    expect(trendRows.ratioRows.length, '当天存在比率行').toBeGreaterThan(0);
     expect(
-      trendRows.ratioRows.every((row) => row.opacity === '1'),
-      '比率行不参与减淡',
+      trendRows.ratioRows.every((row) => row.opacity === '0.4'),
+      '聚焦柱段时比率行随非聚焦行减淡',
     ).toBe(true);
   });
 

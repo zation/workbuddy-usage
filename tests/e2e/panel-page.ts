@@ -557,6 +557,105 @@ export class PanelPage {
     return point;
   }
 
+  /**
+   * 价格比率折线的固定色（#B45309）。取 3×3 邻域纯色像素最密处，
+   * 优先落在数据点圆心而不是抗锯齿的斜线边缘，便于稳定触发 series hover。
+   */
+  async ratioLinePoint(): Promise<{ x: number; y: number }> {
+    return this.pollCanvas(async () =>
+      this.chart.locator('canvas').first().evaluate((node) => {
+        const canvas = node as HTMLCanvasElement;
+        const context = canvas.getContext('2d');
+        if (!context) {
+          return null;
+        }
+        const { width, height } = canvas;
+        const rows = height - 40;
+        const data = context.getImageData(0, 0, width, rows).data;
+        const matches: Array<{ x: number; y: number }> = [];
+        for (let y = 0; y < rows; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            const index = (y * width + x) * 4;
+            if (
+              data[index] === 180 &&
+              data[index + 1] === 83 &&
+              data[index + 2] === 9 &&
+              data[index + 3] === 255
+            ) {
+              matches.push({ x, y });
+            }
+          }
+        }
+        const filled = new Set(matches.map((point) => point.y * width + point.x));
+        let best: { x: number; y: number } | null = null;
+        let bestScore = 0;
+        for (const point of matches) {
+          let score = 0;
+          for (let dy = -1; dy <= 1; dy += 1) {
+            for (let dx = -1; dx <= 1; dx += 1) {
+              if (filled.has((point.y + dy) * width + point.x + dx)) {
+                score += 1;
+              }
+            }
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            best = point;
+          }
+        }
+        return best;
+      }),
+    );
+  }
+
+  async hoverRatioLine(): Promise<void> {
+    await this.hoverCanvasPoint(await this.ratioLinePoint());
+  }
+
+  /**
+   * hover 与折线数据点同一类目的柱段：那天一定有比率行，才能同时验证
+   * 「聚焦柱段时比率行减淡」。从底部往上找第一个非灰白、非折线色的实色像素。
+   */
+  async hoverBarOnRatioDay(): Promise<void> {
+    await this.moveAway();
+    const ratio = await this.ratioLinePoint();
+    const point = await this.pollCanvas(async () =>
+      this.chart.locator('canvas').first().evaluate((node, targetX) => {
+        const canvas = node as HTMLCanvasElement;
+        const context = canvas.getContext('2d');
+        if (!context) {
+          return null;
+        }
+        const { width, height } = canvas;
+        const bottom = height - 44;
+        const data = context.getImageData(0, 0, width, bottom).data;
+        for (let y = bottom - 1; y >= 0; y -= 1) {
+          for (let dx = -8; dx <= 8; dx += 1) {
+            const x = targetX + dx;
+            if (x < 0 || x >= width) {
+              continue;
+            }
+            const index = (y * width + x) * 4;
+            const red = data[index] ?? 0;
+            const green = data[index + 1] ?? 0;
+            const blue = data[index + 2] ?? 0;
+            const alpha = data[index + 3] ?? 0;
+            // 半透明柱段的 RGB 不变、alpha 只有 102，不能用 255 过滤
+            if (alpha < 100 || (red === 180 && green === 83 && blue === 9)) {
+              continue;
+            }
+            const spread = Math.max(red, green, blue) - Math.min(red, green, blue);
+            if (spread >= 40) {
+              return { x, y };
+            }
+          }
+        }
+        return null;
+      }, ratio.x),
+    );
+    await this.hoverCanvasPoint(point);
+  }
+
   /** 图例区在画布底部中间：hover 这里不应产生模型级聚焦。 */
   async hoverLegend(): Promise<void> {
     const box = await this.chartBox();

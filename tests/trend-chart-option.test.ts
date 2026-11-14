@@ -157,7 +157,7 @@ describe('hover 聚焦的图表配置', () => {
     expect(html).not.toContain('opacity');
   });
 
-  it('比率行不参与减淡，柱子仍按原规则过滤降序', () => {
+  it('hover 柱段时比率行随其它非聚焦行减淡，柱子仍按原规则过滤降序', () => {
     const { tooltip } = parts(buildTrendChartOption(data, 'tokens', ratios, () => 'hy4'));
     const html = tooltip.formatter([
       { axisValue: '2026-11-12', seriesId: 'deepseek-v4.1-flash', seriesName: 'DeepSeek', value: 4000, marker: 'A' },
@@ -172,7 +172,45 @@ describe('hover 聚焦的图表配置', () => {
     expect(rows[2]).toContain('opacity:1');
     expect(rows[2]).toContain('Hy4');
     expect(html).not.toContain('Zero');
-    expect(rows[3]).toBe('<span class="trend-tip-row is-ratio">DDeepSeek 费用比率：1.76×</span>');
+    expect(rows[3]).toContain('is-ratio');
+    expect(rows[3]).toContain(`opacity:${FOCUS_DIM_OPACITY}`);
+    expect(rows[3]).toContain('1.76×');
+  });
+
+  it('hover 折线时只有比率行常态，所有模型行减淡', () => {
+    const { tooltip } = parts(
+      buildTrendChartOption(data, 'tokens', ratios, () => PRICE_RATIO_SERIES_ID),
+    );
+    const html = tooltip.formatter([
+      { axisValue: '2026-11-12', seriesId: 'deepseek-v4.1-flash', seriesName: 'DeepSeek', value: 4000, marker: 'A' },
+      { axisValue: '2026-11-12', seriesId: 'hy4', seriesName: 'Hy4', value: 1200, marker: 'C' },
+      { axisValue: '2026-11-12', seriesId: PRICE_RATIO_SERIES_ID, seriesName: '价格比率', value: 1.76, marker: 'D' },
+    ]);
+    const rows = html.split('<br/>');
+    expect(rows).toHaveLength(4);
+    expect(rows[1]).toContain(`opacity:${FOCUS_DIM_OPACITY}`);
+    expect(rows[2]).toContain(`opacity:${FOCUS_DIM_OPACITY}`);
+    expect(rows[3]).toContain('is-ratio');
+    expect(rows[3]).toContain('opacity:1');
+    expect(rows[3]).not.toContain(`opacity:${FOCUS_DIM_OPACITY}`);
+  });
+
+  it('无聚焦时比率行与模型行都是 1.0', () => {
+    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', ratios));
+    const html = tooltip.formatter([
+      { axisValue: '2026-11-12', seriesId: 'hy4', seriesName: 'Hy4', value: 1200, marker: 'A' },
+      { axisValue: '2026-11-12', seriesId: PRICE_RATIO_SERIES_ID, seriesName: '价格比率', value: 1.76, marker: 'D' },
+    ]);
+    expect(html).not.toContain(`opacity:${FOCUS_DIM_OPACITY}`);
+    expect(html.match(/opacity:1/gu)).toHaveLength(2);
+  });
+
+  it('折线系列可在线段上触发 hover，且不带原生 emphasis', () => {
+    const { series } = parts(buildTrendChartOption(data, 'tokens', ratios));
+    const line = series.find((item) => item.id === PRICE_RATIO_SERIES_ID);
+    expect(line?.triggerEvent).toBe('line');
+    expect(line?.emphasis).toEqual({ disabled: true });
+    expect((line?.lineStyle as { opacity?: number } | undefined)?.opacity).toBe(1);
   });
 
   it('展示名相同但业务键不同时按业务键判定', () => {

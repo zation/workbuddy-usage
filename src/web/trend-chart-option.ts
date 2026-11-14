@@ -39,8 +39,9 @@ export type FocusReader = () => string | null;
 
 /**
  * 图表配置由已聚合数据生成：柱口径不变，价格比率折线只叠加在 Token 图上。
- * `readFocusedModel` 返回当前聚焦的模型业务键：tooltip 中的其它模型行减淡到
- * FOCUS_DIM_OPACITY；系列的减淡由 `emphasis.focus: 'series'` 与 `blur` 状态负责。
+ * `readFocusedModel` 返回当前聚焦的系列业务键（模型或价格比率折线）：tooltip 中
+ * 非聚焦行减淡到 FOCUS_DIM_OPACITY；系列本身的减淡由 EChart 按同一业务键定向合并
+ * itemStyle / lineStyle.opacity 完成。
  */
 export function buildTrendChartOption(
   data: TrendChartData | null,
@@ -102,8 +103,11 @@ export function buildTrendChartOption(
           connectNulls: false,
           symbol: 'circle',
           symbolSize: 5,
-          lineStyle: { color: PRICE_RATIO_COLOR, width: 2 },
-          itemStyle: { color: PRICE_RATIO_COLOR },
+          lineStyle: { color: PRICE_RATIO_COLOR, width: 2, opacity: 1 },
+          itemStyle: { color: PRICE_RATIO_COLOR, opacity: 1 },
+          emphasis: { disabled: true },
+          // 让线段本身也能触发 series mouseover，否则只能命中 5px 的数据点
+          triggerEvent: 'line' as const,
           data: days.map((day) => ratioMap.get(day) ?? null),
           z: 5,
         },
@@ -159,9 +163,9 @@ export function buildTrendChartOption(
           );
         });
         if (ratioParam && ratioParam.value !== null && ratioParam.value !== undefined) {
-          // 比率行不是模型行，不参与聚焦减淡
+          const opacity = focusOpacity(focusedModel, PRICE_RATIO_SERIES_ID);
           lines.push(
-            `<span class="trend-tip-row is-ratio">${ratioParam.marker ?? ''}DeepSeek 费用比率：${Number(ratioParam.value).toFixed(2)}×</span>`,
+            `<span class="trend-tip-row is-ratio" style="opacity:${opacity}">${ratioParam.marker ?? ''}DeepSeek 费用比率：${Number(ratioParam.value).toFixed(2)}×</span>`,
           );
         }
         if (lines.length === 0) {

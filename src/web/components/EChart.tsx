@@ -21,9 +21,9 @@ interface EChartProps {
   option: EChartsOption;
   height?: number;
   ariaLabel?: string;
-  /** 指针进出柱段时回调模型业务键；图例、坐标轴与空白类目不触发。 */
+  /** 指针进出柱段或价格比率折线时回调系列业务键；图例、坐标轴与空白类目不触发。 */
   onSeriesHover?: (seriesId: string | null) => void;
-  /** 聚焦的柱系列业务键：其余柱系列减淡到 FOCUS_DIM_OPACITY，null 表示全部常态。 */
+  /** 聚焦的系列业务键（模型或 price-ratio）：其余系列减淡到 FOCUS_DIM_OPACITY。 */
   focusedSeriesId?: string | null;
 }
 
@@ -52,12 +52,23 @@ export function EChart({
     const observer = new ResizeObserver(() => instance.resize());
     observer.observe(node);
 
-    // 只认柱段：图例与坐标轴的 componentType 不是 series，空白类目不会产生元素事件
+    // 只认柱段与价格比率折线：图例、坐标轴与空白类目不会产生元素事件
+    const isFocusable = (params: SeriesEvent) =>
+      params.componentType === 'series' &&
+      (params.seriesType === 'bar' || params.seriesType === 'line');
+    // 折线线段事件的 eventData 不带 seriesId，用 seriesIndex 回查当前 option
+    const resolveSeriesId = (params: SeriesEvent): string | null => {
+      if (typeof params.seriesId === 'string') {
+        return params.seriesId;
+      }
+      const current = chart.current?.getOption() as { series?: Array<{ id?: string }> } | undefined;
+      return current?.series?.[params.seriesIndex ?? -1]?.id ?? null;
+    };
     const handleOver = (params: SeriesEvent) => {
-      if (params.componentType !== 'series' || params.seriesType !== 'bar') {
+      if (!isFocusable(params)) {
         return;
       }
-      hover.current?.(params.seriesId ?? null);
+      hover.current?.(resolveSeriesId(params));
       /*
        * 同一次指针事件里 tooltip 先于元素 hover 渲染，且 ECharts 认为「同一类目的
        * 数据没变」就不再重建内容。先藏后显清掉这次缓存，让浮层按新聚焦重绘；
@@ -71,7 +82,7 @@ export function EChart({
       });
     };
     const handleOut = (params: SeriesEvent) => {
-      if (params.componentType !== 'series' || params.seriesType !== 'bar') {
+      if (!isFocusable(params)) {
         return;
       }
       hover.current?.(null);
@@ -97,8 +108,9 @@ export function EChart({
   }, [option]);
 
   /*
-   * 系列减淡用定向 merge 实现：只改每个柱系列的 itemStyle.opacity，
-   * 不重建 option、不动 series 结构，因此不会打断指针所在的 hover 与浮层。
+   * 系列减淡用定向 merge 实现：只改柱系列的 itemStyle.opacity 与折线的
+   * lineStyle / itemStyle.opacity，不重建 option、不动 series 结构，
+   * 因此不会打断指针所在的 hover 与浮层。
    */
   useEffect(() => {
     const instance = chart.current;
@@ -107,11 +119,18 @@ export function EChart({
     }
     const series = Array.isArray(option.series) ? option.series : option.series ? [option.series] : [];
     const patches = series.flatMap((item) => {
-      if (!item || item.type !== 'bar' || typeof item.id !== 'string') {
+      if (!item || typeof item.id !== 'string') {
         return [];
       }
       const dim = focusedSeriesId !== null && focusedSeriesId !== item.id;
-      return [{ id: item.id, itemStyle: { opacity: dim ? FOCUS_DIM_OPACITY : 1 } }];
+      const opacity = dim ? FOCUS_DIM_OPACITY : 1;
+      if (item.type === 'bar') {
+        return [{ id: item.id, itemStyle: { opacity } }];
+      }
+      if (item.type === 'line') {
+        return [{ id: item.id, lineStyle: { opacity }, itemStyle: { opacity } }];
+      }
+      return [];
     });
     if (patches.length === 0) {
       return;
