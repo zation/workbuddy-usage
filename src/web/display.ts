@@ -1,4 +1,5 @@
 import { enumerateDays } from '../shared/dates.ts';
+import { FOCUS_DIM_OPACITY } from '../shared/constants.ts';
 import type { BreakdownRow, BreakdownSegment, TimeseriesRow } from '../shared/types.ts';
 
 /** 面板当前激活的模块 tab，决定 0 值隐藏使用哪个主指标。 */
@@ -51,6 +52,14 @@ export function cacheHitRate(
   cacheReadTokens: number,
 ): number | null {
   return inputTokens > 0 ? cacheReadTokens / inputTokens : null;
+}
+
+/**
+ * R1 / R2：聚焦项 1.0，非聚焦项 FOCUS_DIM_OPACITY；无聚焦时全部 1.0。
+ * 判定一律用模型业务键，展示名不参与比较（C12 规范化与重名后缀不影响结果）。
+ */
+export function focusOpacity(focusedModel: string | null, modelKey: string): number {
+  return focusedModel !== null && focusedModel !== modelKey ? FOCUS_DIM_OPACITY : 1;
 }
 
 /** 段在指定主指标下的数额。 */

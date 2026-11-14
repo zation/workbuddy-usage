@@ -151,11 +151,22 @@
 
 # T005 聚焦强度常量与纯函数单测
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R1、R2 与 Plan AD-6 建立单一强度常量、按业务键判定聚焦模型，并让 `buildTrendChartOption` 生成带聚焦状态的 option；纯函数单测锁定 0.4 与四处共用，覆盖 tooltip 行、日期行与「无数据」分支、0 值过滤与降序。完成条件：满足 AC5 中由单测承担的数值正确性要求。
 
 修改范围：`src/shared/constants.ts`、`src/web/trend-chart-option.ts`、`tests/trend-chart-option.test.ts`。
+
+实施结果：`FOCUS_DIM_OPACITY = 0.4` 放入 `src/shared/constants.ts`；`src/web/display.ts` 新增 `focusOpacity(focusedModel, modelKey)`，按业务键返回 1.0 或常量，供趋势图 tooltip 行、分组条色段、分组浮层行三处共用（趋势图系列的减淡走 ECharts 的 blur 状态）。`buildTrendChartOption` 增加第 4 个参数 `focusedModel`（默认 `null`）：柱系列补 `blur: { itemStyle: { opacity: FOCUS_DIM_OPACITY } }`，`emphasis.focus: 'series'` 保持不变；tooltip formatter 把日期行包成 `.trend-tip-date`、模型行包成 `.trend-tip-row` 并写内联 `opacity`、比率行包成 `.trend-tip-row.is-ratio` 且不参与减淡，「无数据」包成 `.trend-tip-empty`；`tooltip.className` 设为 `trend-tooltip`，为浮层给出稳定标识。单测新增 9 条（`tests/display.test.ts` 2 条、`tests/trend-chart-option.test.ts` 7 条）：常量等于 0.4、每个柱系列的 blur 强度等于常量且 `focus` 仍为 `series`、模型行 1.0 / 0.4 的分行结果、无聚焦时全为 1.0、日期行与「无数据」不带减淡样式、比率行不减淡且 0 值过滤与降序不变、展示名相同但业务键不同时按业务键判定、浮层类名。
+
+必要的问题与决策：减淡用 `blur.itemStyle.opacity` 而不是自绘或 `emphasis.blurScope` 调参——ECharts 的 `createBlurDefaultState` 只在未显式给 `opacity` 时使用默认的 0.1，显式给值即原样采用，因此 0.4 精确可控且不改 `focus` 语义。tooltip 的 `className` 是公开的 `tooltip.className` 配置，只给浮层一个稳定标识，不暴露图表内部状态；原「修改范围」未列 `src/web/display.ts` 与 `tests/display.test.ts`，`focusOpacity` 需要放在展示层的纯函数模块才不重复实现三遍，属实现细节。
+
+验证：
+- `npm run typecheck`：退出码 0。
+- `npm test`：18 个文件 172 passed / 1 skipped（新增 9 条；原有「折线值为 null 时 tooltip 不追加比率行」同步改为新标记，断言口径不变）。
+- `npm run acceptance`：27 passed，退出码 0，tooltip 结构变化未影响既有可见断言。
+
+提交：
 
 # T006 趋势图聚焦
 

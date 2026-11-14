@@ -1,6 +1,8 @@
 import type { EChartsOption } from 'echarts';
+import { FOCUS_DIM_OPACITY } from '../shared/constants.ts';
 import type { PriceRatioRow } from '../shared/types.ts';
 import type { TrendChartData } from './display.ts';
+import { focusOpacity } from './display.ts';
 import { formatCredit, formatInteger, formatTokens } from './format.ts';
 import { modelColor } from './model-colors.ts';
 
@@ -33,11 +35,16 @@ interface TooltipParam {
   marker?: string;
 }
 
-/** 图表配置由已聚合数据生成：柱口径不变，价格比率折线只叠加在 Token 图上。 */
+/**
+ * 图表配置由已聚合数据生成：柱口径不变，价格比率折线只叠加在 Token 图上。
+ * `focusedModel` 为当前聚焦的模型业务键：非聚焦系列与 tooltip 中的其它模型行减淡到
+ * FOCUS_DIM_OPACITY，聚焦语义仍是 `emphasis.focus: 'series'`。
+ */
 export function buildTrendChartOption(
   data: TrendChartData | null,
   metric: 'tokens' | 'credit',
   ratios?: PriceRatioRow[],
+  focusedModel: string | null = null,
 ): EChartsOption {
   const formatValue = (value: number): string =>
     metric === 'tokens' ? formatTokens(value) : formatCredit(value);
@@ -79,6 +86,7 @@ export function buildTrendChartOption(
         borderWidth: 1,
       },
       emphasis: { focus: 'series' as const },
+      blur: { itemStyle: { opacity: FOCUS_DIM_OPACITY } },
       data: days.map((day) => values.get(day) ?? 0),
     };
   });
@@ -129,6 +137,8 @@ export function buildTrendChartOption(
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
+      // ECharts 默认不给浮层加类名；这里给出稳定标识供样式与结构定位使用
+      className: 'trend-tooltip',
       formatter: (params) => {
         // 日期取过滤前的 params：全 0 日过滤后没有项可取 axisValue。
         const raw = (Array.isArray(params) ? params : [params]) as unknown as TooltipParam[];
@@ -138,19 +148,24 @@ export function buildTrendChartOption(
         const list = bars
           .filter((item) => Number(item.value) > 0)
           .sort((left, right) => Number(right.value) - Number(left.value));
-        const lines = list.map(
-          (item) =>
-            `${item.marker ?? ''}${escapeHtml(item.seriesName ?? '')}：${formatValue(Number(item.value))}`,
-        );
+        const lines = list.map((item) => {
+          const opacity = focusOpacity(focusedModel, item.seriesId ?? '');
+          return (
+            `<span class="trend-tip-row" style="opacity:${opacity}">` +
+            `${item.marker ?? ''}${escapeHtml(item.seriesName ?? '')}：${formatValue(Number(item.value))}` +
+            '</span>'
+          );
+        });
         if (ratioParam && ratioParam.value !== null && ratioParam.value !== undefined) {
+          // 比率行不是模型行，不参与聚焦减淡
           lines.push(
-            `${ratioParam.marker ?? ''}DeepSeek 费用比率：${Number(ratioParam.value).toFixed(2)}×`,
+            `<span class="trend-tip-row is-ratio">${ratioParam.marker ?? ''}DeepSeek 费用比率：${Number(ratioParam.value).toFixed(2)}×</span>`,
           );
         }
         if (lines.length === 0) {
-          return `${axis}<br/>无数据`;
+          return `<span class="trend-tip-date">${axis}</span><br/><span class="trend-tip-empty">无数据</span>`;
         }
-        return [axis, ...lines].join('<br/>');
+        return [`<span class="trend-tip-date">${axis}</span>`, ...lines].join('<br/>');
       },
     },
     legend: {

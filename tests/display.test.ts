@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { BUSINESS_TZ_OFFSET_MS } from '../src/shared/constants.ts';
+import { BUSINESS_TZ_OFFSET_MS, FOCUS_DIM_OPACITY } from '../src/shared/constants.ts';
 import { addDays } from '../src/shared/dates.ts';
 import type { BreakdownRow, BreakdownSegment, TimeseriesRow } from '../src/shared/types.ts';
 import {
   buildTimeseriesAxis,
   cacheHitRate,
+  focusOpacity,
   segmentValue,
   segmentWidths,
   visibleBreakdownRows,
@@ -282,5 +283,19 @@ describe('segmentWidths', () => {
     const widths = segmentWidths(2, 400, segments, 'token');
     expect(widths).toEqual([75, 25]);
     expect(widths.every((width) => width >= 0 && width <= 100)).toBe(true);
+  });
+});
+
+describe('聚焦不透明度', () => {
+  it('无聚焦时全部常态，聚焦项 1.0、非聚焦项为唯一强度常量', () => {
+    expect(FOCUS_DIM_OPACITY).toBe(0.4);
+    expect(focusOpacity(null, 'hy4')).toBe(1);
+    expect(focusOpacity('hy4', 'hy4')).toBe(1);
+    expect(focusOpacity('hy4', 'glm-5.2')).toBe(FOCUS_DIM_OPACITY);
+  });
+
+  it('按业务键判定，展示名重名不影响结果', () => {
+    expect(focusOpacity('hy4', 'hy4-free')).toBe(FOCUS_DIM_OPACITY);
+    expect(focusOpacity('hy4-free', 'hy4')).toBe(FOCUS_DIM_OPACITY);
   });
 });

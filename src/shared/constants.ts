@@ -8,3 +8,9 @@ export const UNKNOWN_GROUP = '未知分组';
 export const UNKNOWN_MODEL = '未知模型';
 /** 自动分组的虚拟业务键与展示名（R5）：不与任何 group_path 相等。 */
 export const DEFAULT_GROUP = '默认';
+
+/**
+ * 非聚焦项的不透明度：趋势图系列、趋势图 tooltip 行、分组条色段、分组浮层行四处共用，
+ * 聚焦项固定 1.0。不给视图类型或模型色深浅留分别取值的口子。
+ */
+export const FOCUS_DIM_OPACITY = 0.4;

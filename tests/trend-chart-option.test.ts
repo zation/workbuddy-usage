@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FOCUS_DIM_OPACITY } from '../src/shared/constants.ts';
 import type { PriceRatioRow, TimeseriesRow } from '../src/shared/types.ts';
 import type { TrendChartData } from '../src/web/display.ts';
 import {
@@ -103,6 +104,93 @@ describe('趋势图价格比率折线', () => {
     const html = tooltip.formatter([
       { axisValue: '2026-11-12', seriesId: PRICE_RATIO_SERIES_ID, seriesName: '价格比率', value: null, marker: 'C' },
     ]);
-    expect(html).toBe('2026-11-12<br/>无数据');
+    expect(html).toBe(
+      '<span class="trend-tip-date">2026-11-12</span><br/><span class="trend-tip-empty">无数据</span>',
+    );
+  });
+});
+
+function blurOpacity(series: Record<string, unknown>): number | undefined {
+  const blur = series.blur as { itemStyle?: { opacity?: number } } | undefined;
+  return blur?.itemStyle?.opacity;
+}
+
+describe('hover 聚焦的图表配置', () => {
+  it('每个柱系列都用唯一强度常量配置 blur，聚焦语义仍是 series', () => {
+    expect(FOCUS_DIM_OPACITY).toBe(0.4);
+    const { series } = parts(buildTrendChartOption(data, 'tokens', ratios, 'hy4'));
+    const bars = series.filter((item) => item.type === 'bar');
+    expect(bars.length).toBeGreaterThan(0);
+    for (const bar of bars) {
+      expect(blurOpacity(bar)).toBe(FOCUS_DIM_OPACITY);
+      expect(bar.emphasis).toEqual({ focus: 'series' });
+    }
+  });
+
+  it('tooltip 模型行按业务键减淡，日期行常态，聚焦行 1.0', () => {
+    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', undefined, 'hy4'));
+    const html = tooltip.formatter([
+      { axisValue: '2026-11-12', seriesId: 'hy4', seriesName: 'Hy4', value: 1200, marker: 'A' },
+      { axisValue: '2026-11-12', seriesId: 'glm-5.2', seriesName: 'GLM-5.2', value: 300, marker: 'B' },
+    ]);
+    const rows = html.split('<br/>');
+    expect(rows[0]).toBe('<span class="trend-tip-date">2026-11-12</span>');
+    expect(rows[1]).toBe('<span class="trend-tip-row" style="opacity:1">AHy4：1.2K</span>');
+    expect(rows[2]).toBe(
+      `<span class="trend-tip-row" style="opacity:${FOCUS_DIM_OPACITY}">BGLM-5.2：300</span>`,
+    );
+  });
+
+  it('无聚焦时所有模型行都是 1.0', () => {
+    const { tooltip } = parts(buildTrendChartOption(data, 'tokens'));
+    const html = tooltip.formatter([
+      { axisValue: '2026-11-12', seriesId: 'hy4', seriesName: 'Hy4', value: 1200, marker: 'A' },
+      { axisValue: '2026-11-12', seriesId: 'glm-5.2', seriesName: 'GLM-5.2', value: 300, marker: 'B' },
+    ]);
+    expect(html).not.toContain(`opacity:${FOCUS_DIM_OPACITY}`);
+    expect(html.match(/opacity:1/gu)).toHaveLength(2);
+  });
+
+  it('「无数据」分支不带减淡样式，日期照常保留', () => {
+    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', undefined, 'hy4'));
+    const html = tooltip.formatter([{ axisValue: '2026-11-11' }]);
+    expect(html).toBe(
+      '<span class="trend-tip-date">2026-11-11</span><br/><span class="trend-tip-empty">无数据</span>',
+    );
+    expect(html).not.toContain('opacity');
+  });
+
+  it('比率行不参与减淡，柱子仍按原规则过滤降序', () => {
+    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', ratios, 'hy4'));
+    const html = tooltip.formatter([
+      { axisValue: '2026-11-12', seriesId: 'deepseek-v4.1-flash', seriesName: 'DeepSeek', value: 4000, marker: 'A' },
+      { axisValue: '2026-11-12', seriesId: 'zero-model', seriesName: 'Zero', value: 0, marker: 'B' },
+      { axisValue: '2026-11-12', seriesId: 'hy4', seriesName: 'Hy4', value: 1200, marker: 'C' },
+      { axisValue: '2026-11-12', seriesId: PRICE_RATIO_SERIES_ID, seriesName: '价格比率', value: 1.76, marker: 'D' },
+    ]);
+    const rows = html.split('<br/>');
+    expect(rows).toHaveLength(4);
+    expect(rows[1]).toContain(`opacity:${FOCUS_DIM_OPACITY}`);
+    expect(rows[1]).toContain('DeepSeek');
+    expect(rows[2]).toContain('opacity:1');
+    expect(rows[2]).toContain('Hy4');
+    expect(html).not.toContain('Zero');
+    expect(rows[3]).toBe('<span class="trend-tip-row is-ratio">DDeepSeek 费用比率：1.76×</span>');
+  });
+
+  it('展示名相同但业务键不同时按业务键判定', () => {
+    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', undefined, 'hy4'));
+    const html = tooltip.formatter([
+      { axisValue: '2026-11-12', seriesId: 'hy4', seriesName: 'Hy4', value: 1200, marker: 'A' },
+      { axisValue: '2026-11-12', seriesId: 'hy4-free', seriesName: 'Hy4', value: 300, marker: 'B' },
+    ]);
+    const rows = html.split('<br/>');
+    expect(rows[1]).toContain('opacity:1');
+    expect(rows[2]).toContain(`opacity:${FOCUS_DIM_OPACITY}`);
+  });
+
+  it('tooltip 带稳定类名，供浮层定位使用', () => {
+    const { tooltip } = parts(buildTrendChartOption(data, 'tokens'));
+    expect((tooltip as unknown as { className?: string }).className).toBe('trend-tooltip');
   });
 });
