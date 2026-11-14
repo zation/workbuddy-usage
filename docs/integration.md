@@ -36,8 +36,8 @@
 
 | `type` | 是否带 `usage` | 说明 |
 | --- | --- | --- |
-| `message` | 是 | 模型回复正文（正文可能被裁剪），带最终用量 |
-| `function_call` | 是 | 工具调用，每次调用带一次累计用量 |
+| `message` | 是 | 模型回复正文（正文可能被裁剪），带本步用量 |
+| `function_call` | 是 | 工具调用，每次调用带一次本步用量 |
 | `reasoning` | 否 | 思考过程 |
 | `function_call_result` | 否 | 工具返回结果 |
 | `session-meta` | 否 | 会话元信息，如 `codebuddy.ai/hostKind` |
@@ -64,26 +64,31 @@
 | `providerData.requestModelName` | string | 模型展示名，如 `DeepSeek-V4.1-Flash`；**同一 `model` 标识可能有多种写法**，解析层需规范化 |
 | `providerData.traceId` | string | 链路追踪 ID |
 | `providerData.agent` | string | 调用方，如 `cli` |
-| `message.usage.input_tokens` | number | 输入 token（**累计值**） |
-| `message.usage.output_tokens` | number | 输出 token（**累计值**） |
-| `message.usage.cache_read_input_tokens` | number | 缓存命中读取 token（**累计值**） |
-| `message.usage.total_tokens` | number | 合计 token（**累计值**） |
+| `message.usage.input_tokens` | number | **本步**输入 token |
+| `message.usage.output_tokens` | number | **本步**输出 token |
+| `message.usage.cache_read_input_tokens` | number | **本步**缓存命中读取 token（输入的子集） |
+| `message.usage.total_tokens` | number | **本步**合计 token |
+| `providerData.rawUsage.credit` | number | 本次模型响应的积分增量（少数旧记录为 `providerData.usage.credit`）；与上面的 `message.usage` 同属一次调用、同源同粒度，**不进入本项目统计口径**，仅作积分来源佐证 |
+| `providerData.rawUsage.original_credit` | number | 免费模型按原价折算的名义值；**不进入统计口径** |
 | `_meta.traceparent` | string | OpenTelemetry 链路信息 |
 | `_meta.baggage` | string | 形如 `codebuddy.session_id=...,codebuddy.conversation_request_id=...`，可作为 ID 的兜底来源 |
 
-### 累计用量特性
+### 逐步用量特性
 
-同一 `conversationRequestId` 会对应多条带 `usage` 的记录，数值**通常单调递增**，表示"截至该步的累计消耗"，而不是本步增量：
+同一 `conversationRequestId` 会对应多条带 `usage` 的记录。**每条记录是一次独立的模型 API 调用**，`message.usage` 的四项 token 是这一次调用的本步值，不是"截至该步的累计消耗"。因此请求级四项 token 是该请求全部记录对应字段之和，不是从里面挑一条代表整个请求：
 
 ```text
 请求 01a10cb0c5c67ef994a18ace4f842e76
-  function_call  34,728 → 41,205 → 48,357 → 54,745 → 63,667 → 69,521 → 74,973
-  message        77,835   ← 最大值那条，该请求真实总量
+  function_call  34,728  41,205  48,357  54,745  63,667  69,521  74,973   ← 7 次独立调用
+  message        77,835                                              ← 第 8 次独立调用
+  → 请求级 total_tokens = 上述 8 次调用本步值之和
 ```
 
-但单调性不是保证：实测有少数请求出现数值回退，其中一个 231 步请求按时间排序的**最后一条**为 91,095，而 `total_tokens` 最大值为 270,284。因此口径一律取 `total_tokens` **最大那条**（四个 token 字段同源），不按时间戳取末条；文档其他地方出现的"末步"与"最大值"指同一条记录，不得理解为时间末条。
+数值在请求内出现回落不是异常：上下文压缩后单次调用携带的上下文变短，该步 token 会低于前一步。实测一个 231 步请求里各步 `total_tokens` 分布在 91,095 到 270,284 之间，压缩后的一步明显低于此前各步；这只说明不同调用的规模不同，回落前后的每次调用都要计入求和，不能按数值挑一条，也不能按时间截断。
 
-实测逐条累加约为按请求取最大值后的 **40 倍**（随单请求步骤数变化，不是固定倍数），因此绝不求和。
+四项之间满足 `total = input + output` 与 `cache_read ≤ input`，本步成立、逐步求和后按请求校验仍成立。该快照下 903 个请求的逐步合计为 6,757,760,362 token，而每个请求只保留一条记录时合计仅 169,950,303——**逐步求和才是真实消耗**，漏计比例随请求步骤数变化，不是固定倍数。
+
+**字段对应关系**：一条 jsonl 记录同时带 `message.usage`（四个 token 字段，本次调用的计量）与 `providerData.rawUsage`（本次模型响应的 `credit` 等）。两者同源同粒度，但统计用途不同：token 进入本项目面板并按步落库；逐步 `credit` 与 `original_credit` 都不进入统计口径，积分只取请求级 `credit_json`（见「积分数据形态」）。`message.usage` 本身不含 credit 字段。闲时档位也按**该条记录自己的** `timestamp` 判定，长请求跨高峰 / 空闲边界时各步分别计价。
 
 ## 关联键
 
@@ -182,7 +187,7 @@ SQLite，由 WorkBuddy 管理。该数据库内还有 `automations`、`automatio
 | `updated_at` | INTEGER NOT NULL | 更新时间（毫秒） |
 | `credit_json` | TEXT | JSON 对象 `{conversationRequestId: 积分}`，可为 NULL 或 `{}` |
 
-`credit_json` 的值是**该请求所有消息步的积分之和**（客户端按 `usage_update.cost` 累加，见「积分数据形态」），不是取最大值、也不是末条。子代理请求不会单独成键：普通子代理本来不计费，团队子代理的积分并入父请求，详见下一节。
+`credit_json` 的值是**该请求所有消息步的积分之和**（客户端按 `usage_update.cost` 累加，见「积分数据形态」），是请求级总量，不是某一条记录的值。子代理请求不会单独成键：普通子代理本来不计费，团队子代理的积分并入父请求，详见下一节。
 
 `credit_json` 不是每个请求都有键：免费模型与部分辅助调用在本地不记账。因此统计必须区分"积分值为 0"与"没有积分记录"两种情况，但不再用覆盖率一类指标呈现（分子分母都无法从本地可靠定义，决策见 [backlog](./backlog/subagent-credit-reconciliation.md)）。
 
@@ -195,13 +200,15 @@ SQLite，由 WorkBuddy 管理。该数据库内还有 `automations`、`automatio
 
 ## 积分数据形态（实测）
 
-积分在本地有三套记录，粒度不同，不能互相替代。
+积分在本地有若干类记录，粒度不同，不能互相替代。**本项目统计口径只取请求级 `credit_json`**：逐步 `rawUsage.credit` / `original_credit` 与独立 `credit-usage` 事件都不进入聚合，只用于解释 `credit_json` 的来源与对账（R6）。分子按请求独立聚合，不得与步骤 JOIN 后求和，否则同一笔积分会被每步重复计入。
 
 ### 逐条积分（jsonl）
 
 `providerData.rawUsage.credit` 是模型响应携带的积分值，**按消息步增量计**（同一请求内各步数值独立，求和才是请求总额）；`message.usage` 只有四个 token 字段，不含 `credit`。少数旧记录的 `providerData.usage.credit` 语义相同，可作为别名兜底。
 
-同一对象里还有 `original_credit`：实测 534 条、**全部 `credit = 0`**，合计 1552.26，是免费模型（`hy4-free` / `hy3` 等）按原价折算的名义值，不是实付积分——统计只能用 `credit`，不能用它。
+同一对象里还有 `original_credit`：实测 534 条、**全部 `credit = 0`**，合计 1552.26，是免费模型（`hy4-free` / `hy3` 等）按原价折算的名义值，不是实付积分。
+
+> **口径边界**：逐步 `credit` 是增量，但客户端并不把它直接落库；本地逐步积分与 `credit_json` 存在已知差异（实测 37 个请求不一致、净差 24.86；225 个请求在本地账本无键但步骤仍带逐步 credit）。因此逐步 `credit` 不用于面板统计，`original_credit` 更不参与任何计算，两者都不作为 DS 摊销费用的分子。
 
 ### 独立积分事件（`credit-usage`）
 
@@ -214,13 +221,17 @@ providerData: { conversationRequestId, credit, source, stageId, messageId }
 
 它由客户端在团队子代理回传积分时写入父会话，同时以父 `conversationRequestId` 上报 cost，最终并入父请求的 `credit_json`。
 
+> **口径边界**：这类事件不单独计费，只作为 `credit_json` 来源的佐证，不进入本项目统计，也不单独生成请求行。
+
 ### 请求级积分（`credit_json`）
 
 客户端不把响应里的 `credit` 直接落库，而是通过 ACP `usage_update` 的 `cost.amount` 上报，桌面端按 `_meta["codebuddy.ai/requestId"]` **累加**后写入 `credit_json`（`app.asar` 的 `wireBackend`：`credit[requestId] = (credit[requestId] ?? 0) + cost.amount`）。由此可得：
 
 - 一条请求的 `credit_json` 值 = 该请求全部消息步之和，再加上并入的 `team_member` / `generation_tool` 等来源的 cost。
 - 累加是浮点相加，值可能带尾差（如 `202.38999999999996`）。
-- 刷新时整份重读，口径与 jsonl 的 token 最大值取值无关。
+- 刷新时整份重读；积分挂接只按 `request_id` 更新 `requests` 行，与 `steps` 的逐步 token 口径解耦。
+
+> **口径边界**：`credit_json` 是本项目积分与 DS 摊销费用分子的**唯一真源**，粒度是请求、不可分割。
 
 ### 子代理积分
 
@@ -309,8 +320,10 @@ providerData: { conversationRequestId, credit, source, stageId, messageId }
 
 | 风险 | 表现 | 应对 |
 | --- | --- | --- |
-| `usage` 语义变化 | 由累计改为增量 | 解析层集中字段映射，变更时只改一处；用「时间末条是否仍为最大值」做自检 |
-| 累计值非单调 | 个别步骤数值回退，时间末条小于最大值 | 取 `total_tokens` 最大那条的同源四项，不做差值推算；记录告警 |
+| `usage` 语义变化 | 由本步值改为累计 / 差分等其它语义 | 解析层集中字段映射，变更时只改一处；用 `total = input + output` 与 `cache_read ≤ input` 两条恒等式对本步与求和结果自检 |
+| 上下文压缩导致数值回落 | 后一步 token 明显低于前一步 | 不是异常，回落前后的每次调用都计入求和，不按数值或时间截断 |
+| 请求内多模型 | 同一 `conversationRequestId` 出现多个 `model` | 解析层记录 `multiModelRequests` 告警，请求级仍取第一步标识，不按步分摊、不在明细展示多个模型 |
+| 步骤行与请求行不一致 | `step_count` 与步骤行数不等、Σ 步骤四项 ≠ 请求四项 | 请求四项由解析层求和派生，写库前校验；C10 同事务双删重写，单测覆盖重复解析与跨文件副本 |
 | 新增事件类型 | 未知 `type` 出现 | 忽略未知类型，不中断解析 |
 | 字段名变化 | 同一含义出现新键名（如 `inputTokens`、`prompt_tokens`） | 当前只认实测字段；新增别名时只在解析层的字段映射处加一项 |
 | 自定义模型标识重名 | 自定义模型与原生模型使用同一 `model` 标识 | 当前原始日志无可区分字段，暂按同一模型合并；待 WorkBuddy 提供来源字段后再扩展维表 |
@@ -327,10 +340,10 @@ providerData: { conversationRequestId, credit, source, stageId, messageId }
 
 - 文件：265 个 `*.jsonl`（218 主会话 + 47 子代理），合计约 444MB；`projects` 目录另含 212 个 `.ndjson` 与 3992 个 `.txt`，均不参与解析。
 - 记录：带 `usage` 的记录 31,224 条（主会话 30,038、子代理 1,187）。
-- 请求：903 个去重请求（主会话 860、子代理 43）；多步骤请求 842 个（约 93%）；累计值回退 47 个，其中 3 个的时间末条小于最大值。
-- 跨文件重复：31 个 `request_id` 同时存在于两个会话文件，数值完全相同；按 R11 只计一次。
-- token：按请求取最大值合计 169,950,303（主会话 165,776,607、子代理 4,176,182）；逐条累加 6,757,760,362，约 39.8 倍。
+- 请求：903 个去重请求（主会话 860、子代理 43）；多步骤请求 842 个（约 93%）；47 个请求出现上下文压缩导致的数值回落，回落前后各步均计入求和。
+- 跨文件重复：31 个 `request_id` 同时存在于两个会话文件，数值完全相同；按请求唯一约束（C1）只计一次。
+- token：逐步求和合计 6,757,760,362（真实消耗）；作为对照，每个请求只保留一条记录时合计 169,950,303（主会话 165,776,607、子代理 4,176,182），漏计比例随请求步骤数变化。
 - 积分：477 条记录，合计 5,581.40；426 个请求无积分记录（含全部 43 个子代理请求——子代理没有独立键，团队子代理积分并入父请求）；无重复键、无非数字值，当时无孤键。
 - 会话：251 条（39 条已删除、11 条 `cwd` 为空、11 条 `model` 为空）；`session_usage` 207 行；已删除会话均无 `session_usage` 行。
 - 维度规模：11 个模型标识、58 个有请求的分组（分组维表 80 行）、203 个有请求的会话；`deepseek-v4.1-flash` 等标识对应 2–3 种不同的 `requestModelName` 写法。
-- 恒等校验：`total = input + output` 与 `cache_read ≤ input` 均零例外；当前记录的 `timestamp` 与 `providerData.model` 无缺失。
+- 恒等校验：`total = input + output` 与 `cache_read ≤ input` 均零例外，本步成立、逐步求和后按请求校验仍成立；当前记录的 `timestamp` 与 `providerData.model` 无缺失。

@@ -42,7 +42,7 @@
 
 dev 的 Vite proxy 只转发 `^/api/` 前缀。不要改回 `/api`：前端模块 `src/web/api.ts` 的请求路径以 `/api` 开头，会被一并转发到服务端并返回 HTML，导致整页白屏。
 
-首次启动会先执行一次刷新：全量解析全部 `*.jsonl`（265 个文件、约 444MB，实测约 2.4 秒；快照见 [integration.md](./integration.md)），之后按文件 mtime 与大小增量更新，通常 1 秒内完成；面板中的「刷新数据」触发同一流程。服务在首次刷新完成后才开始监听端口，刷新失败时仍会启动并保留原数据库，可在面板中手动重试。
+首次启动会先执行一次刷新：全量解析全部 `*.jsonl`（265 个文件、约 444MB；快照见 [integration.md](./integration.md)），在同一事务内写入请求行与逐步事实行，全量重建为秒级；之后按文件 mtime 与大小增量更新，通常 1 秒内完成；面板中的「刷新数据」触发同一流程。服务在首次刷新完成后才开始监听端口，刷新失败时仍会启动并保留原数据库，可在面板中手动重试。
 
 WorkBuddy 数据库为 WAL 模式，只读连接依赖同目录的 `-wal` / `-shm`；WorkBuddy 运行时二者存在，实测只读查询不会改动这三个文件。
 
@@ -64,6 +64,7 @@ npm run acceptance
 - **只读与可复现**：用例只读页面与 `/api`，不写、不搬移真实 `~/.workbuddy`；浏览器时间用 Playwright Clock 冻结在样本基准日（2026-11-14 12:00），日期与时间区断言不随运行日漂移。
 - **产物**：运行结束由入口脚本删除 `.data/e2e/`；失败时 trace 与截图留在 `.data/e2e-results/`，用 `npx playwright show-trace <trace 文件>` 查看。
 - **用例分工**：`structure.spec.ts`（网络与页面结构）、`filters.spec.ts`（筛选与时间区）、`metrics.spec.ts`（数值、单位、配色）、`trend.spec.ts`（趋势图与 tooltip）、`breakdown.spec.ts`（分组条与浮层）、`focus.spec.ts`（hover 聚焦 AC1–AC7）、`sample.spec.ts`（样本自检）、`panel.spec.ts`（首屏 smoke）。定位器集中在 `tests/e2e/panel-page.ts`，期望值由 `tests/e2e/sample.ts` 与 `tests/e2e/expectations.ts` 从样本确定性推出，不从 `/api` 现场反推。
+- **多步骤样本**：固定样本含多步骤、跨 09:00 / 12:00 / 14:00 / 18:00 档位的 DS 与非 DS 请求；期望值按逐步求和与按步判档推导，不写死本机实测数字。`structure.spec.ts` 另断言旧口径说明文案已移除且放大后的 token 数值仍用 K / M / B 格式；跨时区与档位回归由 `npm test` 的 `timezone.test.ts` / `price-ratio.test.ts` 覆盖。
 - **不替代单元测试**：纯函数、格式化与图表配置的数值正确性仍由 `npm test`（Vitest）覆盖；`npm run acceptance` 只断言浏览器里可见的结果。
 
 调试单个用例用 `npm run acceptance tests/e2e/focus.spec.ts`，追加 `--grep <用例名>` 可只跑一条；参数会透传给 `playwright test`。用例依赖的 `data-testid` 不存在——定位器统一用语义类名与 ARIA 角色，改动 DOM 结构时同步 `tests/e2e/panel-page.ts`。
@@ -73,7 +74,7 @@ npm run acceptance
 ## 回滚
 
 - **数据口径异常**：删除数据库文件（默认 `.data/database.db`）后重启，数据库会从原始数据全量重建。数据库可删可重建，删除无数据风险。
-- **解析规则变更**：改动字段映射或归并逻辑后，同样删除数据库重建，避免旧口径的缓存结果残留。
-- **节假日表更新**：`src/shared/china-holidays.ts` 补充或修改已公布的中国法定节假日安排后，会改变历史请求的 `is_deepseek_offpeak` 判定；递增 `SCHEMA_VERSION` 让旧数据库在下次启动自动删库重建即可，无需手工删除。不得录入未公布的放假安排。
+- **解析规则变更**：改动字段映射、逐步归并逻辑或判档规则后递增 `SCHEMA_VERSION`（当前 5），下次启动自动删库重建；也可直接删除数据库文件后立即重建。请求行与步骤行在同一事务内重写，旧口径的缓存结果不会残留。
+- **节假日表更新**：`src/shared/china-holidays.ts` 补充或修改已公布的中国法定节假日安排后，会改变历史**步骤**的闲时判定（`steps.is_deepseek_offpeak`）；递增 `SCHEMA_VERSION` 让旧数据库在下次启动自动删库重建即可，全部历史步骤会按新表重判，无需手工删除。不得录入未公布的放假安排。
 - **版本回退**：`git revert` 或切换到上一个提交后，重新 `npm install` 并删库重建即可，无外部状态需要清理。
 - **原始数据损坏或缺失**：不是本项目的问题范围。本项目不备份 `~/.workbuddy`，也不应尝试修复其中的文件。

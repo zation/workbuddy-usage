@@ -5,7 +5,7 @@
 ## 设计原则
 
 - **内部代理主键**：所有表用自增整数 `id` 做主键；外部标识（`conversationRequestId` / `cwd` / `sessionId` / `model` 标识 / 文件路径）只作为带 UNIQUE 约束的**业务键**列。外部值由 WorkBuddy 决定，可能变化或为空，不应成为数据库的主键；当前原始日志没有可区分模型来源的字段，同名自定义模型暂与原生模型合并（见 `models` 表说明）。
-- **事实表 + 维表**：`requests` 只放度量、外键、时间与审计字段；描述属性（展示名、标题）放维表。
+- **两张事实表 + 维表**：`requests` 只放请求级度量（四项 token 是其全部 `steps` 对应字段的求和派生值）、外键、时间与审计字段；`steps` 一行一次模型 API 调用，放本步四项 token、时间戳、模型与按步档位；描述属性（展示名、标题）放维表。
 - **内部 id 不出 API**：删库重建后 `id` 会重新分配，所以 API 的筛选参数与返回值一律用业务键字符串，服务层在 LEFT JOIN 后直接按业务键过滤（不转换为 `id`）；内部 `id` 不能进 URL、缓存或面板状态。
 - **业务键换 id**：解析层用 `INSERT ... ON CONFLICT DO NOTHING` + `SELECT id` 把业务键换成内部外键，保证同一业务键只有一行，且维表行稳定。
 - **全部表都是本项目生成的快照**：从 WorkBuddy 读到后写入，不因外部数据被清理而删除。每次刷新按当前外部数据更新仍存在的行，映射外不触碰（与 C6 积分挂接同构）。
@@ -21,7 +21,7 @@
 | **Session** | 一次连续对话 | `id` | `session_key` = WorkBuddy 会话 ID | `sessions`（维表） |
 | **Model** | 模型标识 | `id` | `model` | `models`（维表） |
 | **SourceFile** | 一个 jsonl 文件 | `id` | `path` | `source_files`（维表 + 扫描状态） |
-| **Step** | 请求内一次模型调用 | — | — | 否，解析期归并后丢弃 |
+| **Step** | 请求内一次模型 API 调用 | `id` | `(request_id, step_index)` | 是，`steps`（步骤事实表） |
 | **Credit** | 一个请求一条 | — | — | 否，内联为 `requests.credit` / `has_credit` |
 
 **分组维度的取值是 `sessions.cwd`**，不是 `sessions.group_id` / `group_title`；后两者是 WorkBuddy 会话表里的其它字段，本项目不读取。`requests.group_id` 是本项目数据库的内部外键，与 WorkBuddy 的 `sessions.group_id` **同名但无关**。
@@ -30,7 +30,7 @@
 
 ### `requests`（事实表）
 
-`id` 是内部主键，`request_id` 是幂等业务键；四个 `*_id` 列是指向维表的整数外键。
+`id` 是内部主键，`request_id` 是幂等业务键；四个 `*_id` 列是指向维表的整数外键。四个 `*_tokens` 列是派生列，由该请求在 `steps` 中的全部行求和得到，写库时与步骤行在同一事务内产生。
 
 | 列 | 类型 | 说明 |
 | --- | --- | --- |
@@ -44,20 +44,42 @@
 | `started_at` | INTEGER NOT NULL | 该请求所有步骤中最早的 `timestamp`（毫秒） |
 | `ended_at` | INTEGER NOT NULL | 该请求所有步骤中最晚的 `timestamp`（毫秒） |
 | `date_key` | TEXT NOT NULL | 由 `started_at` 按固定业务时区 UTC+8 折算的 `YYYY-MM-DD` |
-| `is_deepseek_offpeak` | INTEGER NOT NULL DEFAULT 1 | 1 表示按 DeepSeek 官方高峰 / 空闲规则判为空闲；与 `date_key` 由同一 `started_at` 折算。所有请求都填 0/1，但只有 DS 价格计算消费该列，其他模型的闲时规则不得复用 |
-| `input_tokens` | INTEGER NOT NULL DEFAULT 0 | 输入 token |
-| `output_tokens` | INTEGER NOT NULL DEFAULT 0 | 输出 token |
-| `cache_read_tokens` | INTEGER NOT NULL DEFAULT 0 | 缓存命中读取 token（输入的子集） |
-| `total_tokens` | INTEGER NOT NULL DEFAULT 0 | 合计 token |
+| `input_tokens` | INTEGER NOT NULL DEFAULT 0 | 输入 token；= `Σ steps.input_tokens`（该请求全部步骤） |
+| `output_tokens` | INTEGER NOT NULL DEFAULT 0 | 输出 token；= `Σ steps.output_tokens` |
+| `cache_read_tokens` | INTEGER NOT NULL DEFAULT 0 | 缓存命中读取 token（输入的子集）；= `Σ steps.cache_read_tokens` |
+| `total_tokens` | INTEGER NOT NULL DEFAULT 0 | 合计 token；= `Σ steps.total_tokens` |
 | `credit` | REAL NOT NULL DEFAULT 0 | 积分；无记录为 0，非 NULL |
 | `has_credit` | INTEGER NOT NULL DEFAULT 0 | 是否存在积分记录；有记录为 1（含积分值为 0），无记录为 0。**仅用于对账与排查，不参与任何展示**，不能用 `credit > 0` 代替。它只表示本地账本有无键，无法区分免费模型、子代理与真缺失 |
 | `step_count` | INTEGER NOT NULL DEFAULT 1 | 该请求归并了多少条步骤记录，审计用 |
 
-`started_at` / `ended_at` 独立取自全部步骤的时间边界，与四项 token 的取值来源（C2）无关。
+`started_at` / `ended_at` 独立取自全部步骤的时间边界，`date_key` 只由 `started_at` 折算；闲时档位不再由 `started_at` 派生，而是落在每条 `steps` 行上按该步自己的时间戳判定（R3）。
 
 **`date_key` 是有意保留、由解析层写入的列**：UTC+8 折算只在解析层做一次，把"哪一天"的口径固化下来，避免查询时依赖运行进程的时区（用户改时区、跨夏令时、不同机器打开或重扫都会让同一条历史数据落到不同日期）；同时 `WHERE date_key BETWEEN ? AND ?` 与 `GROUP BY date_key` 可直接走索引，SQL 不必对每行做时间函数换算，各视图也共用同一天界（AC3）。折算偏移量来自共享常量，时间戳本身始终是绝对时间。代价只是一列冗余。
 
 索引：`date_key`、`group_id`、`model_id`、`session_id`、`source_file_id` 各建普通索引；`request_id` 由 UNIQUE 自带索引。
+
+### `steps`（步骤事实表）
+
+一行是一次模型 API 调用的独立用量事实。`request_id` 是业务键（指向 `requests.request_id`），不是内部 `id`；`source_file_id` 供按文件原子替换时双删。与 `requests` 不建外键约束，查询用 `JOIN ... ON st.request_id = r.request_id`。
+
+| 列 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | INTEGER PRIMARY KEY | 内部代理主键 |
+| `request_id` | TEXT NOT NULL | 所属请求的业务键 `conversationRequestId` |
+| `source_file_id` | INTEGER NOT NULL | → `source_files.id`，供 C8 / C10 按文件删除 |
+| `step_index` | INTEGER NOT NULL | 请求内从 0 递增的步骤序号 |
+| `timestamp` | INTEGER NOT NULL | 该次调用的 UTC 毫秒时间戳（绝对时间） |
+| `model` | TEXT | 该步模型标识；仅用于对账与多模型告警，不参与聚合分组与筛选 |
+| `is_subagent` | INTEGER NOT NULL DEFAULT 0 | 该步是否来自 `subagents/agent-*.jsonl` |
+| `is_deepseek_offpeak` | INTEGER NOT NULL DEFAULT 1 | 按**该步** `timestamp` 用固定 UTC+8 折算后判出的档位：1 空闲、0 高峰。判据只有时间戳，与该步是否 DS 模型无关；所有模型的步骤都填 0/1，只有 DS 白名单请求的价格比率分母消费该列 |
+| `input_tokens` | INTEGER NOT NULL DEFAULT 0 | 本步输入 token |
+| `output_tokens` | INTEGER NOT NULL DEFAULT 0 | 本步输出 token |
+| `cache_read_tokens` | INTEGER NOT NULL DEFAULT 0 | 本步缓存命中读取 token（输入的子集） |
+| `total_tokens` | INTEGER NOT NULL DEFAULT 0 | 本步合计 token |
+
+业务键唯一约束：`UNIQUE (request_id, step_index)`；其隐式索引覆盖按 `request_id` 的 JOIN，无需另建。另建 `idx_steps_source_file_id` 服务按文件双删。
+
+**判档结果落库是刻意的**：一次性固化后，同一份历史数据不会因节假日表版本不同而在不同时间查出不同比率（R8）。节假日表更新或判档规则变化属于生成规则变更，必须递增 `schema_version` 删库重建，让全部历史步骤按新表重判；不得依赖增量刷新纠正存量行。官方调价只改常量，不触发重建。
 
 ### `groups`（分组维表）
 
@@ -133,30 +155,31 @@
 ```text
 groups   1 ──┐
 sessions 1 ──┼──< requests >── 1 source_files
-models   1 ──┘
+models   1 ──┘        │
+                      └──< steps   （按业务键 request_id 关联，一个请求多条步骤）
 ```
 
-内部外键（整数）：`requests.group_id` → `groups.id`、`session_id` → `sessions.id`、`model_id` → `models.id`、`source_file_id` → `source_files.id`。**不建外键约束**，查询用 LEFT JOIN。
+内部外键（整数）：`requests.group_id` → `groups.id`、`session_id` → `sessions.id`、`model_id` → `models.id`、`source_file_id` → `source_files.id`。**不建外键约束**，查询用 LEFT JOIN。`steps` 不引用 `requests.id`，改用业务键 `request_id` 关联——请求行在 C8 / C10 中会整行删除重建，内部 `id` 会重新分配，用业务键才不会让步骤行悬空。
 
-业务键唯一约束：`requests.request_id`、`groups.group_path`、`sessions.session_key`、`models.model`、`source_files.path`。API 只用业务键，不用内部 `id`。
+业务键唯一约束：`requests.request_id`、`steps (request_id, step_index)`、`groups.group_path`、`sessions.session_key`、`models.model`、`source_files.path`。API 只用业务键，不用内部 `id`。
 
 - 一个请求恰好属于一个会话；子代理请求归属其父会话，因此对话维度的会话数不会因父子拆分而虚增。
 - 一个请求至多一条积分；无记录时为 0，不用 NULL 表达"缺失"，以免聚合时与"0 积分"混淆——是否缺失由 `has_credit` 单独标记，仅供对账，不进入接口与界面。
-- 一个请求可有多条步骤（当前约 91% 的请求），但只落一行。
+- 一个请求在 `requests` 只对应一行，其全部步骤在 `steps` 各落一行（实测约 91% 的请求有多条步骤）；`requests` 四个 `*_tokens` 列恒等于该请求 `steps` 对应列之和，`step_count` 等于步骤行数。四个筛选端点只读 `requests`，不因步骤行放大计数与明细。
 - 维表行可能滞后或缺失：外部会话被清理、模型标识为 `未知模型` 时，仍要展示请求本身。
 
 ## 约束
 
 - **C1 请求唯一**：`request_id` 建 UNIQUE，是幂等键；重复解析同一文件由 C10 的原子替换保证不产生重复行。`id` 只是内部主键，不参与去重。
-- **C2 取 `total_tokens` 最大那条而非求和**：四个 token 字段必须取自同一条步骤记录，不得各字段分别取最大值，否则会出现"输入来自第 7 步、输出来自第 3 步"的拼接错误。按时间排序的最后一条**不一定**是最大值那条（实测存在反例，见 [integration.md](./integration.md)），因此口径中的"末步"一律指数值最大那条，不按时间戳取末条。
-- **C3 token 恒等**：`total_tokens = input_tokens + output_tokens`（约 7000 条原始记录零例外），写入前校验，不等则记录告警并保留原值。
-- **C4 缓存归属**：`cache_read_tokens ≤ input_tokens`（零例外），缓存命中是输入的子集，不额外计入合计。
+- **C2 逐步求和，请求级模型取第一步**：一条带 `usage` 的记录是一次独立的模型 API 调用，四项 token 取该条的本步值；请求级四项 = 该请求全部步骤对应字段之和。不得只保留一条记录（无论按数值还是按时间挑选）代表整个请求、不得各字段分别取极值。上下文压缩造成的数值回落不构成异常，回落前后的每次调用都要计入（见 [integration.md](./integration.md)）。请求级模型取第一步的标识；Step 行保留各自模型仅供对账与多模型告警，不参与聚合分组与筛选，出现多模型时不按 token 占比选举、不做按步分摊。
+- **C3 token 恒等**：`total_tokens = input_tokens + output_tokens`（约 7000 条原始记录零例外）。逐步求和后按请求聚合结果校验，不等则记录告警并保留原值。
+- **C4 缓存归属**：`cache_read_tokens ≤ input_tokens`（零例外），缓存命中是输入的子集，不额外计入合计。同样在逐步求和后按请求聚合结果校验。
 - **C5 日期折算**：`date_key` 只能由 `started_at` 按固定 UTC+8 计算，不单独维护，避免两处不一致；时间戳缺失或非数字的步骤直接跳过并计入解析告警，不生成"未知日期"。保留该列的理由见 `requests` 表说明。
 - **C6 积分取值**：`credit` 直接取 `credit_json[request_id]`，有记录时 `has_credit = 1`（即使值为 0），缺失时 `credit = 0` 且 `has_credit = 0`；不做比例分摊、不做金额换算。`has_credit` 只用于对账与排查，不对外暴露、不参与展示，也不用于计算覆盖率一类指标。每次刷新无条件重读 `session_usage`，只更新当前映射中存在的请求（含值的修正）；映射外的请求行不触碰、不主动清零。本地已不可读的记录不追溯补齐。
 - **C7 分组快照**：解析时把 `sessions.cwd` 换成 `groups.id` 写入 `requests.group_id`；`groups` 行是快照（C11），会话被清理后未重新解析的请求仍指向原分组；该文件被重新解析而会话已不存在时，指向 `未知分组` 那一行。`is_auto` 同样随该行快照保留，不因会话清理或规则重算而改写。
-- **C8 对账**：`source_files` 中记录的文件若已不存在，删除 `source_file_id` 等于该文件 `id` 的请求行，并删除该 `source_files` 行，使文件再次出现时按新文件全量解析；文件仍在但内容变化时由 C10 原子替换，不残留已消失的请求。反过来，`requests` 中不应出现 `source_files` 之外的文件来源。
+- **C8 对账**：`source_files` 中记录的文件若已不存在，在同一事务内删除 `source_file_id` 等于该文件 `id` 的 `steps` 行与 `requests` 行，并删除该 `source_files` 行，使文件再次出现时按新文件全量解析；文件仍在但内容变化时由 C10 原子替换，不残留已消失的请求与步骤。反过来，`requests` 与 `steps` 中都不应出现 `source_files` 之外的文件来源。
 - **C9 增量快照**：`source_files` 的 `size_bytes` / `mtime_ms` 必须取**解析开始前**的 stat 值，不能用解析结束时的值，否则会跳过解析期间追加的行。
-- **C10 按文件原子替换**：重解析某文件时，在同一事务内先删除 `source_file_id` 等于该 `id` 的所有请求行，再插入本次解析出的请求；不得只做 upsert，否则文件回滚、截断或重写后已消失的请求会永久残留。一个请求通常只归属一个文件；实测存在少量跨文件重复（同值副本），此时记录告警，只保留一行并取 `total_tokens` 较大者，副本不重复计数。
+- **C10 按文件原子替换**：重解析某文件时，在同一事务内先删除 `source_file_id` 等于该 `id` 的所有 `steps` 行与 `requests` 行，再插入本次解析出的请求与全部步骤；不得只做 upsert，也不得只删请求行——否则旧步骤残留会让逐步聚合重复计数，且文件回滚、截断或重写后已消失的请求会永久残留。一个请求通常只归属一个文件；实测存在少量跨文件重复（同值副本），此时先在同一事务内删除该 `request_id` 的旧请求行与旧步骤行、再写入当前文件版本，只留一行、计入 `duplicateRequestIds` 告警，副本步骤不重复插入。
 - **C11 维表是快照**：`groups` / `sessions` / `models` 由本项目维护，写入后不因外部数据被清理而删除；每次刷新按当前外部数据更新仍存在的行，映射外不触碰。维表残留行不参与筛选枚举。`groups.is_auto` 只在插入时确定，之后的刷新既不新增重复行也不回写该列。
 - **C12 展示名确定**：`models.display_name` 与 `sessions.display_name` 必须由与文件遍历顺序无关的规则得出（见各表说明），保证重复解析结果稳定。模型展示名在规范化之后还要做同组冲突处理：组内按 `model` 标识字典序保留首项，其余追加 `(标识)` 后缀，保证同组展示名互不相同。
 - **C13 兜底**：维表行缺失时，分组 / 对话 / 模型展示分别回退为 `未知分组` / `session_key` 前 8 位 / `model` 标识，不丢弃请求。
@@ -166,16 +189,16 @@ models   1 ──┘
 
 1. **扫描**：递归查找 `projects/**/*.jsonl`，按路径判定 `main` / `subagent`，与 `source_files` 比对解析前 stat 的 `size_bytes` + `mtime_ms`（C9），得出待解析集合。
 2. **外部元信息同步**：重读 `sessions` 表，按 `session_key` / `group_path` upsert `sessions` / `groups` 维表（C11、C14）；映射外不触碰、不删除。
-3. **解析**：逐行读取，跳过不完整行与时间戳非法的行；按 `conversationRequestId` 归并步骤，套用 C2 选出最大值那条，得到请求级记录。
+3. **解析**：逐行读取，跳过不完整行与时间戳非法的行；每条带 `usage` 的记录产出一条 Step 事实（本步四项 token、时间戳、模型、来源标记、按步档位），按 `conversationRequestId` 归并求和得到请求级四项 token 与 `step_count`，请求级模型取第一步（C2）。
 4. **关联**：把业务键（`session_key` / `cwd` / `model` / `path`）upsert 进维表换取内部 `id`（C14）；模型展示名按 C12 规范化；写入 `requests` 的四个外键。
-5. **写入**：对每个待解析文件按 C10 在事务内原子替换其请求行，再更新 `source_files` 的扫描状态。
+5. **写入**：对每个待解析文件按 C10 在事务内原子替换其 `requests` 行与 `steps` 行，再更新 `source_files` 的扫描状态。
 6. **积分挂接**：与文件增量无关，每次刷新无条件重读 `session_usage`，按 C6 只更新当前映射中存在的请求。
-7. **查询**：服务层对 `requests` 做 LEFT JOIN，用业务键列过滤并取展示名（筛选不转换成内部 `id`）；按维度聚合与时序聚合用 SQL 现算，维度筛选值从 JOIN 结果的业务键 `DISTINCT` 取。
+7. **查询**：服务层对 `requests` 做 LEFT JOIN，用业务键列过滤并取展示名（筛选不转换成内部 `id`）；四个筛选端点的维度聚合与时序聚合只读 `requests` 的求和派生列，用 SQL 现算。只有 DS 价格比率的分母 JOIN `steps` 按 `(r.date_key, st.is_deepseek_offpeak)` 分桶，分子走独立的请求级子查询，避免 `credit` 被每步放大。
 8. **失效**：删除数据库文件（默认 `.data/database.db`，或 `DATABASE_PATH` 指向的文件）即可回到初始状态，下次启动全量重建；不涉及迁移与数据修复。
 
 ## 数据库结构与迁移
 
 - **WorkBuddy 数据库 `workbuddy.db`**：WorkBuddy 所有，本项目以只读连接访问，不建表、不写入、不加锁。其表结构变化由 [integration.md](./integration.md) 记录并跟踪。
 - **数据库**：默认文件 `.data/database.db`（相对进程工作目录，可由 `DATABASE_PATH` 指向其它路径，包括仓库外的临时目录）。sqlite 单文件，可删可重建；默认路径在 `.gitignore` 中排除。仅作缓存，不承担数据安全责任。
-- **版本管理**：`meta.schema_version` 记录结构版本。修改表结构、或修改维表展示名这类生成规则时递增该值，启动时版本不匹配则直接删库重建，不写迁移脚本——重建成本是几十秒，迁移脚本的维护成本更高。引入展示名冲突规则时该值由 1 增至 2，引入分组自动目录标记（`groups.is_auto` 与聚合口径）时由 2 增至 3，引入 DeepSeek 闲时预处理列（`is_deepseek_offpeak`）时由 3 增至 4。节假日表更新会改变历史请求的闲时判定，同属生成规则变更，也必须递增该值触发重建，否则历史行的 `is_deepseek_offpeak` 会停留在旧判定。删库重建后所有 `id` 重新分配，因此任何外部持久化都不得引用内部 `id`。
+- **版本管理**：`meta.schema_version` 记录结构版本，**当前为 5**。修改表结构、或修改维表展示名、判档规则这类生成规则时递增该值，启动时版本不匹配则直接删库重建，不写迁移脚本——重建成本是几十秒，迁移脚本的维护成本更高。历史：引入展示名冲突规则时由 1 增至 2，引入分组自动目录标记（`groups.is_auto` 与聚合口径）时由 2 增至 3，引入请求级 DeepSeek 闲时预处理列时由 3 增至 4；本次改为逐步事实（新增 `steps` 表、按步判档、请求级四项 token 改为求和派生、删除 `requests.is_deepseek_offpeak`）时由 4 增至 5。节假日表更新会改变历史**步骤**的闲时判定，同属生成规则变更，也必须递增该值触发重建，否则历史步骤的 `is_deepseek_offpeak` 会停留在旧判定。删库重建后所有 `id` 重新分配，因此任何外部持久化都不得引用内部 `id`。
 - **不做**：不备份原始数据、不归档历史快照、不与云端同步、不追溯补齐本地已不可读的记录。

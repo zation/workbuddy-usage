@@ -13,10 +13,10 @@
 
 | 模块 | 位置 | 职责 |
 | --- | --- | --- |
-| 解析层 | `src/etl/` | 扫描 jsonl、按请求归并步骤、把外部业务键换成内部 `id`，产出请求级记录并维护维表 |
+| 解析层 | `src/etl/` | 扫描 jsonl、逐条产出 Step 用量事实、按请求归并求和、把外部业务键换成内部 `id`，产出请求级记录与全部步骤行并维护维表 |
 | 积分挂接 | `src/etl/` | 每次刷新无条件重读 `session_usage`，只更新当前映射中存在的请求，与文件增量解耦 |
-| 数据库层 | 默认 `.data/database.db` | SQLite 数据库：请求事实表 + 分组/会话/模型维表 + 扫描状态表，按文件 mtime/大小增量更新 |
-| 服务层 | `server/` | 读数据库做聚合查询，LEFT JOIN 维表补业务键与展示名，提供 HTTP API，生产模式下兼作静态资源服务器 |
+| 数据库层 | 默认 `.data/database.db` | SQLite 数据库：`requests` 请求事实表 + `steps` 步骤事实表 + 分组/会话/模型维表 + 扫描状态表，按文件 mtime/大小增量更新；请求行与步骤行在同一事务内替换 |
+| 服务层 | `server/` | 读数据库做聚合查询，LEFT JOIN 维表补业务键与展示名，提供 HTTP API，生产模式下兼作静态资源服务器；四项 token 与四个筛选端点只读 `requests` 的求和派生列，只有 DS 价格比率的分母 JOIN `steps` 按步分档 |
 | 面板层 | `src/web/` | React + ECharts，Token 与积分分两个 tab、共用一组筛选栏，不承担统计口径；模型配色按业务键静态映射，规则见 [model-colors.md](./model-colors.md) |
 
 分层原则：**口径只存在于解析层与服务层**。面板层只渲染 API 返回值，不自行求和或换算，避免同一指标出现两套算法；缓存命中率由两个已返回字段求比，趋势图连续日期轴由 `from / to` 补齐，按分组数值条的模型分段与段宽由服务层下发的分段数值分摊，三者都由展示层生成，不参与任何聚合口径，也不改变任何聚合值。两个 tab 是前端信息架构，后端端点共用，不为此拆分 API。0 值隐藏与拆分列表截断只影响展示。**面板查询不读 WorkBuddy 数据**，也**不接触数据库的内部 `id`**：API 一律用业务键字符串。模型配色也由展示层生成：由面板按 `model` 业务键查静态色表或稳定哈希得到，不由 API 下发、不写入数据库，也不为配色额外请求模型集合；规则见 [model-colors.md](./model-colors.md)。
@@ -36,14 +36,14 @@
 | Hono + `@hono/node-server` | 服务层 | 端点数量固定、按维度拆分查询，路由与中间件比手写 http 清晰；生产模式由 Node 适配器提供静态资源 |
 | `@playwright/test` | 交互验收（开发期） | 只进 `devDependencies`，产品运行时依赖不变；`npm run acceptance` 单命令跑完整套浏览器用例，运行方式见 [devops.md](./devops.md) |
 
-不引入 ORM 与状态管理库：数据库只有五张表（事实表、三张维表、扫描状态表）与一张单行配置表，数据量在千行量级（实测快照见 [integration.md](./integration.md)）。
+不引入 ORM 与状态管理库：数据库只有六张表（两张事实表、三张维表、扫描状态表）与一张单行配置表。`requests` 按请求一行、`steps` 按每次模型调用一行；四个筛选端点只读 `requests` 的求和派生列，不会因步骤行放大 `COUNT(*)` 或请求明细，只有 DS 价格比率的分母聚合需要 JOIN `steps`（实测快照见 [integration.md](./integration.md)）。
 
 ## 测试分层
 
 | 层 | 工具 | 位置 | 负责 |
 | --- | --- | --- | --- |
 | 纯函数与图表配置 | Vitest（`npm test`） | `tests/*.test.ts` | 格式化、日期轴补齐、0 值过滤与降序、图表 option 结构、段宽与命中区计算、聚焦不透明度 |
-| 服务层聚合 | Vitest | `tests/acceptance.test.ts`、`tests/api.test.ts` 等 | 按请求归并、积分挂接、五个端点的聚合结果与契约 |
+| 服务层聚合 | Vitest | `tests/acceptance.test.ts`、`tests/api.test.ts` 等 | 逐步求和与请求归并、积分挂接、四个数据读取端点（`/api/summary` / `/api/timeseries` / `/api/breakdown` / `/api/requests`）以及 `/api/health` / `/api/refresh` 的聚合结果与契约 |
 | 交互验收 | Playwright（`npm run acceptance`） | `tests/e2e/*.spec.ts` | 页面结构、筛选联动、数值与配色、tooltip、分组条与 hover 聚焦等浏览器可见行为 |
 
 两套运行器靠文件后缀隔离：Vitest 只收 `tests/**/*.test.ts`，Playwright 只收 `tests/e2e/**/*.spec.ts`，两者都在 `npm run typecheck` 的覆盖范围内。验收跑在固定样本上（临时 `WORKBUDDY_HOME` 与同目录的临时数据库，端口 4630），不读真实数据、不调用图表内部函数；canvas 相关断言只读像素与几何，数值正确性留在单测。运行方式见 [devops.md](./devops.md)。
@@ -56,7 +56,7 @@
                            └─→ 元信息同步（维表）────┘
 ```
 
-一次刷新包含互不依赖的几步：按 `source_files` 的 size/mtime 找出变化的 jsonl 并整文件重解析，以来源文件 `id` 为单位原子替换该文件贡献的请求行；从 `sessions` 表同步会话与分组维表；从 `session_usage` 合成 `requestId → 积分` 映射，只更新映射中存在的请求，映射外的行不触碰、不主动清零。
+一次刷新包含互不依赖的几步：按 `source_files` 的 size/mtime 找出变化的 jsonl 并整文件重解析，以来源文件 `id` 为单位在同一事务内原子替换该文件贡献的请求行与全部步骤行；从 `sessions` 表同步会话与分组维表；从 `session_usage` 合成 `requestId → 积分` 映射，只更新映射中存在的请求，映射外的行不触碰、不主动清零。
 
 文件没有变化也要重读积分（补上晚到的记录），积分表没有变化也不影响文件解析。刷新时机：`npm start` 启动时执行一次，面板的手动刷新触发同一流程，由进程内互斥锁防止并发重复执行。不做文件监听，避免与 WorkBuddy 运行时的频繁写入互相干扰。
 
@@ -67,7 +67,7 @@
 | 端点 | 返回 |
 | --- | --- |
 | `GET /api/summary` | 区间合计：token 四项、积分、请求数、会话数；顶层另返回上次刷新完成时间 `lastRefreshAt`（与筛选无关，从未刷新为 `null`） |
-| `GET /api/timeseries` | 返回按天、按模型拆分的 `rows`（含数据的日期）与按天的 DS 价格比率 `ratios`（只含有 DS 请求的日期，分母为 0 时 `ratio` 为 `null`）；不含日期轴，连续日期轴由面板按 `from / to` 生成 |
+| `GET /api/timeseries` | 返回按天、按模型拆分的 `rows`（含数据的日期）与按天的 DS 价格比率 `ratios`（只含有 DS 请求的日期，分母按每步档位分桶计价、分子按请求独立聚合以免 `credit` 被步骤放大，分母为 0 时 `ratio` 为 `null`）；不含日期轴，连续日期轴由面板按 `from / to` 生成 |
 | `GET /api/breakdown?dim=group\|model\|session` | 按单一维度拆分的聚合与占比；`dim=group` 时可用 `split=model` 附加 `rows[].models`（按模型的分段 token 与积分），其它维度忽略该参数，非法值返回 400 |
 | `GET /api/requests` | 请求级明细，用于表格与排序 |
 | `POST /api/refresh` | 触发一次刷新，返回扫描文件数、新增或更新请求数、补挂积分条数、耗时 |
@@ -88,7 +88,7 @@
 - **`node:sqlite` 稳定性**：该模块至今标记为实验性／发布候选（Stability 1.x），且自 25.7.0 起 `DatabaseSync` 已成为 `Database` 的弃用别名。`>=24` 不等于对未来主版本兼容；升级 Node 主版本前需回归解析与查询。
 - **WorkBuddy 数据库只读**：`workbuddy.db` 为 WAL 模式，以 `readOnly: true` 打开，避免与运行中的 WorkBuddy 争锁。WAL 只读连接依赖同目录的 `-wal` / `-shm`，WorkBuddy 运行时二者存在；实测写入被拒，且 `workbuddy.db`、`-wal`、`-shm` 三个文件的大小与 mtime 在只读查询前后均未变化。
 - **数据可得性**：只统计本地此刻能读到的数据。WorkBuddy 清理会话后其 `session_usage` 行会整行消失、部分 jsonl 也不再存在，由此产生的积分缺失不追溯、不补齐。子代理请求在本地没有独立积分键：团队子代理的积分并入父请求，普通子代理与 `custom_agent` 不记账（后者属真实缺口）；`has_credit` 只能表示本地账本有无键，无法区分免费模型、子代理与真缺失。`sessions.deleted_at` 不参与过滤。
-- **数据量**：2026-11-13 实测 jsonl 140 个、约 187MB，归并后 434 个请求；维度规模为 11 个模型、66 个有请求的分组、105 个有请求的会话，LEFT JOIN 成本可忽略（数值随 WorkBuddy 清理而下降，快照见 [integration.md](./integration.md)）。分组口径归一化后自动目录在服务层合并为一行「默认」，分组行数不再随自动目录数量增长。`projects` 目录还含大量无关的 `.ndjson` 与 `.txt`，扫描按扩展名过滤。全量解析在秒级，因此增量更新仍是硬要求，不是优化项。
+- **数据量**：2026-11-13 实测 jsonl 140 个、约 187MB，归并后 434 个请求；维度规模为 11 个模型、66 个有请求的分组、105 个有请求的会话，LEFT JOIN 成本可忽略（数值随 WorkBuddy 清理而下降，快照见 [integration.md](./integration.md)）。分组口径归一化后自动目录在服务层合并为一行「默认」，分组行数不再随自动目录数量增长。`projects` 目录还含大量无关的 `.ndjson` 与 `.txt`，扫描按扩展名过滤。逐步事实落 `steps` 后行数随请求步骤数增长，但两张事实表仍是本地小表，全量解析在秒级，因此增量更新仍是硬要求，不是优化项。
 - **路径处理**：Windows 盘符与分隔符差异统一交给 `node:path`，不手拼字符串。**唯一例外**是分组自动目录判定：`cwd` 可能来自另一平台（备份、迁移），而 `node:path` 的分隔符随运行平台变化，因此该判定固定按 `/` 与 `\` 切分，与展示名取末段的写法一致。
 - **日志格式不稳定**：WorkBuddy 升级可能改字段，解析层需集中字段映射并保留兼容分支。内部字段由本项目命名，外部键名由 WorkBuddy 决定，只能适配。
 
@@ -96,7 +96,7 @@
 
 **AD-1 全 TypeScript 单仓。** 面板是唯一交付物，类型从解析层一路贯到图表 props，改字段时编译器能兜住；代价是接受 node_modules 与构建步骤。Python 方案在解析上更省事，但把成本转移到了前端手写图表与跨语言契约上。
 
-**AD-2 以请求（`conversationRequestId`）为核算单位。** 积分本身就是请求粒度，token 在该粒度内为累计值、取 `total_tokens` 最大那条即得请求总量，两者天然对齐；若按步骤统计，token 会重复计算数十倍（实测约 40 倍，随请求步骤数变化）。
+**AD-2 Step 与 Request 双粒度并存。** 每次模型 API 调用是一条独立用量事实（Step）：四项 token 取该条 `message.usage` 的本步值，请求级四项是全部步骤之和，闲时档位按每步自身时间戳判定，官方等效费用按逐步分档计价。Request（`conversationRequestId`）仍是模型归属、积分、请求数、会话数、请求明细与日期 / 分组 / 对话归属的聚合粒度：`credit_json` 本身不可分割，逐请求计数与分会话统计是产品语义；请求级模型取第一步标识，一个请求内出现多模型只在解析层记录告警，不按步分摊。因此四个主聚合 SQL 只读 `requests` 的求和派生列，不 JOIN `steps`，避免 `COUNT(*)`、请求明细与按模型分段被步骤行放大；只有 DS 价格比率的分母需要 JOIN `steps`，其分子必须走独立的请求级子查询，防止 `credit` 被每步重复计入。单步请求的结果与旧口径一致。
 
 **AD-3 数据库用 sqlite 而非单个 JSON 文件。** 需要按文件原子替换、按维度聚合、按时间排序，sqlite 一条 SQL 就能覆盖；`node:sqlite` 零依赖，避免了 `better-sqlite3` 在 Windows 上的编译问题，代价是依赖实验性 API（见技术约束）。数据库可删可重建，因此不承担数据安全责任。
 
