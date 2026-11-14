@@ -53,7 +53,7 @@
 
 验证：`grep -c "check(" scripts/panel-acceptance.mjs` 为 28 处，其中函数定义 1 处、调用 27 处；调用里 AC14 的 if / else 两个分支属同一覆盖项，故覆盖项共 26 项，与上表 26 行逐项对齐。T001 全程只读，`git status --short` 无输出。
 
-提交：
+提交：e673a5f
 
 # T002 Playwright 运行器与验收入口骨架
 
@@ -73,7 +73,7 @@
 - `npm run acceptance`：退出码 0，输出顺序为样本目录就绪 → 构建 → `面板监听 http://127.0.0.1:4630` → `1 passed`；结束后 `.data/e2e/` 已删除，`.data/e2e-results/` 仅留 `.last-run.json`。
 - 前置：`node_modules/@playwright/test` 1.65.1 已装；Chromium 二进制经 `PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright` 下载成功（默认 CDN 在本机不可达，处理方式写 T010）。验收命令要求 Node 24 在 PATH 首位，本次以 `PATH=/e/Software/nodejs:$PATH` 调用。
 
-提交：
+提交：6838079
 
 # T003 固定样本与期望值生成
 
@@ -94,7 +94,7 @@
 - `npm run acceptance`：退出码 0，2 passed；服务日志为「扫描 12 个文件，变更 12 个，写入 16 条请求，补挂 16 条积分」，与样本定义一致；结束后 `.data/e2e/` 已清理。
 - 期望值与接口交叉核对：`/api/summary` 的 token / credit / 请求数 / 会话数与 `/api/timeseries` 的日期集合、比率文本均相等（由 `sample.spec.ts` 断言，断言失败即样本漂移）。
 
-提交：
+提交：a2ba544
 
 # T004 迁移既有 26 项覆盖为可见行为用例
 
@@ -147,7 +147,7 @@
 
 必要的问题与决策：用 canvas 像素定位而不是读图表实例——x 轴线 `#e6e8eb` 会被柱段遮断，取该颜色最左 / 最右像素得到绘图区边界，再按类目数均分定位；这是可见渲染结果，且比坐标估算稳定（估算版本曾把 3 个类目压到中间导致日期错位）。canvas 绘制无事件可等，`pollCanvas` 以 100ms 间隔重试至出图，仅用于绘制就绪，不替代网络等待。
 
-提交：
+提交：f6c8180
 
 # T005 聚焦强度常量与纯函数单测
 
@@ -166,7 +166,7 @@
 - `npm test`：18 个文件 172 passed / 1 skipped（新增 9 条；原有「折线值为 null 时 tooltip 不追加比率行」同步改为新标记，断言口径不变）。
 - `npm run acceptance`：27 passed，退出码 0，tooltip 结构变化未影响既有可见断言。
 
-提交：
+提交：4aa9bf0
 
 # T006 趋势图聚焦
 
@@ -188,7 +188,7 @@
 - `npm run acceptance`：27 passed，退出码 0。
 - 像素实测（临时探针，验证后已删除）：hover 另一系列后，被减淡系列的 canvas 像素 alpha 由 255 变为 102（0.4 × 255），移出后恢复 255；tooltip 行 opacity 为 1 / 0.4，比率行恒为 1。
 
-提交：
+提交：4470ea9
 
 # T007 分组条与浮层聚焦
 
@@ -210,7 +210,7 @@
 - `npm run acceptance`：27 passed，退出码 0。
 - 探针实测（验证后已删除）：首行视觉段宽 145.31 / 58.13 / 24.22 / 1.44px，命中区宽 140.89 / 56.50 / 23.69 / 8.00px、左界 0 / 140.89 / 197.39 / 221.08（首尾相接、无重叠），总宽 229.08 与视觉段宽之和 229.10 一致；hover 极窄段后四个色段 opacity 为 0.4 / 0.4 / 0.4 / 1，浮层四个模型行为 0.4 / 0.4 / 0.4 / 1，移出后全部回到 1。
 
-提交：
+提交：de5c73c
 
 # T008 hover 聚焦的 e2e 断言
 
@@ -232,7 +232,7 @@
 - `npm run acceptance`：38 passed（27 条既有覆盖 + 11 条聚焦用例），退出码 0，耗时约 39s。
 - 失败可诊断：调试期间的失败输出均带用例名与断言上下文，截图与 error-context 落在 `.data/e2e-results/`。
 
-提交：
+提交：e06c636
 
 # T009 入口切换与旧脚本退役
 
@@ -251,7 +251,7 @@
 - 删除后 `npm run acceptance`：38 passed，退出码 0（样本 → 构建 → 4630 服务 → 用例 → 清理全链路）。
 - `grep -rn "Runtime.evaluate|remote-debugging-port|Emulation.setFocusEmulation"`（`*.ts` / `*.mjs` / `*.json`，排除 `node_modules` 与 `.data`）：无命中；`panel-acceptance` 只出现在历史交付文档的路径字面里（按 Spec 保留为当时事实），`devops.md` 的引用已在 T010 重写。
 
-提交：
+提交：b813386（实现）、f411839（记录回填）
 
 # T010 长期文档同步
 
@@ -270,7 +270,7 @@
 - `npm run acceptance`：38 passed，退出码 0（文档描述的流程实际可跑）。
 - `grep -rn "panel-acceptance|CDP" docs/devops.md`：无命中；历史交付文档与 `docs/delivery/v1.0.0/` 未改写（仍保留当时的路径字面）。
 
-提交：
+提交：ef331f8
 
 # T011 收尾与全量检查
 
