@@ -160,6 +160,8 @@
 
 验证：`npm run typecheck` 通过（0 错）；`npm test` 17 文件 / 160 passed（本任务新增 1 条）；`npm run acceptance` 的 AC5、脚本内 AC7、AC13 与 AC10 tooltip 断言全部 PASS。
 
+提交：9a2a16b
+
 # T010 AC1 跨时区比率序列断言
 
 状态：done
@@ -171,6 +173,8 @@
 实施结果：新增 `ratiosInTimezone(tz)` 与 `describe('价格比率序列与机器时区无关')`；子进程建内存库并写入 2026-10-31、2026-11-12 两天共三笔请求，直接调服务层导出，比对三种 TZ 的完整 `ratios` JSON。
 
 验证：`npm run typecheck` 通过（0 错）；`npm test` 中 `tests/price-ratio.test.ts` 5 tests 全部通过（含本任务新增 1 条，276ms）。
+
+提交：7fe5dd8
 
 # T011 交互验收补强与 devops 同步
 
@@ -184,12 +188,20 @@
 
 验证：`node --check scripts/panel-acceptance.mjs` 通过；`npm run acceptance` 26 项中 25 PASS / 1 FAIL / 0 SKIP，新增的 AC10 tooltip 与 AC14 均 PASS，既有 AC5 / 脚本内 AC7 / AC13 仍 PASS。唯一 FAIL 为 AC4 分组条段宽（224.9px vs 222.7px，容差 1.5px），与修改前基线数值一致，见 T012。
 
+提交：8219ad7
+
 # T012 收尾检查与文档同步
 
-状态：working
+状态：done
 
 目标与完成条件：按 AGENTS.md 第 5 节复核 Spec AC1–AC7；回填 T009–T011 的 commit hash；把沙箱 runner 差异结论从 backlog 迁入 `devops.md` 并删除已结案的 backlog 条目；把既有 AC4 段宽验收失败登记为独立 backlog 项；记录 `bbe01c9` 使用 `test` type 的提交规范偏差（历史不改写）；执行 `npm run typecheck` / `npm test` / `npm run build` / `npm run acceptance` 并如实记录结果。收尾任务不填「提交」字段。
 
 必要依赖：T009、T010、T011
 
 修改范围：`docs/delivery/deepseek-price-ratio-tasks.md`、`docs/devops.md`、`docs/backlog/`
+
+实施结果：逐项复核 Spec AC1–AC7：AC1 由 T001 三时区快照与 T010 服务层跨 TZ 比对覆盖；AC2 / AC3 / AC4 由 T002–T005 的实现与单测覆盖；AC5 由 T006 / T009 / T011 的双轴、标题与非 DS 筛选交互验收覆盖；AC6 由既有 `api.test.ts` 与验收脚本 AC5 / AC7 / AC13 继续通过覆盖；AC7 的四项检查已全部实际执行，结果见「验证」。回填 T009–T011 的 commit hash。沙箱 runner 差异结论并入 `docs/devops.md`，删除已结案的 `docs/backlog/vitest-runner-context.md` 并修正三处引用；新增 `docs/backlog/panel-acceptance-segment-width.md` 登记既有 AC4 段宽失败。Spec / Plan / Tasks / devops 与代码无已知矛盾；`product-brief.md`、`technical-architecture.md`、`data-model.md`、`deepseek-pricing.md` 本轮无事实变化，无需改写。
+
+验证：`npm run typecheck` 通过（0 错）；`npm test` 通过（17 个测试文件 / 160 passed / 0 failed）；`npm run build` 通过（服务端 tsc + 前端 Vite，622 模块，产物 781.19 kB）；`node --check scripts/panel-acceptance.mjs` 通过；`npm run acceptance` 由 CDP 驱动 Chrome 实际跑通，26 项中 25 PASS / 1 FAIL / 0 SKIP。唯一 FAIL 为既有 AC4 分组条段宽（224.9px vs 222.7px，容差 1.5px），在修改任何代码之前的基线即以相同数值失败，按 AGENTS.md 第 5 节如实记录为剩余风险，未删除测试、未放宽容差，转 `docs/backlog/panel-acceptance-segment-width.md`。派生库 `SCHEMA_VERSION` 3→4 首次重建后的按天合计对照仍需开发者本地首次刷新时确认。
+
+必要的问题与决策：提交 `bbe01c9`（`[test]price-ratio-acceptance`）使用了 AGENTS.md `:178-185` 允许列表之外的 `test` type；历史提交不改写，本轮提交一律使用 `docs` / `feat` / `chore`。既有 AC4 段宽失败不通过调大容差或跳过断言处理（AGENTS.md 第 4 节），需先定位布局舍入与断言基准后再单独处理。
