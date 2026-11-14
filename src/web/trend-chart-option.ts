@@ -129,8 +129,6 @@ export function buildTrendChartOption(
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
-      // 自定义 formatter 会接管渲染，此项保留供交互验收脚本读取数值格式。
-      valueFormatter: (value) => formatValue(Number(value)),
       formatter: (params) => {
         // 日期取过滤前的 params：全 0 日过滤后没有项可取 axisValue。
         const raw = (Array.isArray(params) ? params : [params]) as unknown as TooltipParam[];
@@ -145,7 +143,9 @@ export function buildTrendChartOption(
             `${item.marker ?? ''}${escapeHtml(item.seriesName ?? '')}：${formatValue(Number(item.value))}`,
         );
         if (ratioParam && ratioParam.value !== null && ratioParam.value !== undefined) {
-          lines.push(`${ratioParam.marker ?? ''}${Number(ratioParam.value).toFixed(2)}×`);
+          lines.push(
+            `${ratioParam.marker ?? ''}DeepSeek 费用比率：${Number(ratioParam.value).toFixed(2)}×`,
+          );
         }
         if (lines.length === 0) {
           return `${axis}<br/>无数据`;

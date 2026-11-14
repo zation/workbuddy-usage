@@ -36,8 +36,8 @@
 - 筛到非 DS 模型时白名单条件自然使 `ratios` 为空数组，前端据此隐藏折线，不需要额外的「不适用」标记或提示（Spec 要求）。
 
 **AD-P5 前端只加一条折线。**
-`EChart.tsx` 注册 `LineChart`；`TrendChart.tsx` 增加可选 `ratios` prop，仅在 `metric === 'tokens'` 且 `ratios.length > 0` 时启用第二 Y 轴与折线 series，按 `days` 对齐，缺失日期为 `null`、`connectNulls: false`。`yAxis` 由对象改为数组，柱 series 显式 `yAxisIndex: 0`，折线 `yAxisIndex: 1`；右轴名称 `×`，`grid.right` 借助 `containLabel` 自适应。折线颜色用固定中性色（不与模型色表冲突），不进 `legend`（`legend.data` 固定为模型展示名数组），图例、指标卡、面板说明文字全部不变。
-**必须处理的正确性点**：现有 `tooltip.formatter` 会把所有 series 的 `value` 统一交给 `formatTokens` / `formatCredit`，并把比率一起混入「过滤 0 值 + 按数值降序」的柱子列表。改法是在 `TooltipParam` 补 `seriesId`，按 `seriesId` 分流：折线单独追加一行、用 `×` 格式，不参与柱子的过滤与排序；柱子的既有逻辑不动（0 值隐藏、降序、HTML 转义保持）。自定义 `formatter` 会接管整条 tooltip，原有的全局 `tooltip.valueFormatter` 不再对柱子生效，因此柱子格式化要移进 `formatter` 内部分支调用 `formatValue`，保证柱子显示不变。否则比率会被显示成 `4` 或 `4.20` 这类错误值，柱子的缩写格式也会丢。
+`EChart.tsx` 注册 `LineChart`；`TrendChart.tsx` 增加可选 `ratios` prop，仅在 `metric === 'tokens'` 且 `ratios.length > 0` 时启用第二 Y 轴与折线 series，按 `days` 对齐，缺失日期为 `null`、`connectNulls: false`。`yAxis` 由对象改为数组，柱 series 显式 `yAxisIndex: 0`，折线 `yAxisIndex: 1`；右轴名称 `×`，`grid.right` 借助 `containLabel` 自适应。折线颜色用固定中性色（不与模型色表冲突），不进 `legend`（`legend.data` 固定为模型展示名数组），图例、指标卡、面板说明文字全部不变。比率行的 tooltip 文本固定为 `DeepSeek 费用比率：<数值>×`，是该折线的名称标识（Spec 非目标与 AC5 已同步），不构成口径说明；柱子仍走 `formatValue`。
+**必须处理的正确性点**：现有 `tooltip.formatter` 会把所有 series 的 `value` 统一交给 `formatTokens` / `formatCredit`，并把比率一起混入「过滤 0 值 + 按数值降序」的柱子列表。改法是在 `TooltipParam` 补 `seriesId`，按 `seriesId` 分流：折线单独追加一行、用 `×` 格式，不参与柱子的过滤与排序；柱子的既有逻辑不动（0 值隐藏、降序、HTML 转义保持）。自定义 `formatter` 会接管整条 tooltip，原有的全局 `tooltip.valueFormatter` 不再对柱子生效，因此柱子格式化要移进 `formatter` 内部分支调用 `formatValue`，保证柱子显示不变。否则比率会被显示成 `4` 或 `4.20` 这类错误值，柱子的缩写格式也会丢。全局 `valueFormatter` 一并移除，不保留仅供验收脚本读取的死配置；交互验收的数值格式断言改为 probe `formatter` 的真实输出。
 
 **AD-P6 缓存语义按 Spec R6 执行。** `cache_read_tokens` 直接视作官方缓存命中输入，界面不加提示；假设与敏感性只写进 `docs/deepseek-pricing.md`。不在运行时做第二套口径或开关（Spec 非目标）。
 
@@ -82,7 +82,7 @@
 
 ## 测试策略
 
-- **纯函数单测**：`toDateKey` / `formatDateKey` / `addDays` / `daySpan` 覆盖 UTC、UTC+8、UTC-8 与跨零点；新增跨时区测试用 `child_process.execFileSync` 以不同 `TZ` 启动最小脚本，断言同一 epoch 输入得到相同 `date_key` 与格式化结果（Node 进程内改 `TZ` 不可靠，用子进程隔离）。
+- **纯函数单测**：`toDateKey` / `formatDateKey` / `addDays` / `daySpan` 覆盖 UTC、UTC+8、UTC-8 与跨零点；新增跨时区测试用 `child_process.execFileSync` 以不同 `TZ` 启动最小脚本，断言同一 epoch 输入得到相同 `date_key` 与格式化结果（Node 进程内改 `TZ` 不可靠，用子进程隔离）。服务层比率序列同样做跨时区比对：不同 `TZ` 子进程用同一内存库 fixture 调 `getTimeseries`，断言 `ratios` 完全一致（AC1）。
 - **闲时判定**：覆盖工作日 09:00 / 11:59 / 12:00 / 14:00 / 17:59 / 18:00、周末、法定节假日、UTC 跨日，断言与官方中英文页规则一致。
 - **月度单价与比率**：28 / 29 / 30 / 31 天月、跨月区间、分母为 0、分子为 0、大小月单价不同；固定 fixture 手算分子 / 分母 / 比率并逐请求对账。
 - **API 契约**：`/api/timeseries` 返回 `ratios` 且 `rows` 形状不变；四个筛选对 `ratios` 生效；筛选非 DS 模型时 `ratios` 为空数组；分母为 0 的日期 `ratio: null`。

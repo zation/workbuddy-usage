@@ -35,16 +35,20 @@ function parts(option: ReturnType<typeof buildTrendChartOption>) {
     series: option.series as unknown as Array<Record<string, unknown>>,
     yAxis: option.yAxis as unknown as Array<Record<string, unknown>> | Record<string, unknown>,
     legend: option.legend as unknown as { data?: string[] },
-    tooltip: option.tooltip as unknown as { formatter: (params: unknown) => string },
+    tooltip: option.tooltip as unknown as {
+      formatter: (params: unknown) => string;
+      valueFormatter?: (value: unknown) => string;
+    },
   };
 }
 
 describe('趋势图价格比率折线', () => {
   it('无 ratios 时保持单 Y 轴与纯柱状配置', () => {
-    const { series, yAxis } = parts(buildTrendChartOption(data, 'tokens'));
+    const { series, yAxis, tooltip } = parts(buildTrendChartOption(data, 'tokens'));
     expect(Array.isArray(yAxis)).toBe(false);
     expect(series.every((item) => item.type === 'bar')).toBe(true);
     expect(series.find((item) => item.id === PRICE_RATIO_SERIES_ID)).toBeUndefined();
+    expect(tooltip.valueFormatter).toBeUndefined();
   });
 
   it('有 ratios 时启用第二 Y 轴与单条折线，null 断线且不进图例', () => {
@@ -74,9 +78,24 @@ describe('趋势图价格比率折线', () => {
       { axisValue: '2026-11-11', seriesId: PRICE_RATIO_SERIES_ID, seriesName: '价格比率', value: 4.16, marker: 'C' },
     ]);
     expect(html).toContain('1.0K');
-    expect(html).toContain('4.16×');
+    expect(html).toContain('DeepSeek 费用比率：4.16×');
     expect(html).not.toContain('Zero');
-    expect(html.indexOf('1.0K')).toBeLessThan(html.indexOf('4.16×'));
+    expect(html.indexOf('1.0K')).toBeLessThan(html.indexOf('DeepSeek 费用比率：4.16×'));
+  });
+
+  it('柱子数值格式由 formatter 输出，移除 valueFormatter 后仍保持', () => {
+    const { tooltip } = parts(buildTrendChartOption(data, 'tokens'));
+    const html = tooltip.formatter([
+      { axisValue: '2026-11-11', seriesId: 'deepseek-v4.1-flash', seriesName: 'DeepSeek', value: 1_000_000, marker: 'A' },
+    ]);
+    expect(html).toContain('1.0M');
+    expect(tooltip.valueFormatter).toBeUndefined();
+
+    const credit = parts(buildTrendChartOption(data, 'credit'));
+    const creditHtml = credit.tooltip.formatter([
+      { axisValue: '2026-11-11', seriesId: 'deepseek-v4.1-flash', seriesName: 'DeepSeek', value: 12.5, marker: 'A' },
+    ]);
+    expect(creditHtml).toContain('12.50');
   });
 
   it('折线值为 null 时 tooltip 不追加比率行', () => {
