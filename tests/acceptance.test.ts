@@ -118,10 +118,10 @@ describe('AC1 可复算', () => {
     const rows = getRequests(fixture.db, {}).rows;
 
     expect(findRow(rows, 'r1')).toMatchObject({
-      inputTokens: 150,
-      outputTokens: 100,
-      cacheReadTokens: 50,
-      totalTokens: 250,
+      inputTokens: 450,
+      outputTokens: 300,
+      cacheReadTokens: 115,
+      totalTokens: 750,
       credit: 1.5,
       stepCount: 5,
     });
@@ -147,20 +147,18 @@ describe('AC1 可复算', () => {
 });
 
 describe('AC2 去重生效', () => {
-  it('合计等于按请求取最大值之和，且小于步骤直接累加', async () => {
+  it('合计等于各步求和，不再按最大值截断', async () => {
     const fixture = createFixture();
     await fixture.refresh();
     const summary = getSummary(fixture.db, {});
 
     const stepSum = 50 + 100 + 150 + 200 + 250 + 15 + 300 + 500 + 600 + 700 + 400;
-    expect(summary.token.totalTokens).toBe(2765);
-    expect(summary.token.totalTokens).toBeLessThan(stepSum);
-    expect(stepSum / summary.token.totalTokens).toBeGreaterThan(1);
+    expect(summary.token.totalTokens).toBe(stepSum);
     expect(summary.token.requestCount).toBe(7);
     expect(summary.token.sessionCount).toBe(5);
   });
 
-  it('80 步骤的长链路请求只计一次，步骤累加被放大 30 倍以上', async () => {
+  it('80 步骤的长链路请求仍只计一个请求，token 按逐步求和', async () => {
     const home = makeTempDir();
     createWorkbuddyDb(home, [], []);
     const stepCount = 80;
@@ -183,14 +181,14 @@ describe('AC2 去重生效', () => {
     expect(result.upsertedRequests).toBe(1);
 
     const summary = getSummary(fixture.db, {});
+    const stepSum = ((stepCount * (stepCount + 1)) / 2) * 10;
     expect(summary.token).toMatchObject({
-      totalTokens: 800,
-      inputTokens: 480,
-      outputTokens: 320,
+      totalTokens: stepSum,
+      inputTokens: ((stepCount * (stepCount + 1)) / 2) * 6,
+      outputTokens: ((stepCount * (stepCount + 1)) / 2) * 4,
       requestCount: 1,
     });
-    const stepSum = ((stepCount * (stepCount + 1)) / 2) * 10;
-    expect(stepSum / summary.token.totalTokens).toBeGreaterThan(30);
+    expect(summary.token.totalTokens).toBeGreaterThan(stepCount * 10);
   });
 });
 
@@ -216,7 +214,7 @@ describe('AC3 维度一致', () => {
     expect(
       Object.fromEntries(groups.map((row) => [row.key, row.totalTokens])),
     ).toMatchObject({
-      '/work/alpha': 665,
+      '/work/alpha': 1165,
       '/work/beta': 300,
       '/work/gamma': 500,
       '/work/delta': 600,
@@ -250,7 +248,7 @@ describe('AC5 全量重建', () => {
     const refresher = createRefresher(reopened.db, fixture.config);
     const rebuilt = await refresher.refresh();
     expect(rebuilt.upsertedRequests).toBe(7);
-    expect(getSummary(reopened.db, {}).token.totalTokens).toBe(2765);
+    expect(getSummary(reopened.db, {}).token.totalTokens).toBe(3265);
     closeDatabase(reopened.db);
   });
 
@@ -278,7 +276,7 @@ describe('AC5 全量重建', () => {
     expect(result.upsertedRequests).toBe(fileCount * requestsPerFile);
     expect(result.durationMs).toBeLessThan(30_000);
     expect(getSummary(fixture.db, {}).token).toMatchObject({
-      totalTokens: fileCount * requestsPerFile * 20,
+      totalTokens: fileCount * requestsPerFile * 30,
       requestCount: fileCount * requestsPerFile,
     });
 
@@ -304,7 +302,7 @@ describe('AC6 子代理归属', () => {
     });
 
     const alpha = getBreakdown(fixture.db, { group: '/work/alpha' }, 'session').rows;
-    expect(alpha.find((row) => row.key === 'sess-alpha-0001')?.totalTokens).toBe(665);
+    expect(alpha.find((row) => row.key === 'sess-alpha-0001')?.totalTokens).toBe(1165);
   });
 });
 

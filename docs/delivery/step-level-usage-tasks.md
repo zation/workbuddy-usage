@@ -11,11 +11,23 @@
 
 # T001 逐步用量事实的解析归并
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R1 / R2 / R3 与 Plan AD-P3 建立逐步用量事实层。`readStep` / `RawStep` 明确四项 token 为「本步值」、补齐 Step 事实所需字段、去掉累计值注释；`mergeStep` 从「取 `total_tokens` 最大那条」改为四项求和并产出该请求全部 Step 事实，请求级四项 token 为求和派生值，`step_count` 等于 Step 条数；请求级模型取第一步标识，请求内出现多模型时经 `ParseWarnings` 记录告警但不改变归属、不按 token 占比选举、不按步分摊、不展示多模型；每步用 `isDeepseekOffpeak` 按自身时间戳判档；C3 / C4 校验对象改为求和结果。本任务为**纯增量**：不删请求级 `isDeepseekOffpeak`、不动数据库与写库，保证 typecheck 与既有写库路径不中断；四项 token 改为求和后，旧库（schema 4）中未重扫的历史行仍是旧值，由 T002 递增版本删库重建统一，本阶段不单独提供混合口径的一致性保证。完成条件：解析层单测覆盖单步请求新旧一致、多步求和等于手算 Σ、上下文压缩回落前后都计入、`step_count` 与 Step 条数一致、`ParsedRequest` 四项 = Σ 各步四项（本阶段在解析层验证，`steps` 表由 T002 建立）、请求级模型取第一步且多模型告警被记录且无按步分摊、C3 / C4 求和后成立、按步判档覆盖 09:00 / 12:00 / 14:00 / 18:00 边界与周末 / 节假日 / 跨零点长请求；`npm run typecheck` 通过。
 
-修改范围：`src/etl/fields.ts`、`src/etl/parse.ts`、`src/shared/types.ts`、`tests/parse.test.ts`
+修改范围：`src/etl/fields.ts`、`src/etl/parse.ts`、`src/shared/types.ts`、`tests/parse.test.ts`、`tests/api.test.ts`、`tests/acceptance.test.ts`、`tests/refresh.test.ts`、`tests/helpers/stats-fixture.ts`
+
+实施结果：新增 `ParsedStep` 并让 `ParsedRequest` 携带该请求全部 Step 事实；`mergeStep` 改为四项求和、按步时间戳调用 `isDeepseekOffpeak`、记录每步模型与来源标记，请求级模型取第一步标识、请求内出现多模型时置告警而不改变归属；`step_count` 等于 Step 条数；C3 / C4 改为校验请求级求和结果，`zeroTotalSteps` 仍按步计数；`total_tokens` 缺失 / 为 0 时的兜底抽为单一函数，Step 与请求行共用同一取值。请求级 `isDeepseekOffpeak` 按计划保留至 T002 删除。解析层单测由 7 个扩到 12 个，覆盖单步请求新旧一致、多步求和、上下文压缩回落、Σ 各步四项 = 请求四项、多模型告警且无按步分摊、09 / 12 / 14 / 18 边界、周末、节假日日历注入与跨零点长请求。
+
+求和口径使 `stats-fixture` / `acceptance` / `refresh` 三处固定 fixture 的旧「取最大值」硬编码数值同时失效，本任务一并把它们改为求和后的确定性数值，并按新语义重写两条旧口径用例（「合计等于各步求和，不再按最大值截断」「80 步骤的长链路请求仍只计一个请求，token 按逐步求和」）；未放宽、跳过或删除任何既有断言。这四个测试文件原列在 T002 / T003 范围，此处提前修正数值，后续任务仍按各自目标继续补结构与比率用例。
+
+验证：`npm run typecheck` 退出码 0；`npx vitest run tests/parse.test.ts` 12 passed；`npm test` 18 个文件 184 passed | 1 skipped（原 18 files / 179 passed | 1 skipped，净增解析层用例并修正数值）；`npm run build` 退出码 0（Vite 既有 chunk >500 kB 提示，非失败）。`npm run acceptance` 属 T004，依赖 T002 / T003 / T005，本任务不执行。
+
+必要的问题与决策：
+
+- 多模型告警落在解析层专用的 `FileParseWarnings.multiModelRequests`，不扩展 `ParseWarnings` / `RefreshResult.warnings`：Spec R9 要求 `/api/refresh` 响应形状不变，而 `WARNING_KEYS` 是刷新汇总的白名单。因此 T002 完成条件中的「`WARNING_KEYS` 同步 T001 扩展的告警键」不再需要执行，`WARNING_KEYS` 保持七个键不变；代价是多模型计数只在解析层可观测，实测数据 0 例，按 Spec「不处理请求内多模型」的范围可接受。
+- `parseSourceFile` 新增可选 `calendar` 参数（默认 `CHINA_HOLIDAYS`），供解析层单测注入节假日表验证按步判档；`refresh.ts` 调用方式不变，不改变对外行为。判档纯函数的边界用例仍由 `tests/deepseek-offpeak.test.ts` 覆盖，未重复改写。
+- 请求级四项 token 已是求和派生值，但数据库仍是 schema 4：未重扫的历史行保留旧值，按本任务「纯增量」定位不提供混合口径一致性，由 T002 递增版本删库重建统一。
 
 # T002 数据库结构与写库切换
 

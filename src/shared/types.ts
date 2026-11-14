@@ -33,6 +33,22 @@ export interface SessionMeta {
   syncedAt: number;
 }
 
+/** 一次模型 API 调用的独立用量事实，四项 token 是该次调用的本步值，不是累计快照。 */
+export interface ParsedStep {
+  /** 请求内步骤序号，按 jsonl 出现顺序从 0 开始。 */
+  stepIndex: number;
+  timestamp: number;
+  /** 该步自身的模型标识，仅供对账与多模型告警，不参与聚合分组与筛选。 */
+  model: string | null;
+  isSubagent: boolean;
+  /** 按该步自身时间戳、依 DeepSeek 官方高峰 / 空闲规则判出的档位，与模型无关。 */
+  isDeepseekOffpeak: boolean;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  totalTokens: number;
+}
+
 /** 解析后按请求归并的记录，字段与 requests 表一一对应，不含内部 id。 */
 export interface ParsedRequest {
   requestId: string;
@@ -49,6 +65,8 @@ export interface ParsedRequest {
   cacheReadTokens: number;
   totalTokens: number;
   stepCount: number;
+  /** 该请求全部步骤的用量事实；四项 token 之和等于本行对应的四个字段。 */
+  steps: ParsedStep[];
 }
 
 /** 模型展示名候选，用于按固定优先级规范化。 */

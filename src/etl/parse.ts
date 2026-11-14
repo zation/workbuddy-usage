@@ -1,22 +1,29 @@
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
+import { CHINA_HOLIDAYS, type HolidayCalendar } from '../shared/china-holidays.ts';
 import { isDeepseekOffpeak } from '../shared/deepseek-offpeak.ts';
 import { toDateKey } from '../shared/dates.ts';
 import { UNKNOWN_MODEL } from '../shared/constants.ts';
 import type {
   ModelNameCandidate,
   ParsedRequest,
+  ParsedStep,
   ParseWarnings,
   SessionMeta,
   SourceFileRef,
 } from '../shared/types.ts';
 import { emptyWarnings } from '../shared/types.ts';
-import { readStep } from './fields.ts';
+import { readStep, type RawStep, type UsageSnapshot } from './fields.ts';
+
+/** 解析期告警在刷新汇总之外多一个多模型计数；R9 要求 refresh 响应形状不变。 */
+export interface FileParseWarnings extends ParseWarnings {
+  multiModelRequests: number;
+}
 
 export interface FileParseResult {
   requests: ParsedRequest[];
   modelNames: ModelNameCandidate[];
-  warnings: ParseWarnings;
+  warnings: FileParseWarnings;
 }
 
 interface TokenSnapshot {
@@ -30,57 +37,70 @@ interface MergedRequest extends TokenSnapshot {
   requestId: string;
   startedAt: number;
   endedAt: number;
-  stepCount: number;
-  bestModelKey: string | null;
-  bestModelName: string | null;
+  steps: ParsedStep[];
   firstModelKey: string | null;
   firstModelName: string | null;
+  multiModel: boolean;
 }
 
-function mergeStep(merged: MergedRequest | undefined, step: ReturnType<typeof readStep>): MergedRequest {
-  if (!step) {
-    throw new Error('mergeStep 只接受已识别的用量步骤');
-  }
-  const timestamp = step.timestamp ?? 0;
+function emptyFileWarnings(): FileParseWarnings {
+  return { ...emptyWarnings(), multiModelRequests: 0 };
+}
 
-  let totalTokens = step.usage.totalTokens;
-  if (totalTokens === null || totalTokens === 0) {
-    totalTokens = step.usage.inputTokens + step.usage.outputTokens;
-  }
+function resolveTotalTokens(usage: UsageSnapshot): number {
+  return usage.totalTokens === null || usage.totalTokens === 0
+    ? usage.inputTokens + usage.outputTokens
+    : usage.totalTokens;
+}
+
+function mergeStep(
+  merged: MergedRequest | undefined,
+  step: RawStep,
+  isSubagent: boolean,
+  calendar: HolidayCalendar,
+): MergedRequest {
+  const timestamp = step.timestamp ?? 0;
+  const totalTokens = resolveTotalTokens(step.usage);
 
   const target: MergedRequest = merged ?? {
     requestId: step.requestId,
     startedAt: timestamp,
     endedAt: timestamp,
-    stepCount: 0,
+    steps: [],
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
-    totalTokens: -1,
-    bestModelKey: null,
-    bestModelName: null,
+    totalTokens: 0,
     firstModelKey: null,
     firstModelName: null,
+    multiModel: false,
   };
 
   target.startedAt = Math.min(target.startedAt, timestamp);
   target.endedAt = Math.max(target.endedAt, timestamp);
-  target.stepCount += 1;
+  target.inputTokens += step.usage.inputTokens;
+  target.outputTokens += step.usage.outputTokens;
+  target.cacheReadTokens += step.usage.cacheReadTokens;
+  target.totalTokens += totalTokens;
 
   if (!target.firstModelKey && step.modelKey) {
     target.firstModelKey = step.modelKey;
     target.firstModelName = step.modelName;
+  } else if (step.modelKey && target.firstModelKey && step.modelKey !== target.firstModelKey) {
+    target.multiModel = true;
   }
 
-  // C2：只按 total_tokens 最大值替换，四项字段整体同源，不按时间末条。
-  if (totalTokens > target.totalTokens) {
-    target.totalTokens = totalTokens;
-    target.inputTokens = step.usage.inputTokens;
-    target.outputTokens = step.usage.outputTokens;
-    target.cacheReadTokens = step.usage.cacheReadTokens;
-    target.bestModelKey = step.modelKey;
-    target.bestModelName = step.modelName;
-  }
+  target.steps.push({
+    stepIndex: target.steps.length,
+    timestamp,
+    model: step.modelKey,
+    isSubagent,
+    isDeepseekOffpeak: isDeepseekOffpeak(timestamp, calendar),
+    inputTokens: step.usage.inputTokens,
+    outputTokens: step.usage.outputTokens,
+    cacheReadTokens: step.usage.cacheReadTokens,
+    totalTokens,
+  });
 
   return target;
 }
@@ -89,9 +109,11 @@ function mergeStep(merged: MergedRequest | undefined, step: ReturnType<typeof re
 export async function parseSourceFile(
   file: SourceFileRef,
   sessions: Map<string, SessionMeta>,
+  calendar: HolidayCalendar = CHINA_HOLIDAYS,
 ): Promise<FileParseResult> {
-  const warnings = emptyWarnings();
+  const warnings = emptyFileWarnings();
   const merged = new Map<string, MergedRequest>();
+  const isSubagent = file.kind === 'subagent';
 
   const stream = createReadStream(file.path, { encoding: 'utf8' });
   const reader = createInterface({ input: stream, crlfDelay: Infinity });
@@ -120,25 +142,14 @@ export async function parseSourceFile(
         continue;
       }
 
-      const inputTokens = step.usage.inputTokens;
-      const outputTokens = step.usage.outputTokens;
-      const cacheReadTokens = step.usage.cacheReadTokens;
-      let totalTokens = step.usage.totalTokens;
-      if (totalTokens === null || totalTokens === 0) {
-        totalTokens = inputTokens + outputTokens;
-      }
-
-      if (totalTokens === 0) {
+      if (resolveTotalTokens(step.usage) === 0) {
         warnings.zeroTotalSteps += 1;
       }
-      if (totalTokens !== inputTokens + outputTokens) {
-        warnings.tokenMismatchSteps += 1;
-      }
-      if (cacheReadTokens > inputTokens) {
-        warnings.cacheExceedsInputSteps += 1;
-      }
 
-      merged.set(step.requestId, mergeStep(merged.get(step.requestId), step));
+      merged.set(
+        step.requestId,
+        mergeStep(merged.get(step.requestId), step, isSubagent, calendar),
+      );
     }
   } finally {
     reader.close();
@@ -150,11 +161,21 @@ export async function parseSourceFile(
   const modelNames: ModelNameCandidate[] = [];
 
   for (const item of merged.values()) {
-    const modelKey =
-      item.bestModelKey ?? item.firstModelKey ?? session?.model ?? UNKNOWN_MODEL;
-    const modelName = item.bestModelKey ? item.bestModelName : item.firstModelName;
+    // C3 / C4 校验写入库前的请求级求和结果，不再是逐条快照。
+    if (item.totalTokens !== item.inputTokens + item.outputTokens) {
+      warnings.tokenMismatchSteps += 1;
+    }
+    if (item.cacheReadTokens > item.inputTokens) {
+      warnings.cacheExceedsInputSteps += 1;
+    }
+
+    const modelKey = item.firstModelKey ?? session?.model ?? UNKNOWN_MODEL;
+    const modelName = item.firstModelName;
     if (modelName && modelKey !== UNKNOWN_MODEL) {
       modelNames.push({ modelKey, name: modelName });
+    }
+    if (item.multiModel) {
+      warnings.multiModelRequests += 1;
     }
 
     requests.push({
@@ -162,16 +183,17 @@ export async function parseSourceFile(
       sessionKey: file.sessionKey,
       groupPath: session?.cwd ?? null,
       modelKey,
-      isSubagent: file.kind === 'subagent',
+      isSubagent,
       startedAt: item.startedAt,
       endedAt: item.endedAt,
       dateKey: toDateKey(item.startedAt),
-      isDeepseekOffpeak: isDeepseekOffpeak(item.startedAt),
+      isDeepseekOffpeak: isDeepseekOffpeak(item.startedAt, calendar),
       inputTokens: item.inputTokens,
       outputTokens: item.outputTokens,
       cacheReadTokens: item.cacheReadTokens,
       totalTokens: item.totalTokens,
-      stepCount: item.stepCount,
+      stepCount: item.steps.length,
+      steps: item.steps,
     });
   }
 

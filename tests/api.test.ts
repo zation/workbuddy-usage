@@ -71,9 +71,9 @@ describe('服务层聚合', () => {
     const body = (await response.json()) as SummaryResponse;
 
     expect(body.token).toEqual({
-      totalTokens: 1500,
-      inputTokens: 900,
-      outputTokens: 600,
+      totalTokens: 1650,
+      inputTokens: 990,
+      outputTokens: 660,
       cacheReadTokens: 10,
       requestCount: 5,
       sessionCount: 3,
@@ -132,22 +132,22 @@ describe('服务层聚合', () => {
     expect(groups.rows.map((row) => [row.key, row.name, row.totalTokens])).toEqual([
       ['/work/alpha', 'alpha', 700],
       ['/work/gamma', 'gamma', 500],
-      ['/work/beta', 'beta', 300],
+      ['/work/beta', 'beta', 450],
     ]);
-    expect(groups.rows[0]?.tokenShare).toBeCloseTo(700 / 1500, 10);
+    expect(groups.rows[0]?.tokenShare).toBeCloseTo(700 / 1650, 10);
 
     const models = (await (await app.request('/api/breakdown?dim=model')).json()) as BreakdownResponse;
     expect(models.rows.map((row) => [row.key, row.name, row.totalTokens])).toEqual([
       ['model-a', 'Model-A', 700],
       ['model-c', 'model-c', 500],
-      ['model-b', 'Model-B', 300],
+      ['model-b', 'Model-B', 450],
     ]);
 
     const sessions = (await (await app.request('/api/breakdown?dim=session')).json()) as BreakdownResponse;
     expect(sessions.rows.map((row) => [row.key, row.name, row.totalTokens])).toEqual([
       ['s1', 'Alpha 会话', 700],
       ['s3', 's3', 500],
-      ['s2', '自定义 Beta', 300],
+      ['s2', '自定义 Beta', 450],
     ]);
   });
 
@@ -160,7 +160,7 @@ describe('服务层聚合', () => {
     expect(body.rows.map((row) => [row.date, row.model, row.totalTokens])).toEqual([
       ['2026-11-11', 'model-a', 100],
       ['2026-11-12', 'model-a', 200],
-      ['2026-11-12', 'model-b', 300],
+      ['2026-11-12', 'model-b', 450],
       ['2026-11-13', 'model-a', 400],
       ['2026-11-13', 'model-c', 500],
     ]);
@@ -186,9 +186,9 @@ describe('服务层聚合', () => {
         .totalTokens;
 
     expect(await total('group=%2Fwork%2Falpha')).toBe(700);
-    expect(await total('session=s2')).toBe(300);
-    expect(await total('model=model-b')).toBe(300);
-    expect(await total('from=2026-11-12&to=2026-11-12')).toBe(500);
+    expect(await total('session=s2')).toBe(450);
+    expect(await total('model=model-b')).toBe(450);
+    expect(await total('from=2026-11-12&to=2026-11-12')).toBe(650);
     expect(await total('group=%2Fwork%2Falpha&model=model-a')).toBe(700);
   });
 
@@ -318,11 +318,11 @@ describe('请求级明细', () => {
   it('默认按合计 token 降序，返回业务键与展示名', async () => {
     const { app } = await setup();
     const body = (await (await app.request('/api/requests')).json()) as RequestsResponse;
-    expect(body.rows.map((row) => row.requestId)).toEqual(['d1', 'c1', 'b1', 'a2', 'a1']);
+    expect(body.rows.map((row) => row.requestId)).toEqual(['d1', 'b1', 'c1', 'a2', 'a1']);
 
     const b1 = body.rows.find((row) => row.requestId === 'b1');
     expect(b1).toMatchObject({
-      totalTokens: 300,
+      totalTokens: 450,
       stepCount: 2,
       group: '/work/beta',
       groupName: 'beta',

@@ -3,6 +3,7 @@
  * 只认 integration.md 记录的实测字段；WorkBuddy 改字段时只改这里。
  */
 
+/** 一次模型 API 调用的用量，四项均为该次调用的本步值，不是截至该步的累计快照。 */
 export interface UsageSnapshot {
   inputTokens: number;
   outputTokens: number;
@@ -13,6 +14,7 @@ export interface UsageSnapshot {
   hasAnyField: boolean;
 }
 
+/** 一条带 usage 的 jsonl 记录；每次模型调用是一条独立的用量步骤。 */
 export interface RawStep {
   requestId: string;
   timestamp: number | null;

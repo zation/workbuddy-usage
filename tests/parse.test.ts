@@ -2,8 +2,10 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseSourceFile } from '../src/etl/parse.ts';
+import type { HolidayCalendar } from '../src/shared/china-holidays.ts';
 import { BUSINESS_TZ_OFFSET_MS, UNKNOWN_MODEL } from '../src/shared/constants.ts';
-import type { SessionMeta, SourceFileRef } from '../src/shared/types.ts';
+import { isDeepseekOffpeak } from '../src/shared/deepseek-offpeak.ts';
+import type { ParsedRequest, SessionMeta, SourceFileRef } from '../src/shared/types.ts';
 import { cleanupTempDirs, makeTempDir } from './helpers/temp.ts';
 
 interface StepOptions {
@@ -79,14 +81,33 @@ function session(overrides: Partial<SessionMeta> = {}): SessionMeta {
   };
 }
 
+/** 北京时间 2026-11-<day> <hour>:<minute> 对应的绝对时间戳。 */
+const at = (hour: number, minute: number, day = 11) =>
+  Date.UTC(2026, 10, day, hour, minute) - BUSINESS_TZ_OFFSET_MS;
+
+function expectStepSum(request: ParsedRequest): void {
+  const sum = request.steps.reduce(
+    (acc, step) => ({
+      inputTokens: acc.inputTokens + step.inputTokens,
+      outputTokens: acc.outputTokens + step.outputTokens,
+      cacheReadTokens: acc.cacheReadTokens + step.cacheReadTokens,
+      totalTokens: acc.totalTokens + step.totalTokens,
+    }),
+    { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, totalTokens: 0 },
+  );
+  expect(request).toMatchObject(sum);
+  expect(request.stepCount).toBe(request.steps.length);
+  expect(request.steps.map((step) => step.stepIndex)).toEqual(
+    request.steps.map((_, index) => index),
+  );
+}
+
 afterEach(() => {
   cleanupTempDirs();
 });
 
 describe('按请求归并', () => {
-  it('取 total_tokens 最大那条的四项，含时间末条更小的反例', async () => {
-    const at = (hour: number, minute: number, day = 11) =>
-      Date.UTC(2026, 10, day, hour, minute) - BUSINESS_TZ_OFFSET_MS;
+  it('四项 token 逐步求和，含时间末条更小与跨零点反例', async () => {
     const file = makeFile([
       stepLine({ requestId: 'r1', timestamp: at(23, 50), input: 60, output: 40, cache: 10, total: 100 }),
       stepLine({ requestId: 'r1', timestamp: at(23, 55), input: 150, output: 100, cache: 50, total: 250 }),
@@ -97,10 +118,10 @@ describe('按请求归并', () => {
     expect(result.requests).toHaveLength(1);
     expect(result.requests[0]).toMatchObject({
       requestId: 'r1',
-      inputTokens: 150,
-      outputTokens: 100,
-      cacheReadTokens: 50,
-      totalTokens: 250,
+      inputTokens: 310,
+      outputTokens: 220,
+      cacheReadTokens: 80,
+      totalTokens: 530,
       stepCount: 3,
       startedAt: at(23, 50),
       endedAt: at(0, 10, 12),
@@ -110,6 +131,8 @@ describe('按请求归并', () => {
       groupPath: '/work/demo',
       modelKey: 'model-a',
     });
+    expectStepSum(result.requests[0] as ParsedRequest);
+    expect(result.requests[0]?.steps.map((step) => step.totalTokens)).toEqual([100, 250, 180]);
     expect(result.modelNames).toEqual([{ modelKey: 'model-a', name: 'Model-A' }]);
     expect(result.warnings).toEqual({
       invalidJsonLines: 0,
@@ -119,7 +142,119 @@ describe('按请求归并', () => {
       zeroTotalSteps: 0,
       duplicateRequestIds: 0,
       unrecognizedFiles: 0,
+      multiModelRequests: 0,
     });
+  });
+
+  it('单步请求与旧口径结果一致', async () => {
+    const file = makeFile([
+      stepLine({ requestId: 'solo', timestamp: at(10, 0), input: 100, output: 50, cache: 20, total: 150 }),
+    ]);
+    const result = await parseSourceFile(file, new Map([['s1', session()]]));
+    expect(result.requests[0]).toMatchObject({
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadTokens: 20,
+      totalTokens: 150,
+      stepCount: 1,
+    });
+    expect(result.requests[0]?.steps).toHaveLength(1);
+    expectStepSum(result.requests[0] as ParsedRequest);
+  });
+
+  it('上下文压缩导致数值回落时，回落前后的调用都计入求和', async () => {
+    const file = makeFile([
+      stepLine({ requestId: 'compact', timestamp: at(9, 10), input: 270_284, output: 1_000, cache: 260_000, total: 271_284 }),
+      stepLine({ requestId: 'compact', timestamp: at(9, 11), input: 35_420, output: 2_000, cache: 30_000, total: 37_420 }),
+      stepLine({ requestId: 'compact', timestamp: at(9, 12), input: 90_000, output: 500, cache: 85_000, total: 90_500 }),
+    ]);
+    const result = await parseSourceFile(file, new Map([['s1', session()]]));
+    const request = result.requests[0] as ParsedRequest;
+    expect(request).toMatchObject({
+      inputTokens: 395_704,
+      outputTokens: 3_500,
+      cacheReadTokens: 375_000,
+      totalTokens: 399_204,
+      stepCount: 3,
+    });
+    expect(request.totalTokens).toBeGreaterThan(271_284);
+    expectStepSum(request);
+    expect(result.warnings.tokenMismatchSteps).toBe(0);
+    expect(result.warnings.cacheExceedsInputSteps).toBe(0);
+  });
+
+  it('C3 / C4 按请求求和结果校验并累计告警，保留原值', async () => {
+    const file = makeFile([
+      stepLine({ requestId: 'r3', timestamp: Date.now(), input: 10, output: 5, total: 50 }),
+      stepLine({ requestId: 'r4', timestamp: Date.now(), input: 10, output: 5, cache: 100 }),
+      stepLine({ requestId: 'r5', timestamp: Date.now(), input: 0, output: 0, total: 0 }),
+    ]);
+    const result = await parseSourceFile(file, new Map([['s1', session()]]));
+    expect(result.requests.find((item) => item.requestId === 'r3')?.totalTokens).toBe(50);
+    expect(result.warnings.tokenMismatchSteps).toBe(1);
+    expect(result.warnings.cacheExceedsInputSteps).toBe(1);
+    expect(result.warnings.zeroTotalSteps).toBe(1);
+  });
+
+  it('请求级模型取第一步，多模型只记告警不按步分摊', async () => {
+    const file = makeFile([
+      stepLine({ requestId: 'mixed', timestamp: at(9, 0), input: 100, output: 50, total: 150, model: 'model-a', modelName: 'Model-A' }),
+      stepLine({ requestId: 'mixed', timestamp: at(9, 1), input: 200, output: 100, total: 300, model: 'model-b', modelName: 'Model-B' }),
+      stepLine({ requestId: 'mixed', timestamp: at(9, 2), input: 300, output: 150, total: 450, model: 'model-a', modelName: 'Model-A' }),
+    ]);
+    const result = await parseSourceFile(file, new Map([['s1', session()]]));
+    expect(result.requests).toHaveLength(1);
+    const request = result.requests[0] as ParsedRequest;
+    expect(request.modelKey).toBe('model-a');
+    expect(request).toMatchObject({ inputTokens: 600, outputTokens: 300, totalTokens: 900 });
+    expect(request.steps.map((step) => step.model)).toEqual(['model-a', 'model-b', 'model-a']);
+    expect(result.modelNames).toEqual([{ modelKey: 'model-a', name: 'Model-A' }]);
+    expect(result.warnings.multiModelRequests).toBe(1);
+    expectStepSum(request);
+  });
+
+  it('每步按自身时间戳判档，覆盖 09 / 12 / 14 / 18 边界、周末与跨零点', async () => {
+    const timestamps = [
+      at(8, 59),
+      at(9, 0),
+      at(11, 59),
+      at(12, 0),
+      at(13, 59),
+      at(14, 0),
+      at(17, 59),
+      at(18, 0),
+      at(10, 0, 14),
+      at(0, 10, 12),
+    ];
+    const file = makeFile(
+      timestamps.map((timestamp, index) =>
+        stepLine({ requestId: 'shift', timestamp, input: 10 + index, output: 5, total: 15 + index }),
+      ),
+    );
+    const result = await parseSourceFile(file, new Map([['s1', session()]]));
+    const request = result.requests[0] as ParsedRequest;
+    const flags = request.steps.map((step) => step.isDeepseekOffpeak);
+    expect(flags).toEqual([true, false, false, true, true, false, false, true, true, true]);
+    expect(flags).toEqual(timestamps.map((timestamp) => isDeepseekOffpeak(timestamp)));
+    expect(new Set(flags).size).toBe(2);
+    expect(request.dateKey).toBe('2026-11-11');
+    expect(request.startedAt).toBe(at(8, 59));
+    expect(request.endedAt).toBe(at(10, 0, 14));
+    expectStepSum(request);
+  });
+
+  it('节假日表按步生效，同一请求内节假日与相邻工作日高峰判档不同', async () => {
+    const calendar: HolidayCalendar = {
+      coveredYears: [2026],
+      holidays: new Set(['2026-11-12']),
+    };
+    const file = makeFile([
+      stepLine({ requestId: 'holiday', timestamp: at(10, 0, 11), input: 10, output: 5, total: 15 }),
+      stepLine({ requestId: 'holiday', timestamp: at(10, 0, 12), input: 20, output: 10, total: 30 }),
+    ]);
+    const result = await parseSourceFile(file, new Map([['s1', session()]]), calendar);
+    expect(result.requests[0]?.steps.map((step) => step.isDeepseekOffpeak)).toEqual([false, true]);
+    expect(result.requests[0]?.dateKey).toBe('2026-11-11');
   });
 
   it('total_tokens 缺失时用 input + output 兜底，缓存缺失记 0', async () => {
@@ -133,19 +268,7 @@ describe('按请求归并', () => {
       cacheReadTokens: 0,
       totalTokens: 15,
     });
-  });
-
-  it('校验 C3 / C4 并累计告警，保留原值', async () => {
-    const file = makeFile([
-      stepLine({ requestId: 'r3', timestamp: Date.now(), input: 10, output: 5, total: 50 }),
-      stepLine({ requestId: 'r4', timestamp: Date.now(), input: 10, output: 5, cache: 100 }),
-      stepLine({ requestId: 'r5', timestamp: Date.now(), input: 0, output: 0, total: 0 }),
-    ]);
-    const result = await parseSourceFile(file, new Map([['s1', session()]]));
-    expect(result.requests.find((item) => item.requestId === 'r3')?.totalTokens).toBe(50);
-    expect(result.warnings.tokenMismatchSteps).toBe(1);
-    expect(result.warnings.cacheExceedsInputSteps).toBe(1);
-    expect(result.warnings.zeroTotalSteps).toBe(1);
+    expectStepSum(result.requests[0] as ParsedRequest);
   });
 
   it('跳过不完整行与非法时间戳，未知字段与未知事件类型不中断', async () => {
@@ -188,9 +311,10 @@ describe('按请求归并', () => {
       groupPath: '/work/demo',
       modelKey: 'm-sub',
     });
+    expect(result.requests[0]?.steps[0]?.isSubagent).toBe(true);
   });
 
-  it('同一请求跨步骤取最大值，重复解析结果稳定', async () => {
+  it('同一请求跨步骤求和，重复解析结果稳定', async () => {
     const lines = [
       stepLine({ requestId: 'r12', timestamp: 1000, input: 1, output: 1, total: 2 }),
       stepLine({ requestId: 'r12', timestamp: 2000, input: 5, output: 5, total: 10 }),
@@ -199,7 +323,8 @@ describe('按请求归并', () => {
     const first = await parseSourceFile(file, new Map());
     const second = await parseSourceFile(file, new Map());
     expect(first.requests).toEqual(second.requests);
-    expect(first.requests[0]?.totalTokens).toBe(10);
+    expect(first.requests[0]).toMatchObject({ inputTokens: 6, outputTokens: 6, totalTokens: 12 });
     expect(first.requests[0]?.stepCount).toBe(2);
+    expectStepSum(first.requests[0] as ParsedRequest);
   });
 });

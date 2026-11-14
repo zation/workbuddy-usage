@@ -144,10 +144,10 @@ describe('刷新编排与文件原子替换', () => {
 
     const r1 = requests.find((row) => row.request_id === 'r1');
     expect(r1).toMatchObject({
-      total_tokens: 250,
-      input_tokens: 150,
-      output_tokens: 100,
-      cache_read_tokens: 50,
+      total_tokens: 350,
+      input_tokens: 210,
+      output_tokens: 140,
+      cache_read_tokens: 60,
       date_key: '2026-11-12',
       is_subagent: 0,
       step_count: 2,

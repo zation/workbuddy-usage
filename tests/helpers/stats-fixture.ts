@@ -25,7 +25,7 @@ function writeProject(home: string, relativePath: string, lines: string[]): void
 
 /**
  * 固定夹具：3 个分组、3 个会话、3 个模型、5 个请求（含 1 个子代理），
- * token 合计 1500、积分合计 3.75、覆盖率 3/5，日期跨 11-11 至 11-13。
+ * token 合计 1650（b1 两步求和 150 + 300）、积分合计 3.75、覆盖率 3/5，日期跨 11-11 至 11-13。
  */
 export async function createStatsFixture(): Promise<StatsFixture> {
   const home = makeTempDir();
