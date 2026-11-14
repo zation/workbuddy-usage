@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 interface ModuleSectionProps {
   accent: 'token' | 'credit';
   title: string;
-  description: string;
+  description?: string;
   children: ReactNode;
 }
 
@@ -13,7 +13,7 @@ export function ModuleSection({ accent, title, description, children }: ModuleSe
       <header className="module-header">
         <div>
           <h2>{title}</h2>
-          <p>{description}</p>
+          {description ? <p>{description}</p> : null}
         </div>
       </header>
       <div className="module-body">{children}</div>

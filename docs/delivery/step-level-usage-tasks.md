@@ -82,11 +82,15 @@
 
 # T005 前端旧口径文案移除
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec「用户或系统行为」/ AC6 与 Plan AD-P6 移除界面旧口径说明。`ModuleSectionProps.description` 改为可选 `string`、组件仅在有值时渲染副标题 `<p>`，Token 模块不再传该 prop，积分模块仍传原值且渲染不变；不替换为任何口径说明、不新增界面元素与文案。图表配置、色表、tooltip 分流、`format.ts` 不动。完成条件：前端相关单测与 `npm run typecheck` 通过，交互验收断言界面无该说明文案且无本次新增说明文字。
 
 修改范围：`src/web/App.tsx`、`src/web/components/ModuleSection.tsx`、`tests/`
+
+实施结果：`ModuleSectionProps.description` 改为可选 `string`，组件仅在有值时渲染副标题 `<p>`；Token 模块不再传该 prop，积分模块仍传「按请求汇总的积分消耗。」且渲染不变。未新增任何说明文字、界面元素或图表配置改动。未改 `tests/`：交互验收中「旧口径说明文案已移除」的断言由 T004 补。
+
+验证：`npm run typecheck` 退出码 0；`npm test` 18 个文件 189 passed | 1 skipped；`npm run build` 由 T002 + T003 批次已通过，本次仅改两个前端文件且类型检查通过。界面文案断言属 T004 的 `npm run acceptance`。
 
 # T006 跨时区与判档回归补强
 

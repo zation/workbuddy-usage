@@ -265,7 +265,6 @@ export function App() {
           <ModuleSection
             accent="token"
             title="Token 用量"
-            description="按请求取累计值最大的一条，输入 / 输出 / 缓存命中与合计同源。"
           >
             <div className="module-block">
               <MetricCards items={tokenItems} />
