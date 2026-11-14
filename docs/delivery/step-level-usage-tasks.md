@@ -202,3 +202,9 @@
 
 - AC1 / AC3 的 Spec 本机快照数字（1,845.6M / 1,302.5M、0.203×）是 2026-11-14 的原始数据基线。收尾复核时原始数据仍在增长，实测 1,998.4M / 1,378.1M；加权比率 0.2038× 仍与 0.203× 一致。按 Spec「基线随原始数据变化时按同口径重算，不得直接写死为断言常量」，未把它们写入测试，仅记录同口径复核结果。
 - 重建耗时用真实全库 + 临时派生库测量，而不是 e2e 固定样本：样本只有 5 天跨度，不能代表全量重扫成本。临时库用后即删，不改日常实例 `.data/database.db`。
+- **收尾后实现评审整改**（`workflow-review-implementations`，2026-11-14）：评审发现 4 项，处置结论如下；改动随收尾后的整改提交纳入，本任务按约定不填「提交」字段。
+- **提交 type**：`06bc313` 的 `[test]` 不在 `AGENTS.md` 第 6 节六类枚举内。**不改写已提交历史**——改 message 会连带改变 `93cb1eb` / `5b27791` 的 hash，使 T001–T007 已回填的 hash 失效；改为在 `docs/devops.md` 固化「type 只用六类枚举、纯测试 / 验收改动归 `chore`、不自造 type 值」的项目约定防复发，`06bc313` 作为历史记录保留。
+- **AD-P2 验证兑付**：`tests/price-ratio.test.ts` 新增「节假日表更新并递增版本重建后，历史比率按新表一致变化」；`makeDb` 拆出 `populate` 以支持文件库。用例用两套 `HolidayCalendar` 派生 `is_deepseek_offpeak` 并落 `steps`，降级 `schema_version` 触发 `openDatabase` 删库重建，断言 11-12 比率翻倍、11-11 不变、旧步骤清空且重建后全部步骤按新表重判，无旧判定残留。
+- **文档矛盾**：`docs/data-model.md` 版本管理段「重建成本是几十秒」与实测 2.6 秒及 `technical-architecture.md` / `devops.md` 的「秒级」矛盾，改为「秒级」。
+- **AC2 积分归属**：`tests/refresh.test.ts` 新增带 credit 的多模型请求用例，断言 `requests` 行的模型 / 积分 / token 都归第一步模型、`getSummary` 按模型筛选时第二步模型积分为 0、`models` 表不产生第二步模型维度。
+- 整改验证：`npm run typecheck` 退出码 0；`npm test` 18 个文件 191 passed | 1 skipped（192，新增 2 例）；`npm run build` 退出码 0；`npm run acceptance` 40 passed（42.3s）。未改生产代码，未放宽、未跳过任何既有用例。

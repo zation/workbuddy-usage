@@ -8,6 +8,7 @@
   注意：PATH 首位是 WorkBuddy 托管的 v22.22.2（`~/.workbuddy/binaries/node/versions/`）。实测 22.22.2 也能直接加载 `node:sqlite`（22.13.0 起已取消 `--experimental-sqlite`），但会打印 `ExperimentalWarning`；项目仍要求 24，理由见 [technical-architecture.md](./technical-architecture.md)。若终端里 `node -v` 显示 22，用绝对路径调用，或把系统 Node 目录调到 PATH 前面。
 - 首次拉取后安装依赖：`npm install`。
 - 日常检查：`npm run typecheck`（独立类型检查）、`npm test`（Vitest）、`npm run build`（服务端 tsc + 前端 Vite）。项目未配置 lint（无 ESLint / Prettier 依赖），因此没有 lint 检查项。
+- **提交 type 只用 `AGENTS.md` 第 6 节枚举的六类**（`feat` / `bug` / `docs` / `tech` / `revert` / `chore`），不自造 `test` / `fix` 等值；纯测试、验收或工具链改动归 `chore`。标题格式为 `[<type>]<topic>`，任务提交正文带 `Tasks-Doc` / `Tasks`。已提交历史不因 type 用词回改——改写 message 会让其后所有 commit hash 变化，使 Tasks 中已回填的 hash 失效。
 - 沙箱内曾出现 vitest 5.1.0 无法建立 runner 上下文（`Cannot read properties of undefined (reading 'config')`，最小探针即可复现，与项目代码、Node 版本、pool 模式、Vite 缓存和 `NODE_OPTIONS` 均无关），当时以开发者本地 `npm test` 输出作为正式回归证据；该环境差异已消失，当前环境可直接执行 `npm test`。若再次出现，仍按「本地补跑 + 沙箱等价断言」处理，不得删除测试或放宽标准。
 - 无需数据库服务、无需 Docker、无需 Python。
 

@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } fro
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
+import { getSummary } from '../server/query.ts';
 import type { EtlConfig } from '../src/etl/config.ts';
 import { SCHEMA_VERSION, closeDatabase, openDatabase } from '../src/etl/database.ts';
 import { createRefresher } from '../src/etl/refresh.ts';
@@ -256,6 +257,50 @@ describe('刷新编排与文件原子替换', () => {
 
     const all = rows<{ n: number }>(fixture.db, 'SELECT COUNT(*) AS n FROM steps');
     expect(all).toEqual([{ n: 5 }]);
+  });
+
+  it('多模型请求的 token 与积分都归到第一步模型，不按步分摊（AC2）', async () => {
+    const fixture = setup();
+    setCreditJson(fixture.home, 's1', '{"mixed":2.5}');
+    writeProject(fixture.home, 'enc1/s1.jsonl', [
+      stepLine({
+        requestId: 'mixed',
+        timestamp: base,
+        input: 100,
+        output: 50,
+        model: 'model-a',
+        modelName: 'Model-A',
+      }),
+      stepLine({
+        requestId: 'mixed',
+        timestamp: base + 1000,
+        input: 200,
+        output: 100,
+        model: 'model-b',
+        modelName: 'Model-B',
+      }),
+    ]);
+
+    await fixture.refresh();
+
+    const request = joinedRequests(fixture.db).find((row) => row.request_id === 'mixed');
+    expect(request).toMatchObject({
+      model: 'model-a',
+      credit: 2.5,
+      has_credit: 1,
+      total_tokens: 450,
+      step_count: 2,
+    });
+    expect(stepRows(fixture.db, 'mixed').map((step) => step.model)).toEqual([
+      'model-a',
+      'model-b',
+    ]);
+    expect(
+      rows<{ n: number }>(fixture.db, "SELECT COUNT(*) AS n FROM models WHERE model = 'model-b'"),
+    ).toEqual([{ n: 0 }]);
+
+    expect(getSummary(fixture.db, { model: 'model-a' }).credit.credit).toBeCloseTo(2.5, 10);
+    expect(getSummary(fixture.db, { model: 'model-b' }).credit.credit).toBe(0);
   });
 
   it('增量刷新只解析部分文件时展示名不回退（R8）', async () => {

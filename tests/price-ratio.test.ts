@@ -1,8 +1,13 @@
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { getTimeseries } from '../server/query.ts';
-import { SCHEMA_SQL } from '../src/etl/database.ts';
+import { SCHEMA_SQL, SCHEMA_VERSION, closeDatabase, openDatabase } from '../src/etl/database.ts';
+import type { HolidayCalendar } from '../src/shared/china-holidays.ts';
+import { isDeepseekOffpeak } from '../src/shared/deepseek-offpeak.ts';
 import { DEEPSEEK_MODEL_KEYS } from '../src/shared/deepseek-pricing.ts';
 import type { Filters } from '../src/shared/types.ts';
 
@@ -39,9 +44,7 @@ const STEP_INSERT = `
   ) VALUES (?, 1, ?, 0, ?, 0, ?, ?, ?, ?, ?)
 `;
 
-function makeDb(specs: RequestSpec[]): DatabaseSync {
-  const db = new DatabaseSync(':memory:');
-  db.exec(SCHEMA_SQL);
+function populate(db: DatabaseSync, specs: RequestSpec[]): void {
   db.prepare('INSERT INTO groups (id, group_path, display_name) VALUES (1, ?, ?)').run(
     '/work/demo',
     'demo',
@@ -97,6 +100,12 @@ function makeDb(specs: RequestSpec[]): DatabaseSync {
       );
     });
   }
+}
+
+function makeDb(specs: RequestSpec[]): DatabaseSync {
+  const db = new DatabaseSync(':memory:');
+  db.exec(SCHEMA_SQL);
+  populate(db, specs);
   return db;
 }
 
@@ -234,6 +243,90 @@ describe('timeseries 的 DS 价格比率', () => {
       credit: 20,
     });
     db.close();
+  });
+
+  it('节假日表更新并递增版本重建后，历史比率按新表一致变化（AD-P2 / R8）', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wb-holiday-'));
+    const dbPath = join(dir, 'database.db');
+    const calendarBefore: HolidayCalendar = { coveredYears: [2026], holidays: new Set() };
+    const calendarAfter: HolidayCalendar = {
+      coveredYears: [2026],
+      holidays: new Set(['2026-11-12']),
+    };
+    const peak = (day: number): number => Date.UTC(2026, 10, day, 2, 0);
+    const specsFor = (calendar: HolidayCalendar): RequestSpec[] =>
+      [11, 12].map((day) => ({
+        requestId: `d${day}`,
+        modelId: 1,
+        date: `2026-11-${day}`,
+        credit: 100,
+        steps: [0, 1].map((offset) => ({
+          offpeak: Number(isDeepseekOffpeak(peak(day) + offset * 3_600_000, calendar)),
+          input: 1_000_000,
+          output: 0,
+          cache: 0,
+        })),
+      }));
+    const ratiosByDate = (db: DatabaseSync): Map<string, number | null> =>
+      new Map(ratioFor(db).map((row) => [row.date, row.ratio]));
+    const mustRatio = (ratios: Map<string, number | null>, date: string): number => {
+      const value = ratios.get(date);
+      expect(value, `${date} 应有比率`).not.toBeNull();
+      return value as number;
+    };
+
+    const opened: DatabaseSync[] = [];
+    const closeAll = (): void => {
+      while (opened.length > 0) {
+        const db = opened.pop();
+        if (db) {
+          closeDatabase(db);
+        }
+      }
+    };
+
+    try {
+      expect(isDeepseekOffpeak(peak(12), calendarBefore)).toBe(false);
+      expect(isDeepseekOffpeak(peak(12), calendarAfter)).toBe(true);
+      expect(isDeepseekOffpeak(peak(11), calendarAfter)).toBe(false);
+
+      const first = openDatabase(dbPath).db;
+      opened.push(first);
+      populate(first, specsFor(calendarBefore));
+      const before = ratiosByDate(first);
+      expect(mustRatio(before, '2026-11-11')).toBeCloseTo(mustRatio(before, '2026-11-12'), 10);
+
+      first.prepare('UPDATE meta SET schema_version = ? WHERE id = 1').run(SCHEMA_VERSION - 1);
+      closeAll();
+
+      const rebuilt = openDatabase(dbPath);
+      expect(rebuilt.rebuilt).toBe(true);
+      opened.push(rebuilt.db);
+      expect(rebuilt.db.prepare('SELECT COUNT(*) AS n FROM steps').get()).toEqual({ n: 0 });
+
+      populate(rebuilt.db, specsFor(calendarAfter));
+      const after = ratiosByDate(rebuilt.db);
+      expect(mustRatio(after, '2026-11-12')).toBeCloseTo(
+        2 * mustRatio(before, '2026-11-12'),
+        10,
+      );
+      expect(mustRatio(after, '2026-11-11')).toBeCloseTo(mustRatio(before, '2026-11-11'), 10);
+
+      const flags = rebuilt.db
+        .prepare(
+          'SELECT request_id, is_deepseek_offpeak AS offpeak FROM steps ORDER BY request_id, step_index',
+        )
+        .all() as Array<{ request_id: string; offpeak: number }>;
+      expect(flags.filter((row) => row.request_id === 'd11').map((row) => row.offpeak)).toEqual([
+        0, 0,
+      ]);
+      expect(flags.filter((row) => row.request_id === 'd12').map((row) => row.offpeak)).toEqual([
+        1, 1,
+      ]);
+    } finally {
+      closeAll();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
