@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 describe('数据库 schema', () => {
-  it('首次打开创建六张表、索引与 meta 单行', () => {
+  it('首次打开创建七张表、索引与 meta 单行', () => {
     const databasePath = makeDatabasePath();
     const { db, rebuilt } = openDatabase(databasePath);
 
@@ -58,7 +58,15 @@ describe('数据库 schema', () => {
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
         .all() as Array<{ name: string }>
     ).map((row) => row.name);
-    expect(tables.sort()).toEqual(['groups', 'meta', 'models', 'requests', 'sessions', 'source_files']);
+    expect(tables.sort()).toEqual([
+      'groups',
+      'meta',
+      'models',
+      'requests',
+      'sessions',
+      'source_files',
+      'steps',
+    ]);
 
     expect(columnNames(db, 'requests')).toEqual([
       'id',
@@ -71,7 +79,6 @@ describe('数据库 schema', () => {
       'started_at',
       'ended_at',
       'date_key',
-      'is_deepseek_offpeak',
       'input_tokens',
       'output_tokens',
       'cache_read_tokens',
@@ -80,6 +87,21 @@ describe('数据库 schema', () => {
       'has_credit',
       'step_count',
     ]);
+    expect(columnNames(db, 'steps')).toEqual([
+      'id',
+      'request_id',
+      'source_file_id',
+      'step_index',
+      'timestamp',
+      'model',
+      'is_subagent',
+      'is_deepseek_offpeak',
+      'input_tokens',
+      'output_tokens',
+      'cache_read_tokens',
+      'total_tokens',
+    ]);
+    expect(indexNames(db, 'steps')).toContain('idx_steps_source_file_id');
     expect(columnNames(db, 'groups')).toEqual(['id', 'group_path', 'display_name', 'is_auto']);
     expect(columnNames(db, 'meta')).toEqual([
       'id',
@@ -106,6 +128,7 @@ describe('数据库 schema', () => {
     }>;
     expect(meta).toHaveLength(1);
     expect(meta[0]?.schema_version).toBe(SCHEMA_VERSION);
+    expect(SCHEMA_VERSION).toBe(5);
     expect(typeof meta[0]?.last_full_scan_at).toBe('number');
 
     const journal = db.prepare('PRAGMA journal_mode').get() as { journal_mode: string };

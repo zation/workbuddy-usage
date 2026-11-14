@@ -33,25 +33,16 @@ const WARNING_KEYS = [
 const INSERT_REQUEST_SQL = `
 INSERT INTO requests (
   request_id, group_id, session_id, model_id, source_file_id, is_subagent,
-  started_at, ended_at, date_key, is_deepseek_offpeak,
+  started_at, ended_at, date_key,
   input_tokens, output_tokens, cache_read_tokens, total_tokens, step_count
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(request_id) DO UPDATE SET
-  group_id = excluded.group_id,
-  session_id = excluded.session_id,
-  model_id = excluded.model_id,
-  source_file_id = excluded.source_file_id,
-  is_subagent = excluded.is_subagent,
-  started_at = excluded.started_at,
-  ended_at = excluded.ended_at,
-  date_key = excluded.date_key,
-  is_deepseek_offpeak = excluded.is_deepseek_offpeak,
-  input_tokens = excluded.input_tokens,
-  output_tokens = excluded.output_tokens,
-  cache_read_tokens = excluded.cache_read_tokens,
-  total_tokens = excluded.total_tokens,
-  step_count = excluded.step_count
-WHERE excluded.total_tokens > requests.total_tokens
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`;
+
+const INSERT_STEP_SQL = `
+INSERT INTO steps (
+  request_id, source_file_id, step_index, timestamp, model, is_subagent,
+  is_deepseek_offpeak, input_tokens, output_tokens, cache_read_tokens, total_tokens
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
 function addWarnings(target: ParseWarnings, source: ParseWarnings): void {
@@ -61,6 +52,7 @@ function addWarnings(target: ParseWarnings, source: ParseWarnings): void {
 }
 
 function deleteSource(db: DatabaseSync, sourceFileId: number): void {
+  db.prepare('DELETE FROM steps WHERE source_file_id = ?').run(sourceFileId);
   db.prepare('DELETE FROM requests WHERE source_file_id = ?').run(sourceFileId);
   db.prepare('DELETE FROM source_files WHERE id = ?').run(sourceFileId);
 }
@@ -156,9 +148,13 @@ async function doRefresh(db: DatabaseSync, config: EtlConfig): Promise<RefreshRe
       db.exec('BEGIN');
       try {
         const sourceFileId = writer.ensureSourceFile(file, Date.now());
+        db.prepare('DELETE FROM steps WHERE source_file_id = ?').run(sourceFileId);
         db.prepare('DELETE FROM requests WHERE source_file_id = ?').run(sourceFileId);
         const insert = db.prepare(INSERT_REQUEST_SQL);
+        const insertStep = db.prepare(INSERT_STEP_SQL);
         const findExisting = db.prepare('SELECT source_file_id FROM requests WHERE request_id = ?');
+        const deleteStepsByRequest = db.prepare('DELETE FROM steps WHERE request_id = ?');
+        const deleteRequestById = db.prepare('DELETE FROM requests WHERE request_id = ?');
 
         for (const { request, groupId, sessionId, modelId } of resolved) {
           const existing = findExisting.get(request.requestId) as
@@ -170,6 +166,8 @@ async function doRefresh(db: DatabaseSync, config: EtlConfig): Promise<RefreshRe
             existing.source_file_id !== sourceFileId
           ) {
             warnings.duplicateRequestIds += 1;
+            deleteStepsByRequest.run(request.requestId);
+            deleteRequestById.run(request.requestId);
           }
 
           const outcome = insert.run(
@@ -182,7 +180,6 @@ async function doRefresh(db: DatabaseSync, config: EtlConfig): Promise<RefreshRe
             request.startedAt,
             request.endedAt,
             request.dateKey,
-            request.isDeepseekOffpeak ? 1 : 0,
             request.inputTokens,
             request.outputTokens,
             request.cacheReadTokens,
@@ -190,6 +187,22 @@ async function doRefresh(db: DatabaseSync, config: EtlConfig): Promise<RefreshRe
             request.stepCount,
           );
           upsertedRequests += Number(outcome.changes);
+
+          for (const step of request.steps) {
+            insertStep.run(
+              request.requestId,
+              sourceFileId,
+              step.stepIndex,
+              step.timestamp,
+              step.model,
+              step.isSubagent ? 1 : 0,
+              step.isDeepseekOffpeak ? 1 : 0,
+              step.inputTokens,
+              step.outputTokens,
+              step.cacheReadTokens,
+              step.totalTokens,
+            );
+          }
         }
         db.exec('COMMIT');
         writtenFiles += 1;

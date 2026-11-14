@@ -1,10 +1,11 @@
-import { chmodSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { EtlConfig } from '../src/etl/config.ts';
-import { closeDatabase, openDatabase } from '../src/etl/database.ts';
+import { SCHEMA_VERSION, closeDatabase, openDatabase } from '../src/etl/database.ts';
 import { createRefresher } from '../src/etl/refresh.ts';
+import { isDeepseekOffpeak } from '../src/shared/deepseek-offpeak.ts';
 import type { RefreshResult } from '../src/shared/types.ts';
 import { createWorkbuddyDb } from './helpers/external-db.ts';
 import { stepLine } from './helpers/jsonl.ts';
@@ -88,6 +89,40 @@ function joinedRequests(db: DatabaseSync): JoinedRequest[] {
      LEFT JOIN models m ON m.id = r.model_id
      ORDER BY r.request_id`,
   );
+}
+
+interface StepRow {
+  request_id: string;
+  step_index: number;
+  timestamp: number;
+  model: string | null;
+  is_subagent: number;
+  is_deepseek_offpeak: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  total_tokens: number;
+}
+
+function stepRows(db: DatabaseSync, requestId: string): StepRow[] {
+  return rows<StepRow>(
+    db,
+    `SELECT request_id, step_index, timestamp, model, is_subagent, is_deepseek_offpeak,
+            input_tokens, output_tokens, cache_read_tokens, total_tokens
+     FROM steps WHERE request_id = ? ORDER BY step_index`,
+    requestId,
+  );
+}
+
+function externalDbState(home: string): Array<[number, number] | null> {
+  return ['', '-wal', '-shm'].map((suffix) => {
+    const path = join(home, `workbuddy.db${suffix}`);
+    if (!existsSync(path)) {
+      return null;
+    }
+    const stat = statSync(path);
+    return [stat.size, stat.mtimeMs];
+  });
 }
 
 afterEach(() => {
@@ -191,6 +226,38 @@ describe('刷新编排与文件原子替换', () => {
     ).toEqual([{ last_refresh_at: result.lastRefreshAt }]);
   });
 
+  it('请求行四项 token 等于该请求全部步骤之和，步骤逐条落库', async () => {
+    const fixture = setup();
+    writeStandardFixture(fixture.home);
+    await fixture.refresh();
+
+    const request = joinedRequests(fixture.db).find((row) => row.request_id === 'r1');
+    const steps = stepRows(fixture.db, 'r1');
+    expect(steps).toHaveLength(2);
+    expect(steps.map((step) => step.step_index)).toEqual([0, 1]);
+    expect(steps.map((step) => step.total_tokens)).toEqual([100, 250]);
+    expect(steps.map((step) => step.timestamp)).toEqual([base, base + 1000]);
+    expect(steps.map((step) => step.is_deepseek_offpeak)).toEqual([
+      Number(isDeepseekOffpeak(base)),
+      Number(isDeepseekOffpeak(base + 1000)),
+    ]);
+    expect(steps.every((step) => step.model === 'model-a' && step.is_subagent === 0)).toBe(true);
+
+    const sum = steps.reduce(
+      (acc, step) => ({
+        input_tokens: acc.input_tokens + step.input_tokens,
+        output_tokens: acc.output_tokens + step.output_tokens,
+        cache_read_tokens: acc.cache_read_tokens + step.cache_read_tokens,
+        total_tokens: acc.total_tokens + step.total_tokens,
+      }),
+      { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, total_tokens: 0 },
+    );
+    expect(request).toMatchObject({ ...sum, step_count: 2 });
+
+    const all = rows<{ n: number }>(fixture.db, 'SELECT COUNT(*) AS n FROM steps');
+    expect(all).toEqual([{ n: 5 }]);
+  });
+
   it('增量刷新只解析部分文件时展示名不回退（R8）', async () => {
     const fixture = setup();
     writeProject(fixture.home, 'enc1/s1.jsonl', [
@@ -290,6 +357,10 @@ describe('刷新编排与文件原子替换', () => {
     const after = joinedRequests(fixture.db);
     expect(after.map((row) => row.request_id)).toEqual(['r1', 'r3', 'r4']);
     expect(after.find((row) => row.request_id === 'r1')).toEqual(before);
+    expect(rows<{ n: number }>(fixture.db, 'SELECT COUNT(*) AS n FROM steps')).toEqual([
+      { n: 4 },
+    ]);
+    expect(stepRows(fixture.db, 'r2')).toEqual([]);
   });
 
   it('来源文件被删除时清理对应请求（C8）', async () => {
@@ -322,6 +393,10 @@ describe('刷新编排与文件原子替换', () => {
     expect(
       rows<{ n: number }>(fixture.db, "SELECT COUNT(*) AS n FROM requests WHERE request_id = 'dup'"),
     ).toEqual([{ n: 1 }]);
+    expect(stepRows(fixture.db, 'dup')).toHaveLength(1);
+    expect(rows<{ n: number }>(fixture.db, 'SELECT COUNT(*) AS n FROM steps')).toEqual([
+      { n: 1 },
+    ]);
   });
 
   it('并发触发只执行一次，后到调用标记 skipped', async () => {
@@ -393,6 +468,32 @@ describe('刷新编排与文件原子替换', () => {
     const cleared = await fixture.refresh();
     expect(cleared.creditAttached).toBe(0);
     expect(joinedRequests(fixture.db)).toEqual(afterLate);
+  });
+
+  it('旧版本派生库自动重建，重建前后请求数一致且外部库文件不变（AC8）', async () => {
+    const fixture = setup();
+    writeStandardFixture(fixture.home);
+    await fixture.refresh();
+    const beforeCount = joinedRequests(fixture.db).length;
+    const externalBefore = externalDbState(fixture.home);
+
+    fixture.db.prepare('UPDATE meta SET schema_version = ? WHERE id = 1').run(SCHEMA_VERSION - 1);
+    closeDatabase(fixture.db);
+    opened.pop();
+
+    const rebuilt = openDatabase(fixture.config.databasePath);
+    opened.push(rebuilt.db);
+    expect(rebuilt.rebuilt).toBe(true);
+    expect(
+      rows<{ n: number }>(rebuilt.db, 'SELECT COUNT(*) AS n FROM requests'),
+    ).toEqual([{ n: 0 }]);
+
+    await createRefresher(rebuilt.db, fixture.config).refresh();
+    expect(joinedRequests(rebuilt.db)).toHaveLength(beforeCount);
+    expect(rows<{ n: number }>(rebuilt.db, 'SELECT COUNT(*) AS n FROM steps')).toEqual([
+      { n: 5 },
+    ]);
+    expect(externalDbState(fixture.home)).toEqual(externalBefore);
   });
 
   it.skipIf(process.platform === 'win32')(

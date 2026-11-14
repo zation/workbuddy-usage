@@ -147,12 +147,25 @@ interface TimeseriesRaw {
   request_count: number;
 }
 
-interface RatioRaw {
+/** 分母：每步按自身档位分桶；分子：按请求独立聚合，避免 credit 被每步放大。 */
+const STEP_FROM = `
+FROM requests r
+JOIN steps st ON st.request_id = r.request_id
+LEFT JOIN groups g ON g.id = r.group_id
+LEFT JOIN sessions s ON s.id = r.session_id
+LEFT JOIN models m ON m.id = r.model_id
+`;
+
+interface OfficialRaw {
   date: string;
   offpeak: number;
   input_tokens: number | null;
   output_tokens: number | null;
   cache_read_tokens: number | null;
+}
+
+interface CreditRaw {
+  date: string;
   credit: number | null;
 }
 
@@ -191,25 +204,46 @@ export function getTimeseries(db: DatabaseSync, filters: Filters): TimeseriesRes
 
   const modelPlaceholders = DEEPSEEK_MODEL_KEYS.map(() => '?').join(', ');
   const ratioWhere = `${where} ${where ? 'AND' : 'WHERE'} m.model IN (${modelPlaceholders})`;
-  const ratioRows = db
+  const ratioParams = [...params, ...DEEPSEEK_MODEL_KEYS];
+  const officialRows = db
     .prepare(
       `SELECT
          r.date_key AS date,
-         r.is_deepseek_offpeak AS offpeak,
-         SUM(r.input_tokens) AS input_tokens,
-         SUM(r.output_tokens) AS output_tokens,
-         SUM(r.cache_read_tokens) AS cache_read_tokens,
+         st.is_deepseek_offpeak AS offpeak,
+         SUM(st.input_tokens) AS input_tokens,
+         SUM(st.output_tokens) AS output_tokens,
+         SUM(st.cache_read_tokens) AS cache_read_tokens
+       ${STEP_FROM} ${ratioWhere}
+       GROUP BY r.date_key, st.is_deepseek_offpeak`,
+    )
+    .all(...ratioParams) as unknown as OfficialRaw[];
+
+  const creditRows = db
+    .prepare(
+      `SELECT
+         r.date_key AS date,
          SUM(r.credit) AS credit
        ${BASE_FROM} ${ratioWhere}
-       GROUP BY r.date_key, r.is_deepseek_offpeak`,
+       GROUP BY r.date_key`,
     )
-    .all(...params, ...DEEPSEEK_MODEL_KEYS) as unknown as RatioRaw[];
+    .all(...ratioParams) as unknown as CreditRaw[];
 
   const byDate = new Map<string, { credit: number; official: number }>();
-  for (const row of ratioRows) {
-    const entry = byDate.get(row.date) ?? { credit: 0, official: 0 };
-    entry.credit += number(row.credit);
-    entry.official += officialCost(
+  const entryFor = (date: string): { credit: number; official: number } => {
+    const existing = byDate.get(date);
+    if (existing) {
+      return existing;
+    }
+    const created = { credit: 0, official: 0 };
+    byDate.set(date, created);
+    return created;
+  };
+
+  for (const row of creditRows) {
+    entryFor(row.date).credit += number(row.credit);
+  }
+  for (const row of officialRows) {
+    entryFor(row.date).official += officialCost(
       {
         inputTokens: number(row.input_tokens),
         outputTokens: number(row.output_tokens),
@@ -217,7 +251,6 @@ export function getTimeseries(db: DatabaseSync, filters: Filters): TimeseriesRes
       },
       row.offpeak === 1,
     );
-    byDate.set(row.date, entry);
   }
 
   const ratios: PriceRatioRow[] = [...byDate.entries()]

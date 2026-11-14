@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
  * 数据库结构版本：改表结构、或改维表的生成规则（展示名、自动分组判定等）先递增该值，
  * 旧数据库会在下次启动时被删除重建。
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -61,7 +61,6 @@ CREATE TABLE IF NOT EXISTS requests (
   started_at INTEGER NOT NULL,
   ended_at INTEGER NOT NULL,
   date_key TEXT NOT NULL,
-  is_deepseek_offpeak INTEGER NOT NULL DEFAULT 1,
   input_tokens INTEGER NOT NULL DEFAULT 0,
   output_tokens INTEGER NOT NULL DEFAULT 0,
   cache_read_tokens INTEGER NOT NULL DEFAULT 0,
@@ -76,6 +75,24 @@ CREATE INDEX IF NOT EXISTS idx_requests_group_id ON requests(group_id);
 CREATE INDEX IF NOT EXISTS idx_requests_session_id ON requests(session_id);
 CREATE INDEX IF NOT EXISTS idx_requests_model_id ON requests(model_id);
 CREATE INDEX IF NOT EXISTS idx_requests_source_file_id ON requests(source_file_id);
+
+CREATE TABLE IF NOT EXISTS steps (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  request_id TEXT NOT NULL,
+  source_file_id INTEGER NOT NULL,
+  step_index INTEGER NOT NULL,
+  timestamp INTEGER NOT NULL,
+  model TEXT,
+  is_subagent INTEGER NOT NULL DEFAULT 0,
+  is_deepseek_offpeak INTEGER NOT NULL DEFAULT 1,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (request_id, step_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_steps_source_file_id ON steps(source_file_id);
 `;
 
 export interface OpenDatabaseResult {

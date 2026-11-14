@@ -49,7 +49,7 @@ export interface ParsedStep {
   totalTokens: number;
 }
 
-/** 解析后按请求归并的记录，字段与 requests 表一一对应，不含内部 id。 */
+/** 解析后按请求归并的记录，不含内部 id；steps 另落到 steps 表。 */
 export interface ParsedRequest {
   requestId: string;
   sessionKey: string;
@@ -59,7 +59,6 @@ export interface ParsedRequest {
   startedAt: number;
   endedAt: number;
   dateKey: string;
-  isDeepseekOffpeak: boolean;
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;

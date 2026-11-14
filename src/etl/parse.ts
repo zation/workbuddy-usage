@@ -187,7 +187,6 @@ export async function parseSourceFile(
       startedAt: item.startedAt,
       endedAt: item.endedAt,
       dateKey: toDateKey(item.startedAt),
-      isDeepseekOffpeak: isDeepseekOffpeak(item.startedAt, calendar),
       inputTokens: item.inputTokens,
       outputTokens: item.outputTokens,
       cacheReadTokens: item.cacheReadTokens,
