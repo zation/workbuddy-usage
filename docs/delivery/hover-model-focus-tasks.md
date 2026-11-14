@@ -14,11 +14,46 @@
 
 # T001 固化 26 项验收覆盖清单
 
-状态：pending
+状态：done
 
 目标与完成条件：从 `scripts/panel-acceptance.mjs` 的 `check()` 调用逐项提取覆盖项名称、判定条件与阈值（当前 26 项覆盖；AC14 的正常 / skip 分支属同一项），形成迁移对照基线。按 Spec R8 与 AC10，对照的是覆盖项与判定标准，不是旧脚本的实现方式或数值结果；清单逐项可核对，并作为 T004 实施记录的对照来源，不新建独立验证文档。
 
 修改范围：`scripts/panel-acceptance.mjs`（只读）。
+
+实施结果：按脚本顺序提取出 26 项覆盖（语句级 `check()` 共 26 处，与 `AC14` 的 SKIP 分支合并计为一项），作为 T004 的对照基线。下表只记录**当时代码的判定条件与阈值**，不作为新用例的写法模板；新用例的判定方式与期望值来源按 Plan AD-4 / AD-5 重新设计。
+
+| # | 覆盖项 | 判定条件与阈值 |
+| --- | --- | --- |
+| 1 | 配色无全量模型请求 | 资源条目中不存在查询串恰为 `?dim=model` 的 `/api/breakdown` 请求，计数为 0 |
+| 2 | 无外部域名请求 | 全部资源请求的 `hostname` 等于 `location.hostname`，异常计数为 0 |
+| 3 | tab 与 ARIA 关联 | 2 个 `[role=tab]`，第 1 个 `aria-selected=true`、第 2 个 `false`，两者 `aria-controls` 目标均存在，激活 tab 为第 1 个；2 个 `[role=tabpanel]` 均有 `aria-labelledby`；恰好 1 个 `hidden` 且 id 等于未激活 tab 的 `controls`；`canvas` 计数为 1 |
+| 4 | 明细折叠与懒加载 | 折叠时 `/api/requests` 请求数 0，所有 `.table-toggle` 的 `aria-expanded=false`；点击后请求数 1 且查询串含 `sort=startedAt&order=desc`，`aria-expanded=true`，`tbody tr` 行数 >0，`.table-body .table-wrap` 的 `max-height` 为 440px，存在 `th[aria-sort=descending]` |
+| 5 | 拆分列表行数与滚动 | 3 个 `.panel.breakdown`；每行 shown ≤8；行高去重后仅 1 种；`scrollHeight ≤ clientHeight + 1`；面板 `项数 ≥ shown` |
+| 6 | token 单位与中文单位 | 「合计 Token / 输入 / 输出 / 缓存命中」匹配 `^-?[\d,]+(\.\d)?[KMB]?$`，请求数匹配 `^\d[\d,]*$`；`.metric-value / .breakdown-value / .table-body td` 拼接文本不含「万」「亿」；趋势图 y 轴刻度不含「万 / 亿 / k」且至少一个以 K/M/B 结尾；tooltip 对 1000 / 10000 / 1000000 的输出不含「万 / 亿 / ERROR」 |
+| 7 | 缓存命中率 | 卡片 suffix 等于 `(cacheReadTokens / inputTokens × 100).toFixed(1)%`；分母为 0 时 suffix 为 `—` |
+| 8 | 列表点击与下拉同一筛选 | 点击首个分组行后 `#filter-group` 的 `dataset.value` 等于该行 key；下拉选择同一 key 后值相同；两条路径最近一次 `/api/summary` 请求 URL 完全相等且非空 |
+| 9 | 首帧颜色即最终值 | 间隔 1.5s 两次读取的 series 颜色 map 完全相同（比对模型数 >0）；切到「今天」后同名模型的颜色不变 |
+| 10 | 色点跨视图一致 | 「按模型」首行 `.model-dot`、模型下拉选项色点均等于该模型图表颜色（归一化为 rgb）；`#filter-model` 触发按钮色点等于当前选中模型颜色；明细表首行 `.model-dot` 等于该行模型颜色 |
+| 11 | 0 值隐藏与下拉可切换 | token 维度 `totalTokens==0` 的模型不在模型下拉选项；积分维度 `credit==0` 的模型（当前选中值除外）不在选项；选中首项后选项数量不变且值回显；切到另一项后值变化；共享模型颜色不变（比对数 >0）；积分图 y 轴与 tooltip 不含 `k` |
+| 12 | 分组下拉与聚合一致 | 下拉选项（去空值）排序后等于 `/api/breakdown?dim=group` 的 key 排序；无 `…/WorkBuddy/yyyy-MM-dd-HH-mm-ss` 形态条目；「默认」在下拉与接口中同时存在或同时不存在 |
+| 13 | 空范围「默认」不占位 | 选一个无数据的单日区间：接口 rows 长度 0，下拉选项恰为 `['']` |
+| 14 | 「默认」筛选跨端点一致 | 切到「默认」后回显「默认」；最近 summary 请求 URL 含编码后的键；group 维度 rows 仅 1 行且 key 为「默认」；requests 的 group 全部匹配自动目录正则；requests 的 session / model 集合等于对应维度 rows 的 key 排序；timeseries 的 `totalTokens` 合计等于 `summary.token.totalTokens` |
+| 15 | 下拉 ARIA 与键盘 | 3 个维度触发器为 `role=combobox`、`aria-haspopup=listbox`、关闭态 `aria-expanded=false`、`aria-controls` 目标存在、`aria-activedescendant` 为空、容器内 `aria-selected=true` 的选项恰好 1 个；ArrowDown 展开并给出 activedescendant，再 ArrowDown 后变化，Enter 关闭且值等于该项，ArrowDown + Escape 关闭，ArrowDown + 外部 pointerdown 关闭。时间区 4 个 `data-quick` 依次为 today / threeDays / sevenDays / thirtyDays，`aria-pressed` 仅为 true/false，`.filter-time .select` 计数 0，`[role=group]` 的 `aria-label` 为「时间范围」，`.date-range input[type=date]` 计数 2 |
+| 16 | 两图 tooltip 过滤 0 值 | formatter 输出含日期与两个非 0 模型、不含 0 值模型、降序；全 0 日输出含日期与「无数据」、不含任何模型 |
+| 17 | 时间区默认近 3 天 | 4 个快捷按钮顺序一致，`aria-pressed` 命中 threeDays，from 为 today−2、to 为 today，时间区内 select 计数 0 |
+| 18 | 快捷按钮回填与手改 | 四个预设点击后 `aria-pressed` 等于该键、from / to 正确、最近 summary 请求 URL 含 from 与 to；手改 from 命中 threeDays 区间时高亮回填；改为非预设（today−3）后高亮为空且 from / to 正确 |
+| 19 | 非法区间与清空回弹 | from 晚于 to 时 `.filter-error` 为「起始日期不能晚于结束日期」、from 保持生效值、此后 summary 请求计数 0；清空 to 后回弹为生效值 |
+| 20 | 补轴与近 7 天 7 格 | `/api/timeseries` 响应不含 `days` 键；近 7 天时 x 轴类目 7 个、首个为 today−6、末个为 today |
+| 21 | 100 / 101 天边界 | 100 天区间类目 100 个；改到第 101 天时前端 error 为「时间跨度不能超过 100 天」、此后 summary 请求计数 0；`GET /api/summary?from=today−100&to=today` 返回 400 且 error 同文案；不带日期返回 200 且 `totalTokens>0`；点回「7 天」后 error 为空、类目 7 个 |
+| 22 | 比率折线与隐藏 | 有 ratios 时 y 轴 2 个、第 2 个 `name` 为 `×`、折线 1 条且 `type=line` / `yAxisIndex=1` / `connectNulls=false` / `data` 长度等于类目数、图例不含「价格比率」、无 `valueFormatter`；无 ratios 时 y 轴 1 个、无折线、无 `valueFormatter` |
+| 23 | 比率 tooltip | tooltip 含「DeepSeek 费用比率：4.16×」与柱子 `1.2K`、不含 0 值模型、不含 `ERROR`；区间无 DS 数据时记 SKIP |
+| 24 | 非 DS 模型隐藏折线 | 选中非 DS 模型后 y 轴 1 个、无折线、`document.body.innerText` 不含「DeepSeek 费用比率」；无候选时记 SKIP |
+| 25 | 分组条分段 | 段数等于 `split=model` 中主指标 >0 的段数且 >0；段色逐个等于趋势图 series 颜色；段宽之和与 `tokenShare × 条宽` 相差 ≤1.5px；其它两个列表 `.breakdown-segment` 计数 0、`.breakdown-fill` 计数 >0 |
+| 26 | 分组明细提示 | hover 首行后提示打开、key 等于该行汇总 key、模型行等于期望段展示名序列；移出后关闭；键盘 focus 后打开且内容一致；`pointer-events` 为 `none`；行高与未 hover 时相同 |
+
+验证：`grep -c "check(" scripts/panel-acceptance.mjs` 为 28 处，其中函数定义 1 处、调用 27 处；调用里 AC14 的 if / else 两个分支属同一覆盖项，故覆盖项共 26 项，与上表 26 行逐项对齐。T001 全程只读，`git status --short` 无输出。
+
+提交：
 
 # T002 Playwright 运行器与验收入口骨架
 
