@@ -236,13 +236,22 @@
 
 # T009 入口切换与旧脚本退役
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R11、AC9、AC10 在新入口通过后移除 `scripts/panel-acceptance.mjs`，`npm run acceptance` 指向新框架入口；仓库中不再存在自研 CDP 客户端，也不存在以固定时长 `wait()` 与字符串拼接 `Runtime.evaluate` 为主体的用例。对照记录固化后才能删除旧脚本；T002 只建配置骨架，入口切换在本任务完成。
 
 必要依赖：T004、T008。
 
 修改范围：`package.json`、`scripts/panel-acceptance.mjs`。
+
+实施结果：T004 与 T008 的对照记录已固化后，删除 `scripts/panel-acceptance.mjs`（仓库中唯一含自研 CDP 客户端、固定 `wait()` 轮询与字符串拼接 `Runtime.evaluate` 的文件）；`npm run acceptance` 在 T002 已改为 `node scripts/e2e-run.mjs`，本任务无需再改。`scripts/` 只留 `e2e-fixture.mjs` 与 `e2e-run.mjs`。
+
+验证：
+- 删除后 `npm run typecheck`：退出码 0。
+- 删除后 `npm run acceptance`：38 passed，退出码 0（样本 → 构建 → 4630 服务 → 用例 → 清理全链路）。
+- `grep -rn "Runtime.evaluate|remote-debugging-port|Emulation.setFocusEmulation"`（`*.ts` / `*.mjs` / `*.json`，排除 `node_modules` 与 `.data`）：无命中；`panel-acceptance` 只出现在历史交付文档的路径字面里（按 Spec 保留为当时事实），`devops.md` 的引用已在 T010 重写。
+
+提交：
 
 # T010 长期文档同步
 

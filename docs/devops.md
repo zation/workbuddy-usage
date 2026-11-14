@@ -50,29 +50,25 @@ WorkBuddy 数据库为 WAL 模式，只读连接依赖同目录的 `-wal` / `-sh
 
 ## 交互验收
 
-<!-- 本节仍描述旧 CDP 脚本，将在 hover-model-focus 交付中改为 Playwright 后重写，勿据此操作。 -->
+交互验收由 Playwright 驱动，一条命令完成样本准备、构建、服务启停、用例执行与清理：
 
-交互类验收用 `scripts/panel-acceptance.mjs`：脚本通过 CDP 驱动本机 Chrome，核对 tab 与 ARIA 关联（含非激活面板 `hidden` 与 canvas 数）、筛选两入口一致、拆分列表行数与滚动、明细折叠与懒加载、token 单位、缓存命中率、0 值隐藏与模型下拉可切换。时间区核对四个快捷按钮与「更多」展开的起止框的双向联动、默认与重置为近 3 天、非法区间的错误提示与清空回弹、面板层补轴（近 7 天画满 7 格）、100 天可用与 101 天被前端和 API 一致拦截；分组列表核对按模型分段的段色与段宽之和、hover 与键盘 focus 的明细提示。趋势图部分从页面已加载的 ECharts 实例读取 y 轴刻度、tooltip、x 轴类目与 series 颜色，另核对单位无「万 / 亿」/ 积分 `k` 与配色跨筛选稳定。趋势图部分另核对 Token 图的价格比率折线（第二 Y 轴 `×`、单条折线、`null` 断线、不进图例、tooltip 按 `seriesId` 分流；比率行显示「DeepSeek 费用比率：`<数值>`×」，不参与柱子的 0 值过滤与降序；区间内无 DS 数据时整条隐藏且不提示）。AC14 会实际切换到非 DS 模型筛选，断言折线隐藏且页面无新增文案。数值格式断言从自定义 `formatter` 的真实输出取样，不读取 `tooltip.valueFormatter`。逐项打印 PASS / FAIL / SKIP，样本区间无 DS 请求时依赖折线数据的断言记为「未覆盖」而非通过；存在 FAIL 时退出码为 1。
+```bash
+npx playwright install chromium   # 首次安装或升级 @playwright/test 后执行一次
+npm run acceptance
+```
 
-脚本取「全量区间」的方式是 `GET /api/timeseries`（不带日期参数）返回 `rows` 里的最早 `date` 到当天，所以**数据跨度不能超过 100 天**。当前样本约 47 天；若本机数据增长到超过 100 天，脚本会在建立宽区间前直接报错。此时把依赖全量区间的断言改为直接读取不带日期参数的 API，或临时用 `WORKBUDDY_HOME` 指向样本目录后重建数据库再跑。
+- **Node 24 必须在 PATH 首位**：`webServer` 用 `npm start` 起服务，服务自身校验 Node ≥ 24。若 `node -v` 显示 22（本机 PATH 首位是 WorkBuddy 托管的 22.22.2），先把系统 Node 目录前置，例如 `export PATH="/e/Software/nodejs:$PATH"`，否则服务直接退出、用例报启动超时。
+- **浏览器二进制**：默认 CDN 在本机不可达时改用镜像 `PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright npx playwright install chromium`。二进制装在用户目录，不入库。
+- **执行顺序固定**为「生成样本 → `npm run build` → `playwright test` → 清理」，由 `scripts/e2e-run.mjs` 编排，不可颠倒：样本必须在服务启动前写好（否则首次刷新会读到空库），构建必须在服务启动前完成（否则前后端版本错配，趋势图空白）。
+- **样本与端口**：临时 `WORKBUDDY_HOME` 为 `.data/e2e/home`（`workbuddy.db` + `projects/**/*.jsonl`，由 `scripts/e2e-fixture.mjs` 每次重建），本项目数据库用 `DATABASE_PATH=.data/e2e/database.db` 建在同一目录；服务固定监听 4630，`reuseExistingServer: false`，不会连到日常实例（4620）。
+- **只读与可复现**：用例只读页面与 `/api`，不写、不搬移真实 `~/.workbuddy`；浏览器时间用 Playwright Clock 冻结在样本基准日（2026-11-14 12:00），日期与时间区断言不随运行日漂移。
+- **产物**：运行结束由入口脚本删除 `.data/e2e/`；失败时 trace 与截图留在 `.data/e2e-results/`，用 `npx playwright show-trace <trace 文件>` 查看。
+- **用例分工**：`structure.spec.ts`（网络与页面结构）、`filters.spec.ts`（筛选与时间区）、`metrics.spec.ts`（数值、单位、配色）、`trend.spec.ts`（趋势图与 tooltip）、`breakdown.spec.ts`（分组条与浮层）、`focus.spec.ts`（hover 聚焦 AC1–AC7）、`sample.spec.ts`（样本自检）、`panel.spec.ts`（首屏 smoke）。定位器集中在 `tests/e2e/panel-page.ts`，期望值由 `tests/e2e/sample.ts` 与 `tests/e2e/expectations.ts` 从样本确定性推出，不从 `/api` 现场反推。
+- **不替代单元测试**：纯函数、格式化与图表配置的数值正确性仍由 `npm test`（Vitest）覆盖；`npm run acceptance` 只断言浏览器里可见的结果。
 
-自定义日期框由「更多」按钮展开，收起态仍留在 DOM（`hidden`）中，脚本的 `.date-range input[type=date]` 取数与赋值入口不变；脚本断言的是筛选状态，不依赖展开动作。
+调试单个用例用 `npm run acceptance tests/e2e/focus.spec.ts`，追加 `--grep <用例名>` 可只跑一条；参数会透传给 `playwright test`。用例依赖的 `data-testid` 不存在——定位器统一用语义类名与 ARIA 角色，改动 DOM 结构时同步 `tests/e2e/panel-page.ts`。
 
-无头 Chrome 默认被判为未聚焦，脚本会开启 `Emulation.setFocusEmulationEnabled`，否则用 `focus()` 触发的浮层断言不会生效。
-
-`/api/timeseries` 已不再返回 `days`（日期轴由面板层生成）。若 API 与前端不是同一次构建（开发期前后端版本错配），会出现趋势图空白；重启 `npm run dev` 或重新 `npm run build` 即可，前后端需同次构建，不能只回退一侧。
-
-1. 用 Node 24 启动面板：`npm run dev`
-2. 另开一个带调试端口的 Chrome（示例为 macOS 路径，其它系统换成自己的 Chrome 可执行文件）：
-
-   ```bash
-   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --no-sandbox \
-     --remote-debugging-port=9222 --user-data-dir=/tmp/wb-acceptance about:blank
-   ```
-
-3. 运行 `npm run acceptance`
-
-可用 `BASE_URL`（默认 `http://127.0.0.1:5173/`）与 `CDP_PORT`（默认 `9222`）指向其它实例，设置 `SCREENSHOT_DIR` 会额外保存一张面板截图。脚本只读页面与 `/api`，不改动数据；依赖 Node 内置 WebSocket，不引入新依赖。
+`/api/timeseries` 不返回 `days`（日期轴由面板层按区间补），若 `npm run dev` 时前后端不是同一次构建，会出现趋势图空白；重启 dev 或重新 `npm run build` 即可，不能只回退一侧。
 
 ## 回滚
 
