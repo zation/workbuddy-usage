@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { getTimeseries } from '../server/query.ts';
@@ -115,5 +116,40 @@ describe('timeseries 的 DS 价格比率', () => {
       credit: 20,
     });
     db.close();
+  });
+});
+
+function ratiosInTimezone(tz: string): string {
+  const queryUrl = new URL('../server/query.ts', import.meta.url).href;
+  const schemaUrl = new URL('../src/etl/index-db.ts', import.meta.url).href;
+  const script = [
+    `import { DatabaseSync } from 'node:sqlite';`,
+    `import { getTimeseries } from '${queryUrl}';`,
+    `import { SCHEMA_SQL } from '${schemaUrl}';`,
+    `const db = new DatabaseSync(':memory:');`,
+    `db.exec(SCHEMA_SQL);`,
+    `db.prepare('INSERT INTO models (model, model_name, display_name) VALUES (?, ?, ?)')`,
+    `  .run('deepseek-v4.1-flash', 'DeepSeek', 'DeepSeek');`,
+    `const insert = db.prepare('INSERT INTO requests (request_id, group_id, session_id, model_id, source_file_id, is_subagent, started_at, ended_at, date_key, is_deepseek_offpeak, input_tokens, output_tokens, cache_read_tokens, total_tokens, credit, has_credit, step_count) VALUES (?, 1, 1, 1, 1, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?, 1, 1)');`,
+    `insert.run('peak', '2026-11-12', 0, 1000000, 0, 0, 1000000, 100);`,
+    `insert.run('offpeak', '2026-11-12', 1, 1000000, 0, 0, 1000000, 50);`,
+    `insert.run('cross-month', '2026-10-31', 1, 1000000, 0, 0, 1000000, 20);`,
+    `console.log(JSON.stringify(getTimeseries(db, {}).ratios));`,
+    `db.close();`,
+  ].join('\n');
+  return execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+    env: { ...process.env, TZ: tz },
+    encoding: 'utf8',
+  }).trim();
+}
+
+describe('价格比率序列与机器时区无关', () => {
+  it('UTC / UTC+8 / UTC-8 得到同一组按天比率（含跨月单价）', () => {
+    const expected = ratiosInTimezone('UTC');
+    expect(expected).not.toBe('[]');
+    expect(expected).toContain('2026-10-31');
+    expect(expected).toContain('2026-11-12');
+    expect(ratiosInTimezone('Asia/Shanghai')).toBe(expected);
+    expect(ratiosInTimezone('America/Los_Angeles')).toBe(expected);
   });
 });
