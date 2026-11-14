@@ -255,13 +255,22 @@
 
 # T010 长期文档同步
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R11、AC8 与 Plan「测试策略」的文档同步检查，重写 `devops.md`「交互验收」章节（不再要求手工启动调试 Chrome，补 `npx playwright install chromium` 步骤；`DATABASE_PATH` 用法已由前置改动记录，本任务只核对）、在 `technical-architecture.md` 补开发期测试依赖、测试分层说明与面板层 hover 聚焦描述。完成条件：长期文档与代码不存在已知矛盾，历史交付文档与归档文档不改写。
 
 必要依赖：T009。
 
 修改范围：`docs/devops.md`、`docs/technical-architecture.md`。
+
+实施结果：`devops.md` 的「交互验收」章节整体重写：Playwright 一条命令、Node 24 需在 PATH 首位、默认 CDN 不可达时的镜像安装方式、固定执行顺序（样本 → 构建 → 用例 → 清理）与不可颠倒的原因、临时样本与 4630 端口、只读与时间冻结、`.data/e2e/` 清理与 `.data/e2e-results/` 失败产物、八个用例文件的职责、不替代 Vitest、单文件与 `--grep` 调试方式；删除了旧 CDP 脚本的操作说明、`BASE_URL` / `CDP_PORT` / `SCREENSHOT_DIR` 变量与「全量区间跨度」限制段落。`technical-architecture.md` 的关键依赖表补 `@playwright/test`（开发期）一行，新增「测试分层」章节（Vitest 纯函数与服务层 / Playwright 可见行为、文件后缀隔离、固定样本与 4630 端口），并在模块划分补一段 hover 聚焦语义（统一强度、按系列整体减淡、极窄段命中区、状态只在内存、图例与键盘不触发、不依赖 `emphasis.focus`）。`DATABASE_PATH` 的用法与取值已由前置改动写入 `devops.md` 配置表，本任务核对无差异。
+
+验证：
+- 文档中的命令与实现一致：`package.json` 的 `acceptance` 为 `node scripts/e2e-run.mjs`，`playwright.config.ts` 端口 4630、`DATABASE_PATH=.data/e2e/database.db`、`WORKBUDDY_HOME=.data/e2e/home`，`scripts/e2e-run.mjs` 顺序为样本 → 构建 → playwright → 清理，`tests/e2e/` 的八个文件与章节列举一致。
+- `npm run acceptance`：38 passed，退出码 0（文档描述的流程实际可跑）。
+- `grep -rn "panel-acceptance|CDP" docs/devops.md`：无命中；历史交付文档与 `docs/delivery/v1.0.0/` 未改写（仍保留当时的路径字面）。
+
+提交：
 
 # T011 收尾与全量检查
 
