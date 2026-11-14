@@ -36,6 +36,8 @@ export default defineConfig({
     env: {
       PORT: String(ACCEPTANCE_PORT),
       HOST: '127.0.0.1',
+      // 样本与临时数据库同目录，避免读写日常实例；样本由 scripts/e2e-fixture.mjs 在启动前写入
+      WORKBUDDY_HOME: '.data/e2e/home',
       DATABASE_PATH: '.data/e2e/database.db',
     },
   },

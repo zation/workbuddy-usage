@@ -77,13 +77,24 @@
 
 # T003 固定样本与期望值生成
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Plan AD-5 与 Spec AC12 建立临时 `WORKBUDDY_HOME`、固定期望数据、浏览器时间冻结与样本自检；`DATABASE_PATH` 指向同一临时目录下的数据库。样本覆盖 AD-5 列出的场景，重复运行结果一致，运行结束临时目录与数据库被清理，运行配置中不含真实 `~/.workbuddy` 路径。
 
 必要依赖：T002。
 
 修改范围：`scripts/e2e-fixture.mjs`、`tests/e2e/`。
+
+实施结果：`scripts/e2e-fixture.mjs` 每次先清空 `.data/e2e/`，再由 `tests/e2e/sample.ts` 的 `buildSampleHome()` 写出临时样本（`workbuddy.db` + `projects/**/*.jsonl`），`webServer` 以 `WORKBUDDY_HOME=.data/e2e/home`、`DATABASE_PATH=.data/e2e/database.db` 启动，配置中不含真实 `~/.workbuddy` 路径。样本规模：11 个会话、10 个分组（含 `…/WorkBuddy/2026-11-13-09-00-00` 自动目录 → 虚拟键「默认」）、5 个模型、16 条请求（含 1 条子代理），日期为 11-10、11-12、11-13、11-14。场景覆盖：11-11 为全 0 日；11-12 与 11-10 为单模型日；alpha 行 `glm-5.2` 30 token / 4730 = 0.63%，是极窄段；`kimi-k3.1-pro` 的 `totalTokens` 为 0、`mimo-v2.6-pro` 的 `credit` 为 0，分别覆盖两个 tab 的 0 值隐藏；缓存命中 1800 / 5208 = 34.6%；价格比率 11-10 为 1.25×、11-12 为 1.76×、11-13 为 4.09×。浏览器时间以 `page.clock.setFixedTime(2026-11-14T04:00Z)` 冻结在基准日北京时间 12:00，只固定 `Date.now`，不接管定时器。`tests/e2e/expectations.ts` 从样本定义确定性推出各区间期望（合计、格式化文本、模型/分组/会话序列、每日行、0 值可见集合、比率），`tests/e2e/panel-page.ts` 集中封装定位器与交互，`tests/e2e/sample.spec.ts` 做样本自检：冻结时间落在基准日、样本 `workbuddy.db` 存在、12 个 jsonl、默认区间 6510 token / 15 请求 / 5 模型、`/api/summary` 与 `/api/timeseries` 逐字段等于期望。
+
+必要的问题与决策：期望值不落生成物 JSON，改为「样本定义 + 纯函数推出」的模块，避免生成文件与用例类型、快照不同步；比率沿用 `src/shared` 的 `wbCost` / `officialCost` 同口径计算，公式正确性由既有 `price-ratio` 单测锁定，用例只断言可见文本。样本刻意让每个分组的 token 与 credit 都不同值，消除 top-8 截断处的并列歧义。
+
+验证：
+- `npm run typecheck`：退出码 0。
+- `npm run acceptance`：退出码 0，2 passed；服务日志为「扫描 12 个文件，变更 12 个，写入 16 条请求，补挂 16 条积分」，与样本定义一致；结束后 `.data/e2e/` 已清理。
+- 期望值与接口交叉核对：`/api/summary` 的 token / credit / 请求数 / 会话数与 `/api/timeseries` 的日期集合、比率文本均相等（由 `sample.spec.ts` 断言，断言失败即样本漂移）。
+
+提交：
 
 # T004 迁移既有 26 项覆盖为可见行为用例
 
