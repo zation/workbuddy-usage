@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PriceRatioRow } from '../../shared/types.ts';
 import type { TrendChartData } from '../display.ts';
 import { buildTrendChartOption } from '../trend-chart-option.ts';
@@ -21,10 +21,23 @@ export function TrendChart({
   loading,
   error,
 }: TrendChartProps) {
+  const [focusedModel, setFocusedModel] = useState<string | null>(null);
+  // tooltip 在指针事件内同步渲染，formatter 必须读到同一帧写入的聚焦值
+  const focusedRef = useRef<string | null>(null);
   const option = useMemo(
-    () => buildTrendChartOption(data, metric, ratios),
+    () => buildTrendChartOption(data, metric, ratios, () => focusedRef.current),
     [data, metric, ratios],
   );
+
+  useEffect(() => {
+    focusedRef.current = null;
+    setFocusedModel(null);
+  }, [data, metric, ratios]);
+
+  const handleHover = useCallback((seriesId: string | null) => {
+    focusedRef.current = seriesId;
+    setFocusedModel(seriesId);
+  }, []);
 
   return (
     <div className="panel trend-panel">
@@ -42,6 +55,8 @@ export function TrendChart({
           option={option}
           height={300}
           ariaLabel={`${title}，按天按模型堆叠`}
+          focusedSeriesId={focusedModel}
+          onSeriesHover={handleHover}
         />
       ) : null}
     </div>

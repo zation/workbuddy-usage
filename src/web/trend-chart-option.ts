@@ -1,5 +1,4 @@
 import type { EChartsOption } from 'echarts';
-import { FOCUS_DIM_OPACITY } from '../shared/constants.ts';
 import type { PriceRatioRow } from '../shared/types.ts';
 import type { TrendChartData } from './display.ts';
 import { focusOpacity } from './display.ts';
@@ -35,16 +34,19 @@ interface TooltipParam {
   marker?: string;
 }
 
+/** 聚焦模型在 tooltip 渲染时读取：避免为一次聚焦重建整份 option 而打断图表原生 hover。 */
+export type FocusReader = () => string | null;
+
 /**
  * 图表配置由已聚合数据生成：柱口径不变，价格比率折线只叠加在 Token 图上。
- * `focusedModel` 为当前聚焦的模型业务键：非聚焦系列与 tooltip 中的其它模型行减淡到
- * FOCUS_DIM_OPACITY，聚焦语义仍是 `emphasis.focus: 'series'`。
+ * `readFocusedModel` 返回当前聚焦的模型业务键：tooltip 中的其它模型行减淡到
+ * FOCUS_DIM_OPACITY；系列的减淡由 `emphasis.focus: 'series'` 与 `blur` 状态负责。
  */
 export function buildTrendChartOption(
   data: TrendChartData | null,
   metric: 'tokens' | 'credit',
   ratios?: PriceRatioRow[],
-  focusedModel: string | null = null,
+  readFocusedModel: FocusReader = () => null,
 ): EChartsOption {
   const formatValue = (value: number): string =>
     metric === 'tokens' ? formatTokens(value) : formatCredit(value);
@@ -85,8 +87,7 @@ export function buildTrendChartOption(
         borderColor: '#ffffff',
         borderWidth: 1,
       },
-      emphasis: { focus: 'series' as const },
-      blur: { itemStyle: { opacity: FOCUS_DIM_OPACITY } },
+      emphasis: { disabled: true },
       data: days.map((day) => values.get(day) ?? 0),
     };
   });
@@ -148,6 +149,7 @@ export function buildTrendChartOption(
         const list = bars
           .filter((item) => Number(item.value) > 0)
           .sort((left, right) => Number(right.value) - Number(left.value));
+        const focusedModel = readFocusedModel();
         const lines = list.map((item) => {
           const opacity = focusOpacity(focusedModel, item.seriesId ?? '');
           return (

@@ -110,25 +110,22 @@ describe('趋势图价格比率折线', () => {
   });
 });
 
-function blurOpacity(series: Record<string, unknown>): number | undefined {
-  const blur = series.blur as { itemStyle?: { opacity?: number } } | undefined;
-  return blur?.itemStyle?.opacity;
-}
 
 describe('hover 聚焦的图表配置', () => {
-  it('每个柱系列都用唯一强度常量配置 blur，聚焦语义仍是 series', () => {
+  it('柱系列不带原生 emphasis / blur 减淡，强度只由唯一常量控制', () => {
     expect(FOCUS_DIM_OPACITY).toBe(0.4);
-    const { series } = parts(buildTrendChartOption(data, 'tokens', ratios, 'hy4'));
+    const { series } = parts(buildTrendChartOption(data, 'tokens', ratios, () => 'hy4'));
     const bars = series.filter((item) => item.type === 'bar');
     expect(bars.length).toBeGreaterThan(0);
     for (const bar of bars) {
-      expect(blurOpacity(bar)).toBe(FOCUS_DIM_OPACITY);
-      expect(bar.emphasis).toEqual({ focus: 'series' });
+      // 系列减淡走显式 opacity（EChart 定向 merge），原生状态不再参与，避免叠加
+      expect(bar.emphasis).toEqual({ disabled: true });
+      expect(bar.blur).toBeUndefined();
     }
   });
 
   it('tooltip 模型行按业务键减淡，日期行常态，聚焦行 1.0', () => {
-    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', undefined, 'hy4'));
+    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', undefined, () => 'hy4'));
     const html = tooltip.formatter([
       { axisValue: '2026-11-12', seriesId: 'hy4', seriesName: 'Hy4', value: 1200, marker: 'A' },
       { axisValue: '2026-11-12', seriesId: 'glm-5.2', seriesName: 'GLM-5.2', value: 300, marker: 'B' },
@@ -152,7 +149,7 @@ describe('hover 聚焦的图表配置', () => {
   });
 
   it('「无数据」分支不带减淡样式，日期照常保留', () => {
-    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', undefined, 'hy4'));
+    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', undefined, () => 'hy4'));
     const html = tooltip.formatter([{ axisValue: '2026-11-11' }]);
     expect(html).toBe(
       '<span class="trend-tip-date">2026-11-11</span><br/><span class="trend-tip-empty">无数据</span>',
@@ -161,7 +158,7 @@ describe('hover 聚焦的图表配置', () => {
   });
 
   it('比率行不参与减淡，柱子仍按原规则过滤降序', () => {
-    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', ratios, 'hy4'));
+    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', ratios, () => 'hy4'));
     const html = tooltip.formatter([
       { axisValue: '2026-11-12', seriesId: 'deepseek-v4.1-flash', seriesName: 'DeepSeek', value: 4000, marker: 'A' },
       { axisValue: '2026-11-12', seriesId: 'zero-model', seriesName: 'Zero', value: 0, marker: 'B' },
@@ -179,7 +176,7 @@ describe('hover 聚焦的图表配置', () => {
   });
 
   it('展示名相同但业务键不同时按业务键判定', () => {
-    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', undefined, 'hy4'));
+    const { tooltip } = parts(buildTrendChartOption(data, 'tokens', undefined, () => 'hy4'));
     const html = tooltip.formatter([
       { axisValue: '2026-11-12', seriesId: 'hy4', seriesName: 'Hy4', value: 1200, marker: 'A' },
       { axisValue: '2026-11-12', seriesId: 'hy4-free', seriesName: 'Hy4', value: 300, marker: 'B' },

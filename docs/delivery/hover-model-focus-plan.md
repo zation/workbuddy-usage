@@ -90,7 +90,8 @@
 
 - 单一常量 `FOCUS_DIM_OPACITY = 0.4` 放在 `src/shared/constants.ts`，四处（趋势图系列、趋势图 tooltip 行、分组条色段、分组浮层行）共用，AC5 的「唯一值」由常量与纯函数单测保证。
 - 聚焦状态放在 `TrendChart` 与 `BreakdownList` 组件内部各自的 `useState`，用模型**业务键**作值；`App.tsx` 不持有，避免跨视图联动。状态在 `option` / `rows` / `activeTab` 变化时由 effect 清空，覆盖 R5 的切 tab、改筛选、刷新与重载。
-- 趋势图：`buildTrendChartOption` 增加 `focusedModel` 参数，柱系列通过 blur 状态配置把非聚焦系列不透明度设为 0.4（具体字段以 ECharts 6 实际行为为准，由单测断言生成的配置），保留 `focus: 'series'` 语义；tooltip formatter 按业务键给非聚焦模型行加行内 opacity，日期行与「无数据」不加。hover 事件由图表实例的 `mouseover` / `mouseout` 提供，只接受 `componentType === 'series'` 的柱段，`seriesId` 即业务键；图例、坐标轴、空白类目不触发。链路：`EChart.tsx` 注册可选事件回调 → 过滤 `componentType` → 以 `seriesId`（业务键）调用 `onFocusChange` → `TrendChart` 内部 `useState` 持有 → 回灌 option 与 tooltip 行样式；这是产品功能，不是测试钩子。
+- 趋势图：`buildTrendChartOption` 增加聚焦读取参数，tooltip formatter 按业务键给非聚焦模型行加行内 opacity，日期行与「无数据」不加。系列减淡**不依赖原生 blur**：实测 ECharts 6 的 `emphasis.focus: 'series'` + `blur.itemStyle.opacity` 在本项目的 build + 无头 Chromium 下没有产生可见减淡（像素实测前后一致），因此改为由 `EChart` 按聚焦业务键做定向 `setOption({ series: [{ id, itemStyle: { opacity } }] })` 合并——只改 opacity、不重建 option，作用范围仍是「整个系列在所有日期」，与 R3 的语义一致；柱系列同时关掉原生 emphasis，避免将来叠加出双重减淡。hover 事件由图表实例的 `mouseover` / `mouseout` / `globalout` 提供，只接受 `componentType === 'series'` 且 `seriesType === 'bar'` 的柱段，`seriesId` 即业务键；图例、坐标轴、空白类目不触发。链路：`EChart.tsx` 注册事件回调 → 过滤 `componentType` / `seriesType` → 以 `seriesId`（业务键）调用 `onSeriesHover` → `TrendChart` 内部状态持有 → 回灌 tooltip 行样式与系列 opacity；这是产品功能，不是测试钩子。
+- tooltip 的重新渲染：ECharts 认为「同一类目数据未变」就不会重建浮层内容，因此聚焦变化后由 `EChart` 依次派发 `hideTip` 与 `showTip`（同一帧内完成），让浮层按新聚焦重绘。
 - 浮层：`BreakdownTooltip` 接收 `focusedModel`，逐行按业务键加 opacity；内容、降序、0 值过滤、格式、定位与 `pointer-events: none` 不变。
 
 ### AD-7 极窄段的最小命中区

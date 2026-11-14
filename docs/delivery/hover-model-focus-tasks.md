@@ -170,13 +170,25 @@
 
 # T006 趋势图聚焦
 
-状态：pending
+状态：done
 
 目标与完成条件：按 Spec R3、R5 与 Plan AD-6 实现非聚焦系列减淡、tooltip 模型行聚焦、hover 柱段事件与状态清除；保留 `focus: 'series'` 语义，图例、坐标轴、空白类目不触发聚焦；切 tab、改筛选、刷新与重载后清除状态。完成条件：满足 AC1、AC2、AC6 的图表部分。
 
 必要依赖：T005。
 
 修改范围：`src/web/components/TrendChart.tsx`、`src/web/components/EChart.tsx`、`src/web/trend-chart-option.ts`。
+
+实施结果：`EChart` 新增 `onSeriesHover` 与 `focusedSeriesId` 两个属性，在 `echarts.init` 后注册 `mouseover` / `mouseout` / `globalout`，只接受 `componentType === 'series'` 且 `seriesType === 'bar'` 的事件并以 `seriesId`（模型业务键）回调；图例 `componentType` 为 `legend`、坐标轴为 `grid`、空白类目没有元素事件，因此都不触发。`TrendChart` 用 `useState` 持有聚焦模型驱动系列减淡，同时用 `useRef` 保存同一值供 tooltip formatter 在指针事件内同步读取；`data` / `metric` / `ratios` 变化时清空（覆盖改筛选、刷新、重载；切 tab 直接卸载组件）。系列减淡在 `EChart` 以定向 merge 完成：`setOption({ series: [{ id, itemStyle: { opacity } }] })`，只改柱系列的 `itemStyle.opacity`，不重建 option、不动 series 结构，指针所在的 hover 与浮层不被打断。tooltip 聚焦变化后依次 `hideTip` + `showTip` 触发重绘（见下条）。柱系列改为 `emphasis: { disabled: true }`，不再依赖原生 emphasis / blur。
+
+必要的问题与决策：**偏离 Plan AD-6 的减淡机制，需开发者知悉**。实测 ECharts 6 在 build + 无头 Chromium 下，`emphasis.focus: 'series'` 配合 `blur: { itemStyle: { opacity: 0.4 } }` 没有产生可见减淡：hover 另一系列后，被减淡系列的 canvas 像素前后完全一致（`[34,67,230,255]` 未变），只有 axisPointer 阴影改变像素。因此改为显式 opacity，作用范围仍是「该模型在所有日期的块保持 1.0，其它模型在所有日期的块 0.4」，与 R3 的语义与强度一致；`emphasis: { disabled: true }` 同时保证不会出现「聚焦项额外描边/加粗」（R2 要求高亮只靠其余减淡）。Plan AD-6 已按实际实现同步。另：ECharts 认为同一类目数据未变时不重建 tooltip 内容，故聚焦变化后派发 `hideTip` + `showTip`；两次派发在同一帧内完成，界面上没有闪烁。
+
+验证：
+- `npm run typecheck`：退出码 0。
+- `npm test`：18 个文件 172 passed / 1 skipped（T005 那条断言原生 blur 的单测改为断言「柱系列不带原生 emphasis / blur」，强度改由 e2e 像素断言覆盖）。
+- `npm run acceptance`：27 passed，退出码 0。
+- 像素实测（临时探针，验证后已删除）：hover 另一系列后，被减淡系列的 canvas 像素 alpha 由 255 变为 102（0.4 × 255），移出后恢复 255；tooltip 行 opacity 为 1 / 0.4，比率行恒为 1。
+
+提交：
 
 # T007 分组条与浮层聚焦
 

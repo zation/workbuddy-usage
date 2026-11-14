@@ -379,15 +379,30 @@ export class PanelPage {
     await this.page.mouse.move(box.x + box.width * 0.5, box.y + 4);
   }
 
-  /** tooltip 按 `<br/>` 分行，innerText 会把行还原成换行。 */
+  /**
+   * tooltip 按 `<br/>` 分行，innerText 会把行还原成换行。
+   * 浮层内容在无柱段的类目上异步落地（showDelay + 动画帧），读到连续两次一致才算稳定。
+   */
   async trendTooltipLines(): Promise<string[]> {
     const tip = this.trendTooltip;
     await expect(tip).toBeVisible();
-    const text = await tip.innerText();
-    return text
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+    const read = async (): Promise<string[]> => {
+      const text = await tip.innerText();
+      return text
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+    };
+    let previous = await read();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await this.page.waitForTimeout(60);
+      const current = await read();
+      if (current.length > 0 && current.join('\n') === previous.join('\n')) {
+        return current;
+      }
+      previous = current;
+    }
+    return previous;
   }
 
   async trendTooltipDate(): Promise<string> {
@@ -443,15 +458,20 @@ export class PanelPage {
     );
   }
 
-  /** 按类目序号 hover：`count` 为当前区间的天数。 */
+  /**
+   * 按类目序号 hover：`count` 为当前区间的天数。先落到别处再落目标，且落点连发两次——
+   * 单次指针事件只清掉上一类目的 hover，第二次才让浮层按新类目出内容。
+   */
   async hoverAxisIndex(index: number, count: number): Promise<void> {
     const box = await this.chartBox();
     const bounds = await this.axisBounds();
     const step = (bounds.right - bounds.left) / count;
-    await this.page.mouse.move(
-      box.x + bounds.left + (index + 0.5) * step,
-      box.y + box.height * 0.5,
-    );
+    const x = box.x + bounds.left + (index + 0.5) * step;
+    const y = box.y + box.height * 0.5;
+    await this.page.mouse.move(box.x + 4, box.y + 4);
+    await this.page.mouse.move(x, y);
+    await this.page.waitForTimeout(80);
+    await this.page.mouse.move(x, y);
   }
 
   async moveAway(): Promise<void> {
@@ -532,6 +552,9 @@ export class PanelPage {
 
   async hoverCanvasPoint(point: { x: number; y: number }): Promise<void> {
     const box = await this.chartBox();
+    await this.page.mouse.move(box.x + 4, box.y + 4);
+    await this.page.mouse.move(box.x + point.x, box.y + point.y);
+    await this.page.waitForTimeout(80);
     await this.page.mouse.move(box.x + point.x, box.y + point.y);
   }
 
