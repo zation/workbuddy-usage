@@ -10,7 +10,7 @@
 
 ### 展示层
 
-- 趋势图 option 由纯函数 `buildTrendChartOption(data, metric, ratios)` 生成：柱系列 `id` 为模型业务键，`emphasis.focus: 'series'` 已生效但非聚焦系列走 ECharts 默认 blur（约 0.1）；tooltip formatter 是 HTML 字符串，按当天 >0 模型降序拼行，日期行与「无数据」是独立分支。
+- 交付前：趋势图 option 由纯函数 `buildTrendChartOption(data, metric, ratios)` 生成，柱系列 `id` 为模型业务键，`emphasis.focus: 'series'` 配合 ECharts 默认 blur（约 0.1）减淡其它系列；tooltip formatter 是 HTML 字符串，按当天 >0 模型降序拼行，日期行与「无数据」是独立分支。该原生减淡实测在本项目构建形态下不生效，AD-6 记录了替代方案。
 - `EChart.tsx` 用 `echarts.init(node)` 后 `setOption(option, true)`，实例只存在于组件 ref 里；`TrendChart.tsx` 只传 option，不传 hover 状态。
 - `BreakdownList.tsx` 的「按分组」行由 `visibleSegments` + `segmentWidths` 渲染 `.breakdown-segment`，整行 hover / focus 通过 `activeKey` 浮出 `BreakdownTooltip`；段本身没有事件，浮层 `pointer-events: none`。
 - `App.tsx` 两个 tab 的面板 DOM 常驻、未激活者 `hidden`，因此两个 tab 的趋势图与「按分组」列表各自可持有独立状态，天然满足 R5 的视图独立。
@@ -72,11 +72,12 @@
 | 数值单位、刻度格式、转义、0 值隐藏 | 由 `format.ts` / `trend-chart-option.ts` 的既有 Vitest 单测锁定；e2e 断言指标卡、明细表、tooltip 的可见文本 |
 | 系列颜色、跨筛选稳定 | 读图例色点、模型下拉色点、分组段色的 computed style，不读 `option.series[].itemStyle.color` |
 | 价格比率折线、第二 Y 轴 | hover 后 tooltip 的 `×` 文本与图例；折线的 option 结构由纯函数单测覆盖 |
-| 聚焦减淡 0.4 与恢复 | 常量与 option 的 blur 配置由纯函数单测锁定数值；e2e 断言分组段、tooltip 行、浮层行的 computed opacity 与移出恢复，canvas 区域截图作为人工复核材料，不进自动断言 |
+| 折线 tooltip 行聚焦 | hover 折线后断言比率行 1.0、模型行 0.4；hover 柱段后断言比率行 0.4；formatter 的按业务键判定由纯函数单测锁定 |
+| 聚焦减淡 0.4 与恢复 | 强度由唯一常量与纯函数单测锁定，柱系列不带原生 emphasis / blur；e2e 断言分组段、tooltip 行、浮层行的 computed opacity 与移出恢复，趋势图系列用 canvas 像素 alpha（102 = 0.4 × 255）自动断言 |
 | 网络与只读约束 | `page.on('request')` 断言无外部域名请求、无配色专用全量请求 |
 
 - `page.evaluate` 只用于读 DOM、计算样式与几何，不用于调用图表内部 option / formatter；`page.request` 只做辅助核对。
-- canvas 内柱段 hover 用 canvas 的 bounding box 按类目数均分推算坐标 + `page.mouse.move()`，以 tooltip DOM 出现作为命中确认，`expect` 自动重试处理时序；不依赖实例换算像素，也不写固定 `wait()`。
+- canvas 内柱段 hover 用 x 轴线像素定位绘图区边界、按类目数均分推算坐标 + `page.mouse.move()`，以 tooltip DOM 出现作为命中确认，`expect` 自动重试处理时序；不依赖实例换算像素。落到新类目前先移出再连发两次落点，间隔用短 `waitForTimeout` 等 ECharts 浮层重绘，只用于稳定时序，不作为主要交互或等待手段。
 - **理由**：build 形态下 Vite 不再输出带 `echarts` 字样的独立资源，旧读法本就失效；为保住它去改产品代码是让产品迁就工具。改为可见行为断言后，dev / build 形态一致、失败信息直观、零产品代码改动，白盒逻辑由已有的 Vitest 单测承担，测试分层更清晰。
 
 ### AD-5 固定样本、固定期望与冻结业务时间
@@ -90,7 +91,7 @@
 
 - 单一常量 `FOCUS_DIM_OPACITY = 0.4` 放在 `src/shared/constants.ts`，四处（趋势图系列、趋势图 tooltip 行、分组条色段、分组浮层行）共用，AC5 的「唯一值」由常量与纯函数单测保证。
 - 聚焦状态放在 `TrendChart` 与 `BreakdownList` 组件内部各自的 `useState`，用模型**业务键**作值；`App.tsx` 不持有，避免跨视图联动。状态在 `option` / `rows` / `activeTab` 变化时由 effect 清空，覆盖 R5 的切 tab、改筛选、刷新与重载。
-- 趋势图：`buildTrendChartOption` 增加聚焦读取参数，tooltip formatter 按业务键给非聚焦模型行加行内 opacity，日期行与「无数据」不加。系列减淡**不依赖原生 blur**：实测 ECharts 6 的 `emphasis.focus: 'series'` + `blur.itemStyle.opacity` 在本项目的 build + 无头 Chromium 下没有产生可见减淡（像素实测前后一致），因此改为由 `EChart` 按聚焦业务键做定向 `setOption({ series: [{ id, itemStyle: { opacity } }] })` 合并——只改 opacity、不重建 option，作用范围仍是「整个系列在所有日期」，与 R3 的语义一致；柱系列同时关掉原生 emphasis，避免将来叠加出双重减淡。hover 事件由图表实例的 `mouseover` / `mouseout` / `globalout` 提供，只接受 `componentType === 'series'` 且 `seriesType === 'bar'` 的柱段，`seriesId` 即业务键；图例、坐标轴、空白类目不触发。链路：`EChart.tsx` 注册事件回调 → 过滤 `componentType` / `seriesType` → 以 `seriesId`（业务键）调用 `onSeriesHover` → `TrendChart` 内部状态持有 → 回灌 tooltip 行样式与系列 opacity；这是产品功能，不是测试钩子。
+- 趋势图：`buildTrendChartOption` 增加聚焦读取参数，tooltip formatter 按业务键给非聚焦模型行加行内 opacity，日期行与「无数据」不加。系列减淡**不依赖原生 blur**：实测 ECharts 6 的 `emphasis.focus: 'series'` + `blur.itemStyle.opacity` 在本项目的 build + 无头 Chromium 下没有产生可见减淡（像素实测前后一致），因此改为由 `EChart` 按聚焦业务键做定向 `setOption({ series: [{ id, itemStyle: { opacity } }] })` 合并——只改 opacity、不重建 option，作用范围仍是「整个系列在所有日期」，与 R3 的语义一致；柱系列同时关掉原生 emphasis，避免将来叠加出双重减淡。hover 事件由图表实例的 `mouseover` / `mouseout` / `globalout` 提供，只接受 `componentType === 'series'` 且 `seriesType` 为 `bar` / `line` 的系列；柱段事件的 `seriesId` 即业务键，折线线段事件的 `eventData` 不带 `seriesId`，由 `seriesIndex` 回查当前 option 的 series id；图例、坐标轴、空白类目不触发。链路：`EChart.tsx` 注册事件回调 → 过滤 `componentType` / `seriesType` → 以系列业务键调用 `onSeriesHover` → `TrendChart` 内部状态持有 → 回灌 tooltip 行样式与系列 opacity；这是产品功能，不是测试钩子。价格比率折线按同一套业务键参与：折线设 `triggerEvent: 'line'` 让线段本身可触发 `mouseover`（ECharts 6 推荐写法，取代已废弃的 `triggerLineEvent`），`EChart` 的定向 merge 同时覆盖折线的 `lineStyle.opacity` 与 `itemStyle.opacity`；tooltip 的比率行改用 `focusOpacity(聚焦键, PRICE_RATIO_SERIES_ID)` 判定，不再固定常态——hover 折线时只有比率行常态，hover 柱段时比率行随其它非聚焦行减淡。
 - tooltip 的重新渲染：ECharts 认为「同一类目数据未变」就不会重建浮层内容，因此聚焦变化后由 `EChart` 依次派发 `hideTip` 与 `showTip`（同一帧内完成），让浮层按新聚焦重绘。
 - 浮层：`BreakdownTooltip` 接收 `focusedModel`，逐行按业务键加 opacity；内容、降序、0 值过滤、格式、定位与 `pointer-events: none` 不变。
 
@@ -124,7 +125,7 @@
 
 **前置改动已完成**：`src/etl/config.ts`（`databasePath` + `DATABASE_PATH`）、`server/index.ts`、`src/etl/database.ts`、构造 `EtlConfig` 的测试 / helper、全项目文档术语与命名。
 
-**修改（后续任务）**：`package.json`（devDependencies 加 `@playwright/test`、scripts 改 `acceptance`）、`tsconfig.json`（include 补配置文件）、`src/web/trend-chart-option.ts`（`focusedModel` 与 blur / tooltip 行样式）、`src/web/components/TrendChart.tsx`、`src/web/components/EChart.tsx`（hover 事件回调，非测试钩子）、`src/web/components/BreakdownList.tsx`、`src/web/components/BreakdownTooltip.tsx`、`src/web/styles.css`（命中层与行内减淡）、`src/shared/constants.ts`、`tests/trend-chart-option.test.ts` 等既有单测`、`docs/devops.md`（仅交互验收章节）、`docs/technical-architecture.md`（开发期测试依赖、测试分层与 hover 聚焦描述）；`docs/data-model.md`、`product-brief.md`、`integration.md` 的命名与术语已由前置改动完成，本交付仅核对。
+**修改（后续任务）**：`package.json`（devDependencies 加 `@playwright/test`、scripts 改 `acceptance`）、`tsconfig.json`（include 补配置文件）、`src/web/trend-chart-option.ts`（`readFocusedModel` 与 tooltip 行样式、关闭原生 blur）、`src/web/components/TrendChart.tsx`、`src/web/components/EChart.tsx`（hover 事件回调，非测试钩子）、`src/web/components/BreakdownList.tsx`、`src/web/components/BreakdownTooltip.tsx`、`src/web/styles.css`（命中层与行内减淡）、`src/shared/constants.ts`、`tests/trend-chart-option.test.ts` 等既有单测`、`docs/devops.md`（仅交互验收章节）、`docs/technical-architecture.md`（开发期测试依赖、测试分层与 hover 聚焦描述）；`docs/data-model.md`、`product-brief.md`、`integration.md` 的命名与术语已由前置改动完成，本交付仅核对。
 
 **删除**：`scripts/panel-acceptance.mjs`（对照完成、新入口通过之后）。
 
@@ -147,7 +148,7 @@
 ## 测试策略
 
 - **分层**：Vitest 负责纯函数、格式化、图表 option 与服务层聚合（不改、不降级）；Playwright 负责浏览器可见行为验收；两者靠 `testDir` / `testMatch` / include 隔离。
-- **纯函数单测**：`buildTrendChartOption` 增加 `focusedModel` 后的 tooltip 行 opacity、日期行与「无数据」分支、0 值过滤与降序、blur 强度 0.4 与常量唯一性、价格比率折线结构；`segmentWidths` / `visibleSegments` 的既有断言继续通过；新增按业务键计算行不透明度的纯函数单测。
+- **纯函数单测**：`buildTrendChartOption` 增加 `readFocusedModel` 后的 tooltip 行 opacity、日期行与「无数据」分支、0 值过滤与降序、柱系列不带原生 emphasis / blur 与强度常量唯一性、价格比率折线结构；`segmentWidths` / `visibleSegments` 的既有断言继续通过；新增按业务键计算行不透明度的纯函数单测；折线的 `triggerEvent: 'line'`、比率行在三种聚焦状态下的强度由单测锁定，hover 折线的端到端链路与移出恢复由 e2e 覆盖。
 - **交互验收**：`npm run acceptance` 一条命令跑 26 项既有覆盖 + AC1–AC7 新增断言；连续运行两次结果一致（AC11）；失败输出用例名、断言与 trace / 截图。
 - **必需检查**：`npm run typecheck`（独立）、`npm test`、`npm run build`、`npm run acceptance`；全量检查集中在收尾任务，各任务记录相关验证。沙箱 vitest runner 环境差异的历史结论已并入 `docs/devops.md`，当前环境可直接执行 `npm test`；正式回归证据以实际执行结果为准，不得通过删测试或放宽标准规避。
 - **文档同步检查**：`devops.md` 交互验收章节重写（不再要求手工起调试 Chrome、补 `npx playwright install chromium`；`DATABASE_PATH` 已在前置改动记录，本交付只核对）、`technical-architecture.md` 关键依赖表补开发期测试依赖与测试分层、面板层补 hover 聚焦描述，文档与代码无已知矛盾。

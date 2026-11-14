@@ -180,7 +180,7 @@
 
 实施结果：`EChart` 新增 `onSeriesHover` 与 `focusedSeriesId` 两个属性，在 `echarts.init` 后注册 `mouseover` / `mouseout` / `globalout`，只接受 `componentType === 'series'` 且 `seriesType === 'bar'` 的事件并以 `seriesId`（模型业务键）回调；图例 `componentType` 为 `legend`、坐标轴为 `grid`、空白类目没有元素事件，因此都不触发。`TrendChart` 用 `useState` 持有聚焦模型驱动系列减淡，同时用 `useRef` 保存同一值供 tooltip formatter 在指针事件内同步读取；`data` / `metric` / `ratios` 变化时清空（覆盖改筛选、刷新、重载；切 tab 直接卸载组件）。系列减淡在 `EChart` 以定向 merge 完成：`setOption({ series: [{ id, itemStyle: { opacity } }] })`，只改柱系列的 `itemStyle.opacity`，不重建 option、不动 series 结构，指针所在的 hover 与浮层不被打断。tooltip 聚焦变化后依次 `hideTip` + `showTip` 触发重绘（见下条）。柱系列改为 `emphasis: { disabled: true }`，不再依赖原生 emphasis / blur。
 
-必要的问题与决策：**偏离 Plan AD-6 的减淡机制，需开发者知悉**。实测 ECharts 6 在 build + 无头 Chromium 下，`emphasis.focus: 'series'` 配合 `blur: { itemStyle: { opacity: 0.4 } }` 没有产生可见减淡：hover 另一系列后，被减淡系列的 canvas 像素前后完全一致（`[34,67,230,255]` 未变），只有 axisPointer 阴影改变像素。因此改为显式 opacity，作用范围仍是「该模型在所有日期的块保持 1.0，其它模型在所有日期的块 0.4」，与 R3 的语义与强度一致；`emphasis: { disabled: true }` 同时保证不会出现「聚焦项额外描边/加粗」（R2 要求高亮只靠其余减淡）。Plan AD-6 已按实际实现同步。另：ECharts 认为同一类目数据未变时不重建 tooltip 内容，故聚焦变化后派发 `hideTip` + `showTip`；两次派发在同一帧内完成，界面上没有闪烁。
+必要的问题与决策：**偏离 Plan AD-6 的减淡机制，需开发者知悉**。实测 ECharts 6 在 build + 无头 Chromium 下，`emphasis.focus: 'series'` 配合 `blur: { itemStyle: { opacity: 0.4 } }` 没有产生可见减淡：hover 另一系列后，被减淡系列的 canvas 像素前后完全一致（`[34,67,230,255]` 未变），只有 axisPointer 阴影改变像素。因此改为显式 opacity，作用范围仍是「该模型在所有日期的块保持 1.0，其它模型在所有日期的块 0.4」，与 R3 的语义与强度一致；`emphasis: { disabled: true }` 同时保证不会出现「聚焦项额外描边/加粗」（R2 要求高亮只靠其余减淡）。Plan AD-6 已按实际实现同步。另：ECharts 认为同一类目数据未变时不重建 tooltip 内容，故聚焦变化后派发 `hideTip` + `showTip`；两次派发在同一帧内完成，界面上没有闪烁。收尾阶段开发者确认该偏差属技术细节与文档问题，按长期维护的分层处理：Spec 只保留可见语义（整系列作用范围、0.4 强度、恢复、按业务键判定），实现手段留在 Plan 与技术架构文档；Spec 的机制性措辞已同步订正，见 Spec「收尾阶段的机制订正」。
 
 验证：
 - `npm run typecheck`：退出码 0。
@@ -249,7 +249,7 @@
 验证：
 - 删除后 `npm run typecheck`：退出码 0。
 - 删除后 `npm run acceptance`：38 passed，退出码 0（样本 → 构建 → 4630 服务 → 用例 → 清理全链路）。
-- `grep -rn "Runtime.evaluate|remote-debugging-port|Emulation.setFocusEmulation"`（`*.ts` / `*.mjs` / `*.json`，排除 `node_modules` 与 `.data`）：无命中；`panel-acceptance` 只出现在历史交付文档的路径字面里（按 Spec 保留为当时事实），`devops.md` 的引用已在 T010 重写。
+- `grep -rn "Runtime.evaluate|remote-debugging-port|Emulation.setFocusEmulation"`（`*.ts` / `*.mjs` / `*.json`，排除 `node_modules` 与 `.data`）：无命中；`panel-acceptance` 只出现在历史交付文档的路径字面里（按 Spec 保留为当时事实），`devops.md` 的引用已随本任务记录回填一并重写。
 
 提交：b813386（实现）、f411839（记录回填）
 
@@ -263,6 +263,8 @@
 
 修改范围：`docs/devops.md`、`docs/technical-architecture.md`。
 
+必要的问题与决策：两份长期文档的重写实际随 `f411839`（T009 记录回填）一并提交，`ef331f8` 只补写本任务的实施记录；两个 commit 因此各跨两类变更，与「一个 commit 对应一个原子变更」有偏差。提交已固化、不改写历史，收尾在 Tasks 中如实标注归属，后续交付按任务分开提交。
+
 实施结果：`devops.md` 的「交互验收」章节整体重写：Playwright 一条命令、Node 24 需在 PATH 首位、默认 CDN 不可达时的镜像安装方式、固定执行顺序（样本 → 构建 → 用例 → 清理）与不可颠倒的原因、临时样本与 4630 端口、只读与时间冻结、`.data/e2e/` 清理与 `.data/e2e-results/` 失败产物、八个用例文件的职责、不替代 Vitest、单文件与 `--grep` 调试方式；删除了旧 CDP 脚本的操作说明、`BASE_URL` / `CDP_PORT` / `SCREENSHOT_DIR` 变量与「全量区间跨度」限制段落。`technical-architecture.md` 的关键依赖表补 `@playwright/test`（开发期）一行，新增「测试分层」章节（Vitest 纯函数与服务层 / Playwright 可见行为、文件后缀隔离、固定样本与 4630 端口），并在模块划分补一段 hover 聚焦语义（统一强度、按系列整体减淡、极窄段命中区、状态只在内存、图例与键盘不触发、不依赖 `emphasis.focus`）。`DATABASE_PATH` 的用法与取值已由前置改动写入 `devops.md` 配置表，本任务核对无差异。
 
 验证：
@@ -270,14 +272,49 @@
 - `npm run acceptance`：38 passed，退出码 0（文档描述的流程实际可跑）。
 - `grep -rn "panel-acceptance|CDP" docs/devops.md`：无命中；历史交付文档与 `docs/delivery/v1.0.0/` 未改写（仍保留当时的路径字面）。
 
-提交：ef331f8
+提交：f411839（实现）、ef331f8（实施记录回填）
 
 # T011 收尾与全量检查
 
-状态：pending
+状态：done
 
 目标与完成条件：按 AGENTS.md 第 5 节逐项确认 Spec AC1–AC14 已满足；全量执行 `npm run typecheck`、`npm test`、`npm run build`、`npm run acceptance`，连续两次验收结果一致；核对 Tasks 状态与实施记录、一次性回填 T001–T010 的提交字段；检查 `product-brief.md`、`technical-architecture.md`、`data-model.md` 及相关长期文档与实现一致，`docs/backlog/` 中与本次交付相关的条目已更新或移除。本任务为收尾任务。
 
 必要依赖：T001–T010。
 
 修改范围：交付文档、长期文档。
+
+实施结果：收尾提交 `54581bb` 已逐项核对 AC1–AC14、回填 T001–T010 提交字段，并把 `docs/backlog/panel-acceptance-segment-width.md` 改写为「多分段行的段宽累计舍入」剩余风险（旧脚本已退役，固定样本首行只有 4 段，7 段以上未复测）。本次复核订正了记录与实现不符之处：T009 验证里 `devops.md` 重写时机的表述、T010 的提交字段归属（见该任务「必要的问题与决策」）、`hover-model-focus-plan.md` 的 AD-4 / 影响范围 / 测试策略中仍写原生 blur 与「canvas 不进自动断言」的过期描述，以及 `src/web/trend-chart-option.ts` 的同类过期注释。机制偏差经开发者确认按技术细节与文档问题处理：`hover-model-focus-spec.md` 的 R2 / R3 / AC1 / AC2 /「已确认决策」只保留可见语义，实现手段留在 Plan 与 `technical-architecture.md`，并补入价格比率折线的聚焦规则（R3、AC2、已确认决策，明细见 T012）。全量检查在 T012 完成后重新执行。
+
+验证：
+- `npm run typecheck`：退出码 0（Node 24.19.0，`tsc --noEmit`；折线 `triggerEvent` 的字面量推断问题已修正并复核）。
+- `npm test`：18 个文件 179 passed / 1 skipped（180），较收尾提交新增 3 条（比率行三种聚焦状态、折线事件配置）。
+- `npm run build`：服务端 tsc + 前端 Vite 622 模块，产物 784.14 kB；Vite 输出 500 kB chunk 提示，非错误。
+- `npm run acceptance`：两次均为 39 passed、退出码 0，用例清单一致（40.2s / 38.8s），运行后 `.data/e2e/` 已清理。两次运行前各自移走上一轮 `.data/e2e-results/`：Playwright 启动时会清空 `outputDir`，本轮 screencast 临时文件约 1500 个，直接连跑会触发当前 Node 运行环境的批量删除保护（阈值 50）并以退出码 1 结束；属环境守卫行为，与项目代码无关，清掉产物后重跑通过。
+- 文档核对：`product-brief.md` / `data-model.md` 无事实变化（本交付不改口径与数据结构）；`devops.md` / `technical-architecture.md` 由 T010 同步，命令与配置逐项一致；`docs/backlog/subagent-credit-reconciliation.md` 与本交付无关。
+- 提交核对：T001–T010 的任务提交均带 `Tasks-Doc` / `Tasks` 且编号存在，标题符合 `[<type>]<topic>`；`f411839` 与 `ef331f8` 的跨任务归属偏差已记入 T010。
+
+必要的问题与决策：趋势图减淡机制与 Spec 字面描述的偏差已由开发者确认属技术细节与文档问题，按「需求写语义、方案写手段」订正 Spec，验收口径（整系列作用范围、0.4 强度、恢复、按业务键判定）不变；T006 已补记确认依据。收尾核对阶段按开发者要求追加折线 tooltip 聚焦，作为 T012 并入本交付，不新建交付文档。T012 的实现提交为 `d68d3c4`，文档同步随本次收尾提交纳入。
+
+# T012 价格比率折线参与统一聚焦
+
+状态：done
+
+目标与完成条件：修正「hover 柱段时折线的 tooltip 行仍保持高亮」：hover 柱段时比率行随其它非聚焦行减淡；hover 折线时只有比率行常态、所有模型行减淡；无聚焦时全部常态。判定沿用同一常量与系列业务键，画布上的折线与柱系列按同一强度同步减淡，既有 38 条用例不回归。
+
+必要依赖：T011（收尾核对阶段追加，全量检查在完成后重跑）。
+
+修改范围：`src/web/trend-chart-option.ts`、`src/web/components/EChart.tsx`、`tests/trend-chart-option.test.ts`、`tests/e2e/panel-page.ts`、`tests/e2e/focus.spec.ts`、`hover-model-focus-spec.md` / `-plan.md` / `-tasks.md`、`docs/technical-architecture.md`。
+
+实施结果：`buildTrendChartOption` 的比率行不再固定常态，改用 `focusOpacity(聚焦键, PRICE_RATIO_SERIES_ID)` 写内联 opacity，复用 R1 / R2 的业务键判定与唯一强度常量；折线系列设 `triggerEvent: 'line'`（ECharts 6 推荐写法，取代已废弃的 `triggerLineEvent`）让线段本身可触发 `mouseover`，并关掉原生 emphasis、给 `lineStyle` / `itemStyle` 显式初始 opacity。`EChart` 的 hover 事件从「只认 bar」扩到 bar / line；折线线段事件的 `eventData` 不带 `seriesId`，改由 `seriesIndex` 回查当前 option 的 series id（这是本次调试定位到的根因，否则聚焦键会落成 `null`）。定向 merge 同时 patch 折线的 `lineStyle.opacity` / `itemStyle.opacity`，使画布状态与 tooltip 行一致。页面对象新增 `ratioLinePoint()`（取折线纯色像素中 3×3 邻域最密处，优先落在数据点圆心）与 `hoverBarOnRatioDay()`（同一类目内找柱段，保证那天有比率行）；`focus.spec.ts` 新增 1 条折线聚焦用例，AC5 的「比率行不参与减淡」断言改为「聚焦柱段时比率行随非聚焦行减淡」。Spec 的 R3 / AC2 /「已确认决策」补入折线聚焦规则并附「收尾阶段的机制订正」段，Plan AD-4 / AD-6 / 测试策略与 `technical-architecture.md` 同步。
+
+验证：
+- `npm run typecheck`：退出码 0（含 `triggerEvent: 'line' as const` 的字面量复核）。
+- `npm test`：18 文件 179 passed / 1 skipped；新增 3 条锁定 hover 柱段 / hover 折线 / 无聚焦时比率行的强度与折线事件配置。
+- `npm run build`：退出码 0。
+- `npm run acceptance tests/e2e/focus.spec.ts`：12 passed；全量连续两次 39 passed、退出码 0，用例清单一致（另见 T011）。
+- 像素与 DOM 断言：hover 折线后比率行 1.0、模型行全 0.4、柱系列 canvas alpha 102；hover 同日柱段后比率行 0.4、聚焦模型行 1.0；移到空白区全部恢复 1.0。
+
+必要的问题与决策：折线是否连画布一起减淡由本次自行判定为「是」——tooltip 行减淡而画布折线保持常态会造成同一聚焦状态下视觉不一致，故按 R2 的同一强度扩展；折线聚焦状态仍只在内存，不进 URL、不持久化，切 tab / 改筛选 / 刷新沿用 T006 的清除逻辑。经开发者确认后提交，实现提交见下，文档同步随收尾提交纳入；收尾提交自身的 hash 不记录。
+
+提交：d68d3c4
