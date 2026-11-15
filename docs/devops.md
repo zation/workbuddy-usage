@@ -72,6 +72,20 @@ npm run acceptance
 
 `/api/timeseries` 不返回 `days`（日期轴由面板层按区间补），若 `npm run dev` 时前后端不是同一次构建，会出现趋势图空白；重启 dev 或重新 `npm run build` 即可，不能只回退一侧。
 
+## README 截图
+
+README 的界面截图由 `scripts/capture-readme.mjs` 生成，数值来自真实用量，分组与对话名称在副本中脱敏：
+
+```bash
+npm run build
+node scripts/capture-readme.mjs <源 database.db> [--out 目录] [--hover-date YYYY-MM-DD]
+```
+
+- **输入**：本机或另一台机器上由本项目生成的 `.data/database.db`，`schema_version` 需与当前代码一致。脚本只复制源库到项目 `tmp/` 下的脱敏副本再改副本，不写、不搬移原始日志与 `~/.workbuddy`；临时服务不带刷新器，静态资源取 `dist/web`。
+- **脱敏**：按用量排序把分组路径、会话键与三种标题换成中性占位名；token、积分、模型与日期保持原值。截图前扫描页面文本与主要 `/api` 响应的字符串值，出现任何真实名称片段即中止。
+- **区间与 hover**：以数据末日为终点取 30 天，两张趋势图 hover 在同一天；默认选最近几天里积分最高的一天，可用 `--hover-date` 指定。页面时间靠 `Date.now()` 偏移对齐数据末日，**不能**用 `clock.setFixedTime()` 固定时间——ECharts 的入场动画依赖 `Date.now()`，冻结后柱状图会停在中间帧。
+- **产物**：默认写入 `assets/screenshots/` 的五张图；改动截图内容或命名规则时同步 README 的图注与总说明。
+
 ## 回滚
 
 - **数据口径异常**：删除数据库文件（默认 `.data/database.db`）后重启，数据库会从原始数据全量重建。数据库可删可重建，删除无数据风险。

@@ -8,7 +8,7 @@ WorkBuddy 会把每次对话的 token 用量写进 `~/.workbuddy/projects/**/*.j
 
 ![面板总览：Token 模块指标卡、按天趋势与三个维度拆分](assets/screenshots/overview.png)
 
-> 截图统一切到 30 天区间（面板默认仍是近 3 天），使用演示数据生成；数字为虚构数据，不含真实会话内容。
+> 截图统一切到 30 天区间（面板默认仍是近 3 天），数值取自最近 30 天的真实用量；分组与对话名称已替换为中性占位名，不含真实会话内容。
 
 <details>
 <summary>目录</summary>
@@ -60,17 +60,17 @@ WorkBuddy 会把每次对话的 token 用量写进 `~/.workbuddy/projects/**/*.j
 
 ![筛选栏：展开起止日期并打开模型下拉](assets/screenshots/filters.png)
 
-**趋势图** —— 按模型堆叠的每日 token、按数值降序的 tooltip，以及橙色的 DeepSeek 费用比率折线；hover 时其余系列自动减淡。
+**趋势图** —— 按模型堆叠的每日 token、按数值降序的 tooltip，以及橙色的 DeepSeek 费用比率折线；hover 时其余系列自动减淡。截图停留在近期某一天的 hover 状态。
 
 ![按天 Token 趋势：模型堆叠、费用比率折线与 hover 浮层](assets/screenshots/trend.png)
 
-**积分模块** —— 与 Token 模块共用筛选，单独展示积分合计、请求数和按天积分趋势。
+**积分模块** —— 与 Token 模块共用筛选，单独展示积分合计、请求数和按天积分趋势；截图的 hover 与 Token 趋势落在同一天。
 
 ![积分消耗模块：指标卡与按天趋势](assets/screenshots/credit.png)
 
-**请求明细** —— 默认折叠，展开后逐条核对每次请求的四项 token 与积分，表头可排序、模型带色标。
+**请求明细** —— 默认折叠，展开后逐条核对每次请求的四项 token 与积分，表头可排序、模型带色标；截图按积分降序展开。
 
-![Token 请求明细表](assets/screenshots/requests.png)
+![Token 请求明细表（按积分降序）](assets/screenshots/requests.png)
 
 ## 快速开始
 
@@ -120,7 +120,7 @@ npm run build       # 服务端 tsc + 前端 Vite 构建
 npm run acceptance  # Playwright 交互验收（首次需 npx playwright install chromium）
 ```
 
-交互验收跑在 `tests/e2e/sample.ts` 生成的固定样本上，不读真实的 `~/.workbuddy`；README 截图另用一份覆盖 30 天的演示数据生成。运行验收时 Node 24 需要在 `PATH` 首位，详见 [devops.md](docs/devops.md)。
+交互验收跑在 `tests/e2e/sample.ts` 生成的固定样本上，不读真实的 `~/.workbuddy`；README 截图由 `scripts/capture-readme.mjs` 基于真实用量生成，分组与对话名称在脱敏副本里替换后再截图，生成方式见 [devops.md](docs/devops.md)。运行验收时 Node 24 需要在 `PATH` 首位。
 
 ## 项目文档
 
